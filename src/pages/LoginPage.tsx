@@ -146,7 +146,7 @@ export const LoginPage: React.FC = () => {
 
         <p style={{ marginTop: '20px', fontSize: '0.75rem', color: '#bdc3c7', lineHeight: '1.5' }}>
           Need help setting up a Connected App?{' '}
-          <a href="https://github.com/your-org/sf-tech-debt-assessor#setup" target="_blank" rel="noreferrer" style={{ color: '#3498db' }}>
+          <a href="https://github.com/sbilgram-lgtm/sf-tech-debt-assessor#setup" target="_blank" rel="noreferrer" style={{ color: '#3498db' }}>
             See the setup guide
           </a>
         </p>
