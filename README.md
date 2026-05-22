@@ -80,7 +80,7 @@ The user who authenticates must have:
 ### Steps
 
 ```bash
-git clone https://github.com/your-org/sf-tech-debt-assessor
+git clone https://github.com/sbilgram-lgtm/sf-tech-debt-assessor
 cd sf-tech-debt-assessor
 npm install
 cd server && npm install && cd ..
