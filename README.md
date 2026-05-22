@@ -1,4 +1,5 @@
 # Salesforce Tech Debt Assessor
+*By Steven Bilgram*
 
 A web app that connects to any Salesforce org and produces a scored technical debt report across 8 categories: Configuration, Code Quality, Data Model, Service Cloud, Sharing & Security, Integrations, Test Coverage, and Org Limits.
 
