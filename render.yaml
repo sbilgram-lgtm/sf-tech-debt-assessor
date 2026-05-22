@@ -2,10 +2,12 @@ services:
   - type: web
     name: sf-tech-debt-assessor
     runtime: node
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: npm install && npm run build
     startCommand: node server/index.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: SESSION_SECRET
         generateValue: true
+      - key: NPM_CONFIG_PRODUCTION
+        value: false
