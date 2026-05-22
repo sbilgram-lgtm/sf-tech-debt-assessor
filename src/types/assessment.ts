@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -54,4 +54,52 @@ export interface ServiceCloudData {
 
 export interface ValidationRuleData {
   validationRules: any[];
+}
+
+export interface SharingSecurityData {
+  owdSettings: any[];
+  sharingRules: any[];
+  profiles: any[];
+  permissionSets: any[];
+  passwordPolicies: any[];
+  sessionSettings: any[];
+  apiUsers: {
+    all: any[];
+    integrationUsers: any[];
+    staleUsers: any[];
+    broadPermUsers: any[];
+  };
+  loginIpRanges: any[];
+  mfaEnrolledUserIds: string[];
+  securityHealthCheck: any;
+  activeOauthTokens: any[];
+  lowSecuritySessions: any[];
+  usersPasswordNeverExpires: any[];
+  guestAccessObjects: any[];
+}
+
+export interface IntegrationData {
+  connectedApps: any[];
+  namedCredentials: any[];
+  remoteSiteSettings: any[];
+  apexCallouts: any[];
+}
+
+export interface TestCoverageData {
+  apexClasses: any[];
+  apexTriggers: any[];
+  coverage: any[];
+  testClasses: any[];
+}
+
+export interface OrgLimitEntry {
+  name: string;
+  max: number;
+  remaining: number;
+  used: number;
+  usedPct: number;
+}
+
+export interface OrgLimitsData {
+  limits: OrgLimitEntry[];
 }

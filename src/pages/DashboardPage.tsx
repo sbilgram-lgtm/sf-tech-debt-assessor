@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
-import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, calculateOverallScore } from '../utils/scoring';
+import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData } from '../services/api';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 
@@ -45,13 +45,29 @@ export const DashboardPage: React.FC = () => {
       setProgress('Assessing Service Cloud...');
       const serviceCloudData = await getServiceCloudData();
 
+      setProgress('Scanning sharing & security...');
+      const sharingSecurityData = await getSharingSecurityData();
+
+      setProgress('Evaluating integrations...');
+      const integrationData = await getIntegrationData();
+
+      setProgress('Analyzing test coverage...');
+      const testCoverageData = await getTestCoverageData();
+
+      setProgress('Checking org limits...');
+      const orgLimitsData = await getOrgLimitsData();
+
       setProgress('Calculating scores...');
       const configScore = assessConfiguration(automationData, validationData);
       const codeScore = assessCodeQuality(apexData);
       const dataScore = assessDataModel(dataModelData);
       const serviceScore = assessServiceCloud(serviceCloudData);
+      const sharingScore = assessSharingSecurity(sharingSecurityData);
+      const integrationScore = assessIntegrations(integrationData);
+      const testScore = assessTestCoverage(testCoverageData);
+      const limitsScore = assessOrgLimits(orgLimitsData);
 
-      const result = calculateOverallScore([configScore, codeScore, dataScore, serviceScore]);
+      const result = calculateOverallScore([configScore, codeScore, dataScore, serviceScore, sharingScore, integrationScore, testScore, limitsScore]);
 
       const authStatus = await getAuthStatus();
       result.instanceUrl = authStatus.instanceUrl;

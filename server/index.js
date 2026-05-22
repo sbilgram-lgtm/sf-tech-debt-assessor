@@ -43,16 +43,22 @@ function getCallbackUrl(req) {
 }
 
 app.get('/auth/login', (req, res) => {
-  const isSandbox = req.query.sandbox === 'true';
-  const loginUrl = process.env.SF_LOGIN_URL
-    || (isSandbox ? 'https://test.salesforce.com' : 'https://login.salesforce.com');
+  const loginUrl = (req.query.loginUrl || process.env.SF_LOGIN_URL || 'https://login.salesforce.com').replace(/\/$/, '');
+  const clientId = req.query.clientId || process.env.SF_CLIENT_ID;
+  const clientSecret = req.query.clientSecret || process.env.SF_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return res.redirect(`${getBaseUrl(req)}/login?error=missing_credentials`);
+  }
 
   req.session.loginUrl = loginUrl;
+  req.session.clientId = clientId;
+  req.session.clientSecret = clientSecret;
 
   const oauth = new jsforce.OAuth2({
     loginUrl,
-    clientId: process.env.SF_CLIENT_ID,
-    clientSecret: process.env.SF_CLIENT_SECRET,
+    clientId,
+    clientSecret,
     redirectUri: getCallbackUrl(req)
   });
 
@@ -61,11 +67,13 @@ app.get('/auth/login', (req, res) => {
 
 app.get('/auth/callback', async (req, res) => {
   const loginUrl = req.session.loginUrl || 'https://login.salesforce.com';
+  const clientId = req.session.clientId || process.env.SF_CLIENT_ID;
+  const clientSecret = req.session.clientSecret || process.env.SF_CLIENT_SECRET;
 
   const oauth = new jsforce.OAuth2({
     loginUrl,
-    clientId: process.env.SF_CLIENT_ID,
-    clientSecret: process.env.SF_CLIENT_SECRET,
+    clientId,
+    clientSecret,
     redirectUri: getCallbackUrl(req)
   });
 
@@ -247,6 +255,294 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('Service Cloud assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sharing & Security: OWD, Profiles, Permission Sets, Password Policies
+app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    // OWD settings via EntityDefinition
+    let owdSettings = { records: [] };
+    try {
+      owdSettings = await conn.tooling.query(
+        "SELECT QualifiedApiName, InternalSharingModel, ExternalSharingModel " +
+        "FROM EntityDefinition WHERE IsCustomizable = true AND IsQueryable = true"
+      );
+    } catch (e) { /* may not be available in all orgs */ }
+
+    // Profiles (count)
+    const profiles = await conn.query(
+      "SELECT Id, Name, UserType, Description FROM Profile"
+    );
+
+    // Permission Sets
+    const permSets = await conn.query(
+      "SELECT Id, Name, Label, Description, IsCustom FROM PermissionSet WHERE IsCustom = true"
+    );
+
+    // Connected App OAuth policies (proxy for session security)
+    let sessionSettings = { records: [] };
+    try {
+      sessionSettings = await conn.tooling.query(
+        "SELECT Id, SessionTimeout, LockTimeoutMinutes FROM SecuritySettings LIMIT 1"
+      );
+    } catch (e) { /* optional */ }
+
+    // Sharing rules via Metadata API describe
+    let sharingRules = [];
+    try {
+      const sharingCriteria = await conn.tooling.query(
+        "SELECT Id, DeveloperName, SobjectType FROM SharingCriteriaRule LIMIT 200"
+      );
+      const sharingOwner = await conn.tooling.query(
+        "SELECT Id, DeveloperName, SobjectType FROM SharingOwnerRule LIMIT 200"
+      );
+      sharingRules = [
+        ...(sharingCriteria.records || []),
+        ...(sharingOwner.records || [])
+      ];
+    } catch (e) { /* optional */ }
+
+    // API-enabled users: IsActive, profile, last login, MFA
+    const apiUsers = await conn.query(
+      "SELECT Id, Name, Username, Email, IsActive, LastLoginDate, " +
+      "Profile.Name, Profile.UserType, " +
+      "UserType, CreatedDate " +
+      "FROM User WHERE IsActive = true AND UserType IN ('Standard', 'PowerPartner', 'CsnOnly') " +
+      "ORDER BY LastLoginDate DESC NULLS LAST LIMIT 200"
+    );
+
+    // Integration/API service account users (likely have API-only profiles)
+    const integrationUsers = await conn.query(
+      "SELECT Id, Name, Username, Email, IsActive, LastLoginDate, " +
+      "Profile.Name, Profile.UserType, CreatedDate " +
+      "FROM User WHERE IsActive = true AND " +
+      "(Profile.Name LIKE '%API%' OR Profile.Name LIKE '%Integration%' OR " +
+      "Profile.Name LIKE '%System%' OR Profile.Name LIKE '%Service%') " +
+      "ORDER BY LastLoginDate DESC NULLS LAST LIMIT 100"
+    );
+
+    // Users with no login in 90+ days (stale accounts)
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const staleUsers = await conn.query(
+      `SELECT Id, Name, Username, Email, LastLoginDate, Profile.Name ` +
+      `FROM User WHERE IsActive = true AND UserType = 'Standard' AND ` +
+      `(LastLoginDate < ${ninetyDaysAgo.toISOString()} OR LastLoginDate = null) ` +
+      `ORDER BY LastLoginDate ASC NULLS FIRST LIMIT 100`
+    );
+
+    // Users with Modify All Data or View All Data permission via profile
+    let broadPermUsers = { records: [] };
+    try {
+      broadPermUsers = await conn.query(
+        "SELECT Id, Name, Username, Email, Profile.Name FROM User " +
+        "WHERE IsActive = true AND Profile.PermissionsModifyAllData = true " +
+        "AND UserType = 'Standard' LIMIT 100"
+      );
+    } catch (e) { /* not queryable in all orgs */ }
+
+    // Login IP ranges — profiles with no IP restrictions
+    let loginIpRanges = { records: [] };
+    try {
+      loginIpRanges = await conn.tooling.query(
+        "SELECT Id, ProfileId, StartAddress, EndAddress FROM ProfileIpRange LIMIT 500"
+      );
+    } catch (e) { /* optional */ }
+
+    // MFA: users who have registered a TOTP/authenticator (TwoFactorInfo)
+    let mfaEnrolledUsers = { records: [] };
+    try {
+      mfaEnrolledUsers = await conn.query(
+        "SELECT UserId FROM TwoFactorInfo WHERE Type IN ('TOTP', 'SalesforceAuthenticator', 'U2F', 'WebAuthn') LIMIT 2000"
+      );
+    } catch (e) { /* not available in all API versions */ }
+
+    // Security Health Check score and risk groups
+    let securityHealthCheck = null;
+    try {
+      const shc = await conn.query(
+        "SELECT Score, LastModifiedDate FROM SecurityHealthCheck LIMIT 1"
+      );
+      if (shc.records && shc.records.length > 0) {
+        securityHealthCheck = shc.records[0];
+      }
+    } catch (e) { /* requires specific permissions */ }
+
+    // Active OAuth access tokens (Connected App sessions)
+    let activeOauthTokens = { records: [] };
+    try {
+      activeOauthTokens = await conn.query(
+        "SELECT Id, UserId, User.Name, User.Username, AppName, LastUsedDate, UseCount " +
+        "FROM AuthSession WHERE SessionType = 'OAuth2' " +
+        "ORDER BY LastUsedDate DESC NULLS LAST LIMIT 200"
+      );
+    } catch (e) { /* optional */ }
+
+    // Sessions with low assurance level (no MFA step-up)
+    let lowSecuritySessions = { records: [] };
+    try {
+      lowSecuritySessions = await conn.query(
+        "SELECT Id, UserId, User.Name, User.Username, LoginType, SessionSecurityLevel, CreatedDate " +
+        "FROM AuthSession WHERE SessionSecurityLevel = 'STANDARD' " +
+        "ORDER BY CreatedDate DESC NULLS LAST LIMIT 200"
+      );
+    } catch (e) { /* optional */ }
+
+    // Users with password that never expires (Profile-level setting)
+    let usersPasswordNeverExpires = { records: [] };
+    try {
+      usersPasswordNeverExpires = await conn.query(
+        "SELECT Id, Name, Username, Profile.Name FROM User " +
+        "WHERE IsActive = true AND Profile.PermissionsPasswordNeverExpires = true " +
+        "AND UserType = 'Standard' LIMIT 200"
+      );
+    } catch (e) { /* not available in all orgs */ }
+
+    // Guest user access — sites/portals with guest profiles
+    let guestAccessObjects = { records: [] };
+    try {
+      guestAccessObjects = await conn.query(
+        "SELECT Id, Name, GuestUserId, GuestUser.Name, GuestUser.IsActive, " +
+        "GuestUser.Profile.Name, Status " +
+        "FROM Site WHERE Status = 'Active' LIMIT 100"
+      );
+    } catch (e) { /* optional */ }
+
+    res.json({
+      owdSettings: owdSettings.records || [],
+      sharingRules,
+      profiles: profiles.records || [],
+      permissionSets: permSets.records || [],
+      passwordPolicies: [],
+      sessionSettings: sessionSettings.records || [],
+      apiUsers: {
+        all: apiUsers.records || [],
+        integrationUsers: integrationUsers.records || [],
+        staleUsers: staleUsers.records || [],
+        broadPermUsers: broadPermUsers.records || []
+      },
+      loginIpRanges: loginIpRanges.records || [],
+      mfaEnrolledUserIds: (mfaEnrolledUsers.records || []).map(r => r.UserId),
+      securityHealthCheck,
+      activeOauthTokens: activeOauthTokens.records || [],
+      lowSecuritySessions: lowSecuritySessions.records || [],
+      usersPasswordNeverExpires: usersPasswordNeverExpires.records || [],
+      guestAccessObjects: guestAccessObjects.records || []
+    });
+  } catch (err) {
+    console.error('Sharing/Security assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Integrations: Connected Apps, Named Credentials, Remote Site Settings, Apex callouts
+app.get('/api/assess/integrations', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    // Connected Apps
+    let connectedApps = { records: [] };
+    try {
+      connectedApps = await conn.tooling.query(
+        "SELECT Id, Name, Description, MobileSessionTimeout " +
+        "FROM ConnectedApplication"
+      );
+    } catch (e) { /* optional */ }
+
+    // Named Credentials
+    let namedCredentials = { records: [] };
+    try {
+      namedCredentials = await conn.tooling.query(
+        "SELECT Id, DeveloperName, Endpoint, PrincipalType " +
+        "FROM NamedCredential"
+      );
+    } catch (e) { /* optional */ }
+
+    // Remote Site Settings
+    let remoteSites = { records: [] };
+    try {
+      remoteSites = await conn.tooling.query(
+        "SELECT Id, EndpointUrl, IsActive, DisableProtocolSecurity " +
+        "FROM RemoteProxy"
+      );
+    } catch (e) { /* optional */ }
+
+    // Apex classes with HttpRequest/callout patterns
+    let apexCallouts = { records: [] };
+    try {
+      apexCallouts = await conn.tooling.query(
+        "SELECT Id, Name, Body FROM ApexClass WHERE NamespacePrefix = null"
+      );
+    } catch (e) { /* optional */ }
+
+    res.json({
+      connectedApps: connectedApps.records || [],
+      namedCredentials: namedCredentials.records || [],
+      remoteSiteSettings: remoteSites.records || [],
+      apexCallouts: apexCallouts.records || []
+    });
+  } catch (err) {
+    console.error('Integrations assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Test Coverage: detailed breakdown beyond what /api/assess/apex provides
+app.get('/api/assess/test-coverage', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const classes = await conn.tooling.query(
+      "SELECT Id, Name, ApiVersion, LengthWithoutComments, NamespacePrefix " +
+      "FROM ApexClass WHERE NamespacePrefix = null"
+    );
+    const triggers = await conn.tooling.query(
+      "SELECT Id, Name, ApiVersion, TableEnumOrId, NamespacePrefix " +
+      "FROM ApexTrigger WHERE NamespacePrefix = null"
+    );
+
+    // Separate test classes from non-test
+    const allClasses = classes.records || [];
+    const testClasses = allClasses.filter(c => /test/i.test(c.Name));
+    const nonTestClasses = allClasses.filter(c => !/test/i.test(c.Name));
+
+    const coverage = await conn.tooling.query(
+      "SELECT ApexClassOrTriggerId, ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered " +
+      "FROM ApexCodeCoverageAggregate"
+    );
+
+    res.json({
+      apexClasses: nonTestClasses,
+      apexTriggers: triggers.records || [],
+      coverage: coverage.records || [],
+      testClasses
+    });
+  } catch (err) {
+    console.error('Test coverage assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Org Limits: uses the Limits REST API
+app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    // jsforce exposes limits via the REST API
+    const limitsRaw = await conn.request('/services/data/v59.0/limits/');
+
+    const limits = Object.entries(limitsRaw).map(([name, val]) => {
+      const v = val;
+      const max = v.Max || 0;
+      const remaining = v.Remaining !== undefined ? v.Remaining : max;
+      const used = max - remaining;
+      const usedPct = max > 0 ? Math.round((used / max) * 100) : 0;
+      return { name, max, remaining, used, usedPct };
+    }).filter(l => l.max > 0);
+
+    res.json({ limits });
+  } catch (err) {
+    console.error('Org limits assessment error:', err);
     res.status(500).json({ error: err.message });
   }
 });

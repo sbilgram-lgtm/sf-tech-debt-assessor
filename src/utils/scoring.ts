@@ -6,7 +6,11 @@ import {
   ApexData,
   DataModelData,
   ServiceCloudData,
-  ValidationRuleData
+  ValidationRuleData,
+  SharingSecurityData,
+  IntegrationData,
+  TestCoverageData,
+  OrgLimitsData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -384,6 +388,586 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
 
   return {
     category: 'Service Cloud',
+    score,
+    maxScore,
+    percentage: Math.round((score / maxScore) * 100),
+    items
+  };
+}
+
+export function assessSharingSecurity(data: SharingSecurityData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  // Public OWD — any object with Public Read/Write or Public Read/Write/Transfer is critical
+  const publicReadWrite = data.owdSettings.filter((obj: any) =>
+    obj.InternalSharingModel === 'ReadWrite' || obj.InternalSharingModel === 'ReadWriteTransfer'
+  );
+  if (publicReadWrite.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'critical',
+      `${publicReadWrite.length} Objects with Public Read/Write OWD`,
+      'Objects with Public Read/Write sharing expose all records to all users, violating least-privilege.',
+      'Change OWD to Private or Public Read Only, then use sharing rules to open up access as needed.',
+      { objects: publicReadWrite.map((o: any) => o.QualifiedApiName) }
+    ));
+  }
+
+  // Public Read Only OWD (potential oversharing)
+  const publicReadOnly = data.owdSettings.filter((obj: any) =>
+    obj.InternalSharingModel === 'Read'
+  );
+  if (publicReadOnly.length > 5) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'medium',
+      `${publicReadOnly.length} Objects with Public Read Only OWD`,
+      'Public Read Only OWD may expose sensitive records. Evaluate whether all users need visibility.',
+      'Review each object and tighten OWD to Private where record-level access control is needed.',
+      { count: publicReadOnly.length, objects: publicReadOnly.slice(0, 10).map((o: any) => o.QualifiedApiName) }
+    ));
+  }
+
+  // Too many profiles — difficult to maintain
+  if (data.profiles.length > 20) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'medium',
+      `${data.profiles.length} Profiles Configured`,
+      'Large numbers of profiles are difficult to maintain and audit for excess permissions.',
+      'Consolidate to a minimal set of profiles. Use Permission Sets and Permission Set Groups for additive permissions.',
+      { count: data.profiles.length }
+    ));
+  }
+
+  // Permission Sets without descriptions
+  const undocumentedPS = data.permissionSets.filter(
+    (ps: any) => !ps.Description || ps.Description.trim() === ''
+  );
+  if (undocumentedPS.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'low',
+      `${undocumentedPS.length} Permission Sets Without Descriptions`,
+      'Undocumented permission sets make access reviews and audits error-prone.',
+      'Add descriptions explaining what business role or use case each permission set serves.',
+      { count: undocumentedPS.length }
+    ));
+  }
+
+  // Excessive sharing rules (complexity risk)
+  if (data.sharingRules.length > 50) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'high',
+      `${data.sharingRules.length} Sharing Rules Configured`,
+      'A high number of sharing rules indicates complex access patterns that are hard to audit.',
+      'Review sharing rules for redundancy. Prefer role hierarchy and OWD adjustments over rules.',
+      { count: data.sharingRules.length }
+    ));
+  }
+
+  // API user checks
+  const apiUsers = data.apiUsers || {};
+  const allUsers: any[] = apiUsers.all || [];
+  const integrationUsers: any[] = apiUsers.integrationUsers || [];
+  const staleUsers: any[] = apiUsers.staleUsers || [];
+  const broadPermUsers: any[] = apiUsers.broadPermUsers || [];
+
+  // Users with Modify All Data — highest risk
+  if (broadPermUsers.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'critical',
+      `${broadPermUsers.length} Active Users with Modify All Data`,
+      'Modify All Data grants unrestricted write access to every record in the org. This is a critical over-privilege.',
+      'Revoke Modify All Data from all non-admin profiles. Use granular object permissions instead.',
+      { users: broadPermUsers.map((u: any) => ({ name: u.Name, username: u.Username, profile: u.Profile?.Name })) }
+    ));
+  }
+
+  // Stale active users — no login in 90+ days
+  if (staleUsers.length > 0) {
+    const neverLoggedIn = staleUsers.filter((u: any) => !u.LastLoginDate);
+    items.push(createDebtItem(
+      'sharingSecurity',
+      staleUsers.length > 20 ? 'high' : 'medium',
+      `${staleUsers.length} Active Users Inactive for 90+ Days`,
+      `${neverLoggedIn.length} have never logged in. Stale accounts are a common attack vector for credential stuffing.`,
+      'Deactivate users who have not logged in within 90 days. Implement an offboarding process.',
+      {
+        count: staleUsers.length,
+        neverLoggedIn: neverLoggedIn.length,
+        users: staleUsers.slice(0, 10).map((u: any) => ({
+          name: u.Name,
+          username: u.Username,
+          lastLogin: u.LastLoginDate || 'Never',
+          profile: u.Profile?.Name
+        }))
+      }
+    ));
+  }
+
+  // Integration/service account users with no IP restrictions
+  if (integrationUsers.length > 0) {
+    const profilesWithRanges = new Set((data.loginIpRanges || []).map((r: any) => r.ProfileId));
+    const unrestrictedIntUsers = integrationUsers.filter(
+      (u: any) => !profilesWithRanges.has(u.Profile?.Id || '') && u.Profile?.UserType !== 'Standard'
+    );
+    if (unrestrictedIntUsers.length > 0) {
+      items.push(createDebtItem(
+        'sharingSecurity',
+        'high',
+        `${integrationUsers.length} Integration/API Users Detected`,
+        `Service account users with API-style profile names found. Verify each has IP restrictions and uses minimum required permissions.`,
+        'Restrict integration user profiles to trusted IP ranges. Use Named Credentials instead of user credentials for callouts.',
+        {
+          users: integrationUsers.slice(0, 15).map((u: any) => ({
+            name: u.Name,
+            username: u.Username,
+            profile: u.Profile?.Name,
+            lastLogin: u.LastLoginDate || 'Never'
+          }))
+        }
+      ));
+    }
+  }
+
+  // Active users with no login IP range on their profile
+  const profilesWithIpRanges = new Set((data.loginIpRanges || []).map((r: any) => r.ProfileId));
+  const profilesWithoutRestrictions = (data.profiles || []).filter(
+    (p: any) => p.UserType === 'Standard' && !profilesWithIpRanges.has(p.Id)
+  );
+  if (profilesWithoutRestrictions.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'medium',
+      `${profilesWithoutRestrictions.length} Standard Profiles Without Login IP Restrictions`,
+      'Profiles with no IP range restrictions allow logins from any location, increasing brute-force and phishing exposure.',
+      'Add trusted IP ranges to profiles, or enforce MFA as a compensating control for all unrestricted profiles.',
+      { count: profilesWithoutRestrictions.length, profiles: profilesWithoutRestrictions.slice(0, 10).map((p: any) => p.Name) }
+    ));
+  }
+
+  // MFA: users not enrolled
+  const enrolledIds = new Set(data.mfaEnrolledUserIds || []);
+  const unenrolledUsers = allUsers.filter((u: any) => !enrolledIds.has(u.Id));
+  if (allUsers.length > 0) {
+    const unenrolledPct = Math.round((unenrolledUsers.length / allUsers.length) * 100);
+    if (unenrolledUsers.length > 0) {
+      items.push(createDebtItem(
+        'sharingSecurity',
+        unenrolledPct > 50 ? 'critical' : unenrolledPct > 20 ? 'high' : 'medium',
+        `${unenrolledUsers.length} Active Users Not Enrolled in MFA (${unenrolledPct}%)`,
+        `${unenrolledUsers.length} of ${allUsers.length} active standard users have no MFA method registered. Salesforce mandates MFA for all users.`,
+        'Enable MFA enforcement in Setup > Identity > MFA for UI Logins. Use Salesforce Authenticator or TOTP. Track enrollment via the Identity Verification report.',
+        {
+          total: allUsers.length,
+          unenrolled: unenrolledUsers.length,
+          percentage: unenrolledPct,
+          users: unenrolledUsers.slice(0, 15).map((u: any) => ({
+            name: u.Name,
+            username: u.Username,
+            profile: u.Profile?.Name,
+            lastLogin: u.LastLoginDate || 'Never'
+          }))
+        }
+      ));
+    }
+  }
+
+  // Security Health Check score
+  if (data.securityHealthCheck) {
+    const shcScore = data.securityHealthCheck.Score;
+    if (shcScore !== null && shcScore !== undefined) {
+      if (shcScore < 50) {
+        items.push(createDebtItem(
+          'sharingSecurity',
+          'critical',
+          `Security Health Check Score: ${shcScore}/100`,
+          'Salesforce Security Health Check is critically low. Multiple built-in security baselines are failing.',
+          'Review the Security Health Check dashboard in Setup. Prioritize fixing all Critical and High risk items first.',
+          { score: shcScore }
+        ));
+      } else if (shcScore < 75) {
+        items.push(createDebtItem(
+          'sharingSecurity',
+          'high',
+          `Security Health Check Score: ${shcScore}/100`,
+          'Security Health Check is below the recommended threshold. Several security baselines are not met.',
+          'Open Setup > Security > Health Check and resolve all High risk findings. Aim for a score above 80.',
+          { score: shcScore }
+        ));
+      }
+    }
+  }
+
+  // Active OAuth sessions (connected apps holding live tokens)
+  if (data.activeOauthTokens.length > 100) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'medium',
+      `${data.activeOauthTokens.length} Active OAuth Access Tokens`,
+      'A high volume of active OAuth tokens from connected apps increases the attack surface if any token is compromised.',
+      'Audit connected apps in Setup. Revoke unused OAuth tokens. Set short token expiry windows on sensitive connected apps.',
+      { count: data.activeOauthTokens.length }
+    ));
+  }
+
+  // Sessions without MFA step-up (standard assurance level)
+  if (data.lowSecuritySessions.length > 0) {
+    const uniqueUsers = new Set(data.lowSecuritySessions.map((s: any) => s.UserId));
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'medium',
+      `${uniqueUsers.size} Users with Standard-Assurance Sessions (No MFA Step-Up)`,
+      'These active sessions were authenticated without a high-assurance MFA challenge. Sensitive operations should require step-up auth.',
+      'Configure Session Security Level policies in Setup to require High Assurance for sensitive permissions and connected apps.',
+      {
+        sessionCount: data.lowSecuritySessions.length,
+        uniqueUsers: uniqueUsers.size,
+        users: data.lowSecuritySessions.slice(0, 10).map((s: any) => ({
+          name: s.User?.Name,
+          username: s.User?.Username,
+          loginType: s.LoginType
+        }))
+      }
+    ));
+  }
+
+  // Users with passwords that never expire
+  if (data.usersPasswordNeverExpires.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'high',
+      `${data.usersPasswordNeverExpires.length} Users with Passwords That Never Expire`,
+      'Non-expiring passwords increase the window of exposure if credentials are compromised.',
+      'Remove the "Password Never Expires" permission from all profiles. Set org-wide password expiry to 90 days or less.',
+      {
+        count: data.usersPasswordNeverExpires.length,
+        users: data.usersPasswordNeverExpires.slice(0, 15).map((u: any) => ({
+          name: u.Name,
+          username: u.Username,
+          profile: u.Profile?.Name
+        }))
+      }
+    ));
+  }
+
+  // Active guest user sites (public-facing access)
+  const activeSites = (data.guestAccessObjects || []).filter((s: any) => s.Status === 'Active');
+  if (activeSites.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'high',
+      `${activeSites.length} Active Sites with Guest User Access`,
+      'Each active site exposes a guest user profile that can access org data without authentication. Guest profiles are a frequent source of data exposure.',
+      'Audit guest user profile permissions for each site. Ensure OWD for sensitive objects is Private. Review guest-accessible Apex and Flows.',
+      {
+        count: activeSites.length,
+        sites: activeSites.map((s: any) => ({
+          name: s.Name,
+          guestUser: s.GuestUser?.Name,
+          isActive: s.GuestUser?.IsActive
+        }))
+      }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  const score = Math.max(0, maxScore - deductions);
+
+  return {
+    category: 'Sharing & Security',
+    score,
+    maxScore,
+    percentage: Math.round((score / maxScore) * 100),
+    items
+  };
+}
+
+export function assessIntegrations(data: IntegrationData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  // Remote site settings with protocol security disabled
+  const insecureRemoteSites = data.remoteSiteSettings.filter(
+    (rs: any) => rs.DisableProtocolSecurity === true
+  );
+  if (insecureRemoteSites.length > 0) {
+    items.push(createDebtItem(
+      'integrations',
+      'critical',
+      `${insecureRemoteSites.length} Remote Sites with Protocol Security Disabled`,
+      'Disabling protocol security allows connections to sites with invalid SSL certificates.',
+      'Re-enable protocol security. Fix certificate issues on target systems instead of bypassing validation.',
+      { sites: insecureRemoteSites.map((rs: any) => rs.EndpointUrl) }
+    ));
+  }
+
+  // Inactive remote site settings (dead config)
+  const inactiveRemoteSites = data.remoteSiteSettings.filter(
+    (rs: any) => rs.IsActive === false
+  );
+  if (inactiveRemoteSites.length > 0) {
+    items.push(createDebtItem(
+      'integrations',
+      'low',
+      `${inactiveRemoteSites.length} Inactive Remote Site Settings`,
+      'Inactive remote site settings add clutter and may indicate abandoned integrations.',
+      'Delete remote site settings for integrations that are no longer in use.',
+      { count: inactiveRemoteSites.length }
+    ));
+  }
+
+  // Connected apps without descriptions
+  const undocumentedApps = data.connectedApps.filter(
+    (app: any) => !app.Description || app.Description.trim() === ''
+  );
+  if (undocumentedApps.length > 0) {
+    items.push(createDebtItem(
+      'integrations',
+      'low',
+      `${undocumentedApps.length} Connected Apps Without Descriptions`,
+      'Undocumented connected apps make it impossible to audit which systems have access to the org.',
+      'Document each connected app with its purpose, owning team, and data it accesses.',
+      { count: undocumentedApps.length, apps: undocumentedApps.map((a: any) => a.Name) }
+    ));
+  }
+
+  // Apex classes with hardcoded endpoint URLs (not using Named Credentials)
+  const hardcodedEndpoints = data.apexCallouts.filter((c: any) => {
+    const body = c.Body || '';
+    return /new\s+HttpRequest\(\)/.test(body) && /setEndpoint\s*\(\s*['"][^{]/.test(body);
+  });
+  if (hardcodedEndpoints.length > 0) {
+    items.push(createDebtItem(
+      'integrations',
+      'high',
+      `${hardcodedEndpoints.length} Classes with Hardcoded HTTP Endpoints`,
+      'Hardcoded endpoints bypass Named Credentials, exposing URLs/credentials and breaking across sandboxes.',
+      'Migrate callouts to use Named Credentials so credentials are managed centrally and securely.',
+      { classes: hardcodedEndpoints.map((c: any) => c.Name) }
+    ));
+  }
+
+  // Named credentials using per-user principal (harder to manage)
+  const perUserCreds = data.namedCredentials.filter(
+    (nc: any) => nc.PrincipalType === 'PerUser'
+  );
+  if (perUserCreds.length > 0) {
+    items.push(createDebtItem(
+      'integrations',
+      'medium',
+      `${perUserCreds.length} Named Credentials Using Per-User Auth`,
+      'Per-user named credentials require every user to authenticate, which breaks automated processes.',
+      'Use Named Principal credentials for system integrations. Reserve Per-User only for user-delegated flows.',
+      { count: perUserCreds.length, names: perUserCreds.map((nc: any) => nc.DeveloperName) }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  const score = Math.max(0, maxScore - deductions);
+
+  return {
+    category: 'Integrations',
+    score,
+    maxScore,
+    percentage: Math.round((score / maxScore) * 100),
+    items
+  };
+}
+
+export function assessTestCoverage(data: TestCoverageData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const totalExecutable = data.apexClasses.length + data.apexTriggers.length;
+
+  // Ratio of test classes to production classes
+  if (totalExecutable > 0) {
+    const testRatio = data.testClasses.length / totalExecutable;
+    if (testRatio < 0.3) {
+      items.push(createDebtItem(
+        'testCoverage',
+        'high',
+        `Low Test Class Ratio (${data.testClasses.length} tests for ${totalExecutable} classes/triggers)`,
+        'Too few test classes relative to production code. Complex business logic may be untested.',
+        'Aim for at least one test class per trigger and one per service/handler class.',
+        { testClasses: data.testClasses.length, productionComponents: totalExecutable }
+      ));
+    }
+  }
+
+  // Classes/triggers with 0% coverage (not tested at all)
+  const coveredIds = new Set(data.coverage.map((c: any) => c.ApexClassOrTriggerId));
+  const untestedClasses = data.apexClasses.filter((c: any) => !coveredIds.has(c.Id));
+  const untestedTriggers = data.apexTriggers.filter((t: any) => !coveredIds.has(t.Id));
+  const totalUntested = untestedClasses.length + untestedTriggers.length;
+  if (totalUntested > 0) {
+    items.push(createDebtItem(
+      'testCoverage',
+      'critical',
+      `${totalUntested} Classes/Triggers with No Test Coverage`,
+      `${untestedClasses.length} classes and ${untestedTriggers.length} triggers have zero coverage. These will block deployments.`,
+      'Write at minimum a test class that exercises the primary happy path for each untested component.',
+      {
+        untestedClasses: untestedClasses.slice(0, 10).map((c: any) => c.Name),
+        untestedTriggers: untestedTriggers.map((t: any) => t.Name)
+      }
+    ));
+  }
+
+  // Classes below 75% (Salesforce minimum is 75% org-wide, but individual matters)
+  const lowCoverage = data.coverage.filter((c: any) => {
+    const total = (c.NumLinesCovered || 0) + (c.NumLinesUncovered || 0);
+    if (total === 0) return false;
+    return (c.NumLinesCovered / total) < 0.75;
+  });
+  if (lowCoverage.length > 0) {
+    const below50 = lowCoverage.filter((c: any) => {
+      const total = c.NumLinesCovered + c.NumLinesUncovered;
+      return (c.NumLinesCovered / total) < 0.5;
+    });
+    items.push(createDebtItem(
+      'testCoverage',
+      below50.length > 3 ? 'critical' : 'high',
+      `${lowCoverage.length} Components Below 75% Test Coverage`,
+      `${below50.length} components are below 50%. These are high-risk for deployment failures and regressions.`,
+      'Prioritize test coverage for triggers, batch classes, and service classes first.',
+      { total: lowCoverage.length, below50: below50.length }
+    ));
+  }
+
+  // Triggers without a corresponding test class (by name convention)
+  const triggerNames = data.apexTriggers.map((t: any) => t.Name.toLowerCase());
+  const testClassNames = data.testClasses.map((t: any) => t.Name.toLowerCase());
+  const triggersWithoutTest = triggerNames.filter(name =>
+    !testClassNames.some(tc => tc.includes(name) || tc.includes(name.replace('trigger', '')))
+  );
+  if (triggersWithoutTest.length > 0) {
+    items.push(createDebtItem(
+      'testCoverage',
+      'medium',
+      `${triggersWithoutTest.length} Triggers Without a Dedicated Test Class`,
+      'Triggers lacking a dedicated test class are often tested indirectly and incompletely.',
+      'Create a dedicated test class per trigger that covers all trigger contexts (insert, update, delete, bulk).',
+      { triggers: triggersWithoutTest }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  const score = Math.max(0, maxScore - deductions);
+
+  return {
+    category: 'Test Coverage',
+    score,
+    maxScore,
+    percentage: Math.round((score / maxScore) * 100),
+    items
+  };
+}
+
+// Human-readable label map for Salesforce API limit names
+const LIMIT_LABELS: Record<string, string> = {
+  ActiveScratchOrgs: 'Active Scratch Orgs',
+  AnalyticsExternalDataSizeMB: 'Analytics External Data (MB)',
+  ConcurrentAsyncGetReportInstances: 'Concurrent Async Report Instances',
+  ConcurrentEinsteinDataInsightsStoryCreation: 'Concurrent Einstein Insights Story Creation',
+  ConcurrentEinsteinDiscoveryStoryCreation: 'Concurrent Einstein Discovery Story Creation',
+  ConcurrentSyncReportRuns: 'Concurrent Sync Report Runs',
+  DailyApiRequests: 'Daily API Requests',
+  DailyAsyncApexExecutions: 'Daily Async Apex Executions',
+  DailyBulkApiBatches: 'Daily Bulk API Batches',
+  DailyBulkV2QueryFileStorageMB: 'Daily Bulk V2 Query File Storage (MB)',
+  DailyBulkV2QueryJobs: 'Daily Bulk V2 Query Jobs',
+  DailyDeliveredPlatformEvents: 'Daily Delivered Platform Events',
+  DailyDurableGenericStreamingApiEvents: 'Daily Durable Generic Streaming Events',
+  DailyDurableStreamingApiEvents: 'Daily Durable Streaming Events',
+  DailyEinsteinDiscoveryPredictAPICalls: 'Daily Einstein Discovery Predict API Calls',
+  DailyEinsteinDiscoveryPredictionsByCDC: 'Daily Einstein Discovery Predictions (CDC)',
+  DailyFunctionsApiCallLimit: 'Daily Functions API Calls',
+  DailyGenericStreamingApiEvents: 'Daily Generic Streaming Events',
+  DailyPublishedPlatformEvents: 'Daily Published Platform Events',
+  DailyPublishedStandardVolumePlatformEvents: 'Daily Published Standard Volume Platform Events',
+  DailyScratchOrgs: 'Daily Scratch Orgs',
+  DailyStreamingApiEvents: 'Daily Streaming API Events',
+  DailyWorkflowEmails: 'Daily Workflow Emails',
+  DataStorageMB: 'Data Storage (MB)',
+  FileStorageMB: 'File Storage (MB)',
+  HourlyAsyncReportRuns: 'Hourly Async Report Runs',
+  HourlyDashboardRefreshes: 'Hourly Dashboard Refreshes',
+  HourlyDashboardResults: 'Hourly Dashboard Results',
+  HourlyDashboardStatuses: 'Hourly Dashboard Statuses',
+  HourlyLongTermIdMapping: 'Hourly Long-Term ID Mapping',
+  HourlyManagedContentPublicRequests: 'Hourly Managed Content Public Requests',
+  HourlyODataCallout: 'Hourly OData Callout',
+  HourlyPublishedPlatformEvents: 'Hourly Published Platform Events',
+  HourlyPublishedStandardVolumePlatformEvents: 'Hourly Published Standard Volume Platform Events',
+  HourlyShortTermIdMapping: 'Hourly Short-Term ID Mapping',
+  HourlySyncReportRuns: 'Hourly Sync Report Runs',
+  HourlyTimeBasedWorkflow: 'Hourly Time-Based Workflow',
+  MassEmail: 'Mass Email',
+  MaxConcurrentStaticResourceRequests: 'Max Concurrent Static Resource Requests',
+  MonthlyEinsteinDiscoveryCommits: 'Monthly Einstein Discovery Commits',
+  MonthlyPlatformEventsUsageEntitlement: 'Monthly Platform Events Entitlement',
+  Package2VersionCreates: 'Package2 Version Creates',
+  Package2VersionCreatesWithoutValidation: 'Package2 Version Creates (No Validation)',
+  PermissionSets: 'Permission Sets',
+  SingleEmail: 'Single Email',
+  StreamingApiConcurrentClients: 'Streaming API Concurrent Clients'
+};
+
+export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const critical = data.limits.filter(l => l.usedPct >= 90);
+  const high = data.limits.filter(l => l.usedPct >= 75 && l.usedPct < 90);
+  const medium = data.limits.filter(l => l.usedPct >= 50 && l.usedPct < 75);
+
+  critical.forEach(l => {
+    const label = LIMIT_LABELS[l.name] || l.name;
+    items.push(createDebtItem(
+      'orgLimits',
+      'critical',
+      `${label}: ${l.usedPct}% Used (${l.used.toLocaleString()} / ${l.max.toLocaleString()})`,
+      `This limit is critically close to exhaustion. At 100% the org will begin rejecting operations dependent on this limit.`,
+      `Immediately review usage and reduce consumption. Contact Salesforce to purchase additional capacity if needed.`,
+      { name: l.name, used: l.used, max: l.max, remaining: l.remaining, usedPct: l.usedPct }
+    ));
+  });
+
+  high.forEach(l => {
+    const label = LIMIT_LABELS[l.name] || l.name;
+    items.push(createDebtItem(
+      'orgLimits',
+      'high',
+      `${label}: ${l.usedPct}% Used (${l.used.toLocaleString()} / ${l.max.toLocaleString()})`,
+      `This limit is at high utilization and could be exhausted under peak load.`,
+      `Monitor this limit closely. Optimize usage patterns and plan for capacity increases before hitting the ceiling.`,
+      { name: l.name, used: l.used, max: l.max, remaining: l.remaining, usedPct: l.usedPct }
+    ));
+  });
+
+  medium.forEach(l => {
+    const label = LIMIT_LABELS[l.name] || l.name;
+    items.push(createDebtItem(
+      'orgLimits',
+      'medium',
+      `${label}: ${l.usedPct}% Used (${l.used.toLocaleString()} / ${l.max.toLocaleString()})`,
+      `This limit is trending toward high utilization. Worth monitoring as usage grows.`,
+      `Review usage trends over time. Optimize if growth is steady to avoid future incidents.`,
+      { name: l.name, used: l.used, max: l.max, remaining: l.remaining, usedPct: l.usedPct }
+    ));
+  });
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  const score = Math.max(0, maxScore - deductions);
+
+  return {
+    category: 'Org Limits',
     score,
     maxScore,
     percentage: Math.round((score / maxScore) * 100),

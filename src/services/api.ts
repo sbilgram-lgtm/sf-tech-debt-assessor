@@ -40,3 +40,19 @@ export async function getDataModelData() {
 export async function getServiceCloudData() {
   return fetchApi('/api/assess/service-cloud');
 }
+
+export async function getSharingSecurityData() {
+  return fetchApi('/api/assess/sharing-security');
+}
+
+export async function getIntegrationData() {
+  return fetchApi('/api/assess/integrations');
+}
+
+export async function getTestCoverageData() {
+  return fetchApi('/api/assess/test-coverage');
+}
+
+export async function getOrgLimitsData() {
+  return fetchApi('/api/assess/org-limits');
+}
