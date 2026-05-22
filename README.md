@@ -7,30 +7,60 @@ A web app that connects to any Salesforce org and produces a scored technical de
 
 > Share this URL with colleagues: **https://sf-tech-debt-assessor.onrender.com**
 
-Each user needs to create a Connected App in the org they want to assess. Takes about 5 minutes.
+Each user needs to register the app in the org they want to assess. Takes about 5 minutes. The steps differ slightly depending on the org type — check which applies before you start.
 
 ---
 
-## Setup: Creating a Connected App (per org)
+## Setup: Registering the app (per org)
 
 Do this once per Salesforce org you want to assess.
 
-1. Log in to the org as an Administrator
-2. Go to **Setup → App Manager → New Connected App**
-3. Fill in:
-   - **Connected App Name:** SF Tech Debt Assessor
+### How to tell which setup your org uses
+
+- **External Client App** — newer orgs (Spring '25+). Go to Setup and search for **"External Client Apps"**. If it appears in the menu, use Option A.
+- **Connected App** — older orgs. Go to Setup → **App Manager**. If you see a **"New Connected App"** button, use Option B.
+
+---
+
+### Option A — External Client App (newer orgs, Spring '25+)
+
+1. Log in as an Administrator → **Setup → External Client Apps → New**
+2. Fill in:
+   - **Label:** SF Tech Debt Assessor
    - **API Name:** SF_Tech_Debt_Assessor
    - **Contact Email:** your email
-4. Check **Enable OAuth Settings**
-5. Set **Callback URL** to:
+3. Under **OAuth Settings**, check **Enable OAuth**
+4. Set **Callback URL** to:
    ```
    https://sf-tech-debt-assessor.onrender.com/auth/callback
    ```
-6. Under **Selected OAuth Scopes**, add:
+5. Under **OAuth Scopes**, add:
    - Access and manage your data (api)
    - Perform requests on your behalf at any time (refresh_token, offline_access)
-7. Click **Save** — wait ~10 minutes for Salesforce to activate the Connected App
-8. Go back to the Connected App and click **Manage Consumer Details** to retrieve:
+6. Click **Save** — wait ~10 minutes for Salesforce to activate it
+7. Go back to the External Client App → **View Consumer Details** to retrieve:
+   - **Consumer Key** → this is your Client ID
+   - **Consumer Secret** → this is your Client Secret
+
+---
+
+### Option B — Connected App (older orgs)
+
+1. Log in as an Administrator → **Setup → App Manager → New Connected App**
+2. Fill in:
+   - **Connected App Name:** SF Tech Debt Assessor
+   - **API Name:** SF_Tech_Debt_Assessor
+   - **Contact Email:** your email
+3. Check **Enable OAuth Settings**
+4. Set **Callback URL** to:
+   ```
+   https://sf-tech-debt-assessor.onrender.com/auth/callback
+   ```
+5. Under **Selected OAuth Scopes**, add:
+   - Access and manage your data (api)
+   - Perform requests on your behalf at any time (refresh_token, offline_access)
+6. Click **Save** — wait ~10 minutes for Salesforce to activate the Connected App
+7. Go back to the Connected App and click **Manage Consumer Details** to retrieve:
    - **Consumer Key** → this is your Client ID
    - **Consumer Secret** → this is your Client Secret
 
