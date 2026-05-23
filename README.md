@@ -64,6 +64,8 @@ Do this once per Salesforce org you want to assess.
    - **Consumer Key** → this is your Client ID
    - **Consumer Secret** → this is your Client Secret
 
+> **Important:** If you see a `redirect_uri_mismatch` error when connecting, it means the Callback URL in your Connected App or External Client App doesn't match. Go back into Setup, update the Callback URL to exactly `https://sf-tech-debt-assessor.onrender.com/auth/callback`, save, and wait ~10 minutes before trying again.
+
 ### Permissions required
 
 The user who authenticates must have:
