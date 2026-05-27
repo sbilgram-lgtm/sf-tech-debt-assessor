@@ -63,7 +63,7 @@ export function assessConfiguration(
       `${automation.workflowRules.length} Active Workflow Rules`,
       'Workflow Rules are legacy automation. Salesforce recommends migrating to Flows.',
       'Use the Migrate to Flow tool in Setup to convert Workflow Rules to record-triggered flows.',
-      { records: automation.workflowRules.slice(0,20).map((r:any) => ({ name: r.Name, detail: r.TableEnumOrId })) }
+      { records: automation.workflowRules.map((r:any) => ({ name: r.Name, detail: r.TableEnumOrId })) }
     ));
   }
 
@@ -75,7 +75,7 @@ export function assessConfiguration(
       `${automation.processBuilders.length} Active Process Builders`,
       'Process Builders are deprecated. Salesforce will retire them in a future release.',
       'Migrate Process Builders to record-triggered flows using the Migrate to Flow tool.',
-      { records: automation.processBuilders.slice(0,20).map((r:any) => ({ name: r.MasterLabel || r.Label, detail: r.ProcessType })) }
+      { records: automation.processBuilders.map((r:any) => ({ name: r.MasterLabel || r.Label, detail: r.ProcessType })) }
     ));
   }
 
@@ -127,7 +127,7 @@ export function assessConfiguration(
       `${undocumented.length} Validation Rules Without Descriptions`,
       'Validation rules without descriptions make it difficult for admins to understand their purpose.',
       'Add clear descriptions explaining the business rule each validation enforces.',
-      { records: undocumented.slice(0,20).map((r:any) => ({ name: r.ValidationName || r.DeveloperName || r.EntityDefinitionId })) }
+      { records: undocumented.map((r:any) => ({ name: r.ValidationName || r.DeveloperName || r.EntityDefinitionId })) }
     ));
   }
 
@@ -434,7 +434,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${publicReadOnly.length} Objects with Public Read Only OWD`,
       'Public Read Only OWD may expose sensitive records. Evaluate whether all users need visibility.',
       'Review each object and tighten OWD to Private where record-level access control is needed.',
-      { records: publicReadOnly.slice(0,20).map((o:any) => ({ name: o.QualifiedApiName })) }
+      { records: publicReadOnly.map((o:any) => ({ name: o.QualifiedApiName })) }
     ));
   }
 
@@ -505,7 +505,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${staleUsers.length} Active Users Inactive for 90+ Days`,
       `${neverLoggedIn.length} have never logged in. Stale accounts are a common attack vector for credential stuffing.`,
       'Deactivate users who have not logged in within 90 days. Implement an offboarding process.',
-      { records: staleUsers.slice(0,20).map((u:any) => ({ name: u.Name, detail: `Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'} · ${u.Profile?.Name}` })) }
+      { records: staleUsers.map((u:any) => ({ name: u.Name, detail: `Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'} · ${u.Profile?.Name}` })) }
     ));
   }
 
@@ -522,7 +522,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
         `${integrationUsers.length} Integration/API Users Detected`,
         `Service account users with API-style profile names found. Verify each has IP restrictions and uses minimum required permissions.`,
         'Restrict integration user profiles to trusted IP ranges. Use Named Credentials instead of user credentials for callouts.',
-        { records: integrationUsers.slice(0,15).map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
+        { records: integrationUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
       ));
     }
   }
@@ -539,7 +539,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${profilesWithoutRestrictions.length} Standard Profiles Without Login IP Restrictions`,
       'Profiles with no IP range restrictions allow logins from any location, increasing brute-force and phishing exposure.',
       'Add trusted IP ranges to profiles, or enforce MFA as a compensating control for all unrestricted profiles.',
-      { records: profilesWithoutRestrictions.slice(0,15).map((p:any) => ({ name: p.Name })) }
+      { records: profilesWithoutRestrictions.map((p:any) => ({ name: p.Name })) }
     ));
   }
 
@@ -555,7 +555,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
         `${unenrolledUsers.length} Active Users Not Enrolled in MFA (${unenrolledPct}%)`,
         `${unenrolledUsers.length} of ${allUsers.length} active standard users have no MFA method registered. Salesforce mandates MFA for all users.`,
         'Enable MFA enforcement in Setup > Identity > MFA for UI Logins. Use Salesforce Authenticator or TOTP. Track enrollment via the Identity Verification report.',
-        { records: unenrolledUsers.slice(0,20).map((u:any) => ({ name: u.Name, detail: `${u.Username} · Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'}` })) }
+        { records: unenrolledUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'}` })) }
       ));
     }
   }
@@ -607,7 +607,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${uniqueUsers.size} Users with Standard-Assurance Sessions (No MFA Step-Up)`,
       'These active sessions were authenticated without a high-assurance MFA challenge. Sensitive operations should require step-up auth.',
       'Configure Session Security Level policies in Setup to require High Assurance for sensitive permissions and connected apps.',
-      { records: data.lowSecuritySessions.slice(0,15).map((s:any) => ({ name: s.User?.Name || s.UserId, detail: s.LoginType })) }
+      { records: data.lowSecuritySessions.map((s:any) => ({ name: s.User?.Name || s.UserId, detail: s.LoginType })) }
     ));
   }
 
@@ -619,7 +619,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${data.usersPasswordNeverExpires.length} Users with Passwords That Never Expire`,
       'Non-expiring passwords increase the window of exposure if credentials are compromised.',
       'Remove the "Password Never Expires" permission from all profiles. Set org-wide password expiry to 90 days or less.',
-      { records: data.usersPasswordNeverExpires.slice(0,15).map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
+      { records: data.usersPasswordNeverExpires.map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
     ));
   }
 
@@ -773,7 +773,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
       `${totalUntested} Classes/Triggers with No Test Coverage`,
       `${untestedClasses.length} classes and ${untestedTriggers.length} triggers have zero coverage. These will block deployments.`,
       'Write at minimum a test class that exercises the primary happy path for each untested component.',
-      { records: [...untestedClasses.slice(0,20).map((c:any) => ({ name: c.Name, detail: 'Class · 0%' })), ...untestedTriggers.map((t:any) => ({ name: t.Name, detail: 'Trigger · 0%' }))] }
+      { records: [...untestedClasses.map((c:any) => ({ name: c.Name, detail: 'Class · 0%' })), ...untestedTriggers.map((t:any) => ({ name: t.Name, detail: 'Trigger · 0%' }))] }
     ));
   }
 
@@ -811,7 +811,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
       `${triggersWithoutTest.length} Triggers Without a Dedicated Test Class`,
       'Triggers lacking a dedicated test class are often tested indirectly and incompletely.',
       'Create a dedicated test class per trigger that covers all trigger contexts (insert, update, delete, bulk).',
-      { records: triggersWithoutTest.slice(0,20).map((name:string) => ({ name })) }
+      { records: triggersWithoutTest.map((name:string) => ({ name })) }
     ));
   }
 
@@ -1106,7 +1106,7 @@ export function assessCustomMetadata(data: CustomMetadataData): CategoryScore {
       `${data.customSettings.length} Custom Settings in Use`,
       'Custom Settings are a legacy configuration pattern. Custom Metadata Types are the modern replacement — they support deployment via change sets and packages.',
       'Migrate Custom Settings to Custom Metadata Types wherever they store org-wide or profile-level configuration.',
-      { records: data.customSettings.slice(0,20).map((s:any) => ({ name: s.DeveloperName, detail: s.SettingType || 'Custom Setting' })) }));
+      { records: data.customSettings.map((s:any) => ({ name: s.DeveloperName, detail: s.SettingType || 'Custom Setting' })) }));
   }
 
   const undocumentedSettings = data.customSettings.filter((s: any) => !s.Description || s.Description.trim() === '');
@@ -1139,7 +1139,7 @@ export function assessRecordTypesLayouts(data: RecordTypesLayoutsData): Category
       `${inactiveRT.length} Inactive Record Types`,
       'Inactive record types create noise in setup and may still be referenced by flows or assignment rules.',
       'Delete inactive record types after confirming no automation references them.',
-      { records: inactiveRT.slice(0,20).map((rt:any) => ({ name: rt.Name, detail: rt.SobjectType })) }));
+      { records: inactiveRT.map((rt:any) => ({ name: rt.Name, detail: rt.SobjectType })) }));
   }
 
   if (data.recordTypes.length > 100) {
