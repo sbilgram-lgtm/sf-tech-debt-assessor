@@ -56,3 +56,39 @@ export async function getTestCoverageData() {
 export async function getOrgLimitsData() {
   return fetchApi('/api/assess/org-limits');
 }
+
+export async function getDuplicateRulesData() {
+  return fetchApi('/api/assess/duplicate-rules');
+}
+
+export async function getReportsDashboardsData() {
+  return fetchApi('/api/assess/reports-dashboards');
+}
+
+export async function getEmailTemplatesData() {
+  return fetchApi('/api/assess/email-templates');
+}
+
+export async function getPlatformEventsData() {
+  return fetchApi('/api/assess/platform-events');
+}
+
+export async function getManagedPackagesData() {
+  return fetchApi('/api/assess/managed-packages');
+}
+
+export async function getCustomMetadataData() {
+  return fetchApi('/api/assess/custom-metadata');
+}
+
+export async function getRecordTypesLayoutsData() {
+  return fetchApi('/api/assess/record-types-layouts');
+}
+
+export async function getEinsteinAIData() {
+  return fetchApi('/api/assess/einstein-ai');
+}
+
+export async function getTerritoryData() {
+  return fetchApi('/api/assess/territory');
+}

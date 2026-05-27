@@ -547,6 +547,155 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Duplicate & Matching Rules ───────────────────────────────────────────────
+app.get('/api/assess/duplicate-rules', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [duplicateRules, matchingRules] = await Promise.all([
+      conn.tooling.query("SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule LIMIT 100").catch(() => ({ records: [] })),
+      conn.tooling.query("SELECT Id, DeveloperName, Description FROM MatchingRule LIMIT 100").catch(() => ({ records: [] }))
+    ]);
+    res.json({ duplicateRules: duplicateRules.records || [], matchingRules: matchingRules.records || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Reports & Dashboards ─────────────────────────────────────────────────────
+app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const iso = sixMonthsAgo.toISOString();
+    const [allReports, staleReports, allDashboards, staleDashboards] = await Promise.all([
+      conn.query("SELECT COUNT() FROM Report").catch(() => ({ totalSize: 0 })),
+      conn.query(`SELECT Id, Name, LastRunDate, OwnerId FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null LIMIT 200`).catch(() => ({ records: [] })),
+      conn.query("SELECT COUNT() FROM Dashboard").catch(() => ({ totalSize: 0 })),
+      conn.query(`SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`).catch(() => ({ records: [] }))
+    ]);
+    res.json({
+      totalReports: allReports.totalSize || 0,
+      staleReports: staleReports.records || [],
+      totalDashboards: allDashboards.totalSize || 0,
+      staleDashboards: staleDashboards.records || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Email Templates ──────────────────────────────────────────────────────────
+app.get('/api/assess/email-templates', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [classicTemplates, lightningTemplates] = await Promise.all([
+      conn.query("SELECT Id, Name, TemplateType, LastModifiedDate FROM EmailTemplate WHERE TemplateType != 'custom3' LIMIT 500").catch(() => ({ records: [] })),
+      conn.query("SELECT Id, Name, LastModifiedDate FROM EmailTemplate WHERE TemplateType = 'custom3' LIMIT 500").catch(() => ({ records: [] }))
+    ]);
+    res.json({ classicTemplates: classicTemplates.records || [], lightningTemplates: lightningTemplates.records || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Platform Events & Change Data Capture ────────────────────────────────────
+app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [platformEvents, cdcEntities] = await Promise.all([
+      conn.tooling.query("SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100").catch(() => ({ records: [] })),
+      conn.tooling.query("SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100").catch(() => ({ records: [] }))
+    ]);
+    const eventBusSubscribers = await conn.query("SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100").catch(() => ({ records: [] }));
+    res.json({
+      platformEvents: platformEvents.records || [],
+      cdcEntities: cdcEntities.records || [],
+      eventBusSubscribers: eventBusSubscribers.records || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Managed Packages ─────────────────────────────────────────────────────────
+app.get('/api/assess/managed-packages', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const packages = await conn.tooling.query(
+      "SELECT Id, Name, NamespacePrefix, MajorVersion, MinorVersion, PatchVersion, ReleaseState FROM InstalledSubscriberPackage LIMIT 100"
+    ).catch(() => ({ records: [] }));
+    res.json({ packages: packages.records || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Custom Metadata vs Custom Settings ───────────────────────────────────────
+app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [customSettings, customMetadataTypes] = await Promise.all([
+      conn.tooling.query("SELECT Id, DeveloperName, SettingType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100").catch(() => ({ records: [] })),
+      conn.tooling.query("SELECT Id, DeveloperName, Description FROM CustomObject WHERE CustomSettingsType = null AND IsCustomSetting = false AND DeveloperName LIKE '%mdt%' LIMIT 100").catch(() => ({ records: [] }))
+    ]);
+    const mdtTypes = await conn.tooling.query(
+      "SELECT Id, DeveloperName, Description FROM CustomObject WHERE IsMDT = true LIMIT 100"
+    ).catch(() => ({ records: [] }));
+    res.json({ customSettings: customSettings.records || [], customMetadataTypes: (customMetadataTypes.records || []).concat(mdtTypes.records || []) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Record Types & Page Layouts ──────────────────────────────────────────────
+app.get('/api/assess/record-types-layouts', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [recordTypes, pageLayouts] = await Promise.all([
+      conn.query("SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE IsCustom = true LIMIT 500").catch(() => ({ records: [] })),
+      conn.tooling.query("SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500").catch(() => ({ records: [] }))
+    ]);
+    res.json({ recordTypes: recordTypes.records || [], pageLayouts: pageLayouts.records || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Einstein / AI Usage ──────────────────────────────────────────────────────
+app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [einsteinSettings, promptTemplates, bots] = await Promise.all([
+      conn.query("SELECT SettingName, SettingValue FROM OrganizationSetting WHERE SettingName IN ('EinsteinGptEnabled','AgentforceEnabled','EinsteinPredictionBuilderEnabled','EinsteinNextBestActionEnabled') LIMIT 20").catch(() => ({ records: [] })),
+      conn.query("SELECT Id, DeveloperName, Status FROM PromptTemplate LIMIT 50").catch(() => ({ records: [] })),
+      conn.query("SELECT Id, DeveloperName, Status FROM BotDefinition LIMIT 20").catch(() => ({ records: [] }))
+    ]);
+    res.json({
+      einsteinSettings: einsteinSettings.records || [],
+      promptTemplates: promptTemplates.records || [],
+      bots: bots.records || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Territory Management ─────────────────────────────────────────────────────
+app.get('/api/assess/territory', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [territoryModels, territories, rules] = await Promise.all([
+      conn.query("SELECT Id, Name, State FROM Territory2Model LIMIT 20").catch(() => ({ records: [] })),
+      conn.query("SELECT Id, Name, Territory2ModelId FROM Territory2 LIMIT 200").catch(() => ({ records: [] })),
+      conn.query("SELECT Id, Name, IsActive, ObjectType FROM Territory2Rule LIMIT 100").catch(() => ({ records: [] }))
+    ]);
+    res.json({ territoryModels: territoryModels.records || [], territories: territories.records || [], assignmentRules: rules.records || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // In production, serve the React build
 if (isProduction) {
   app.use(express.static(path.resolve(__dirname, '../build')));

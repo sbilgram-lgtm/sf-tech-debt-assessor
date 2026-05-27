@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -102,4 +102,54 @@ export interface OrgLimitEntry {
 
 export interface OrgLimitsData {
   limits: OrgLimitEntry[];
+}
+
+export interface DuplicateRulesData {
+  duplicateRules: any[];
+  matchingRules: any[];
+}
+
+export interface ReportsDashboardsData {
+  staleReports: any[];
+  totalReports: number;
+  staleDashboards: any[];
+  totalDashboards: number;
+}
+
+export interface EmailTemplatesData {
+  classicTemplates: any[];
+  lightningTemplates: any[];
+}
+
+export interface PlatformEventsData {
+  platformEvents: any[];
+  cdcEntities: any[];
+  eventBusSubscribers: any[];
+}
+
+export interface ManagedPackagesData {
+  packages: any[];
+}
+
+export interface CustomMetadataData {
+  customSettings: any[];
+  customMetadataTypes: any[];
+}
+
+export interface RecordTypesLayoutsData {
+  recordTypes: any[];
+  pageLayouts: any[];
+}
+
+export interface EinsteinAIData {
+  einsteinSettings: any[];
+  aiFeatures: any[];
+  promptTemplates: any[];
+  bots: any[];
+}
+
+export interface TerritoryData {
+  territoryModels: any[];
+  territories: any[];
+  assignmentRules: any[];
 }

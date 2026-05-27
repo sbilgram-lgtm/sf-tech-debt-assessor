@@ -10,7 +10,16 @@ import {
   SharingSecurityData,
   IntegrationData,
   TestCoverageData,
-  OrgLimitsData
+  OrgLimitsData,
+  DuplicateRulesData,
+  ReportsDashboardsData,
+  EmailTemplatesData,
+  PlatformEventsData,
+  ManagedPackagesData,
+  CustomMetadataData,
+  RecordTypesLayoutsData,
+  EinsteinAIData,
+  TerritoryData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -973,6 +982,333 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
     percentage: Math.round((score / maxScore) * 100),
     items
   };
+}
+
+export function assessDuplicateRules(data: DuplicateRulesData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const inactiveRules = data.duplicateRules.filter((r: any) => !r.IsActive);
+  if (data.duplicateRules.length === 0) {
+    items.push(createDebtItem('duplicateRules', 'high', 'No Duplicate Rules Configured',
+      'Without duplicate rules, duplicate records accumulate silently and degrade data quality.',
+      'Create duplicate rules for Account, Contact, and Lead using standard or custom matching rules.'));
+  } else if (inactiveRules.length > 0) {
+    items.push(createDebtItem('duplicateRules', 'medium', `${inactiveRules.length} Inactive Duplicate Rules`,
+      'Inactive duplicate rules provide no protection against duplicates.',
+      'Activate all duplicate rules or delete ones that are no longer relevant.',
+      { count: inactiveRules.length }));
+  }
+
+  if (data.matchingRules.length === 0) {
+    items.push(createDebtItem('duplicateRules', 'high', 'No Matching Rules Configured',
+      'Matching rules define how Salesforce identifies duplicates. Without them, duplicate detection cannot function.',
+      'Create matching rules for the key objects your org uses (Account, Contact, Lead).'));
+  }
+
+  const undocumented = data.duplicateRules.filter((r: any) => !r.Description || r.Description.trim() === '');
+  if (undocumented.length > 0) {
+    items.push(createDebtItem('duplicateRules', 'low', `${undocumented.length} Duplicate Rules Without Descriptions`,
+      'Undocumented rules make it hard to audit or modify duplicate prevention logic.',
+      'Add descriptions explaining the business purpose of each duplicate rule.',
+      { count: undocumented.length }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Duplicate & Matching Rules', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessReportsDashboards(data: ReportsDashboardsData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const staleReportPct = data.totalReports > 0 ? Math.round((data.staleReports.length / data.totalReports) * 100) : 0;
+  if (data.staleReports.length > 50) {
+    items.push(createDebtItem('reportsDashboards', staleReportPct > 50 ? 'high' : 'medium',
+      `${data.staleReports.length} Reports Not Run in 6+ Months (${staleReportPct}% of total)`,
+      'Stale reports waste storage and clutter the org. Users may rely on outdated data if they run them.',
+      'Delete or archive reports not run in over 6 months. Review report ownership and establish a cleanup cadence.',
+      { count: data.staleReports.length, total: data.totalReports }));
+  }
+
+  const staleDashPct = data.totalDashboards > 0 ? Math.round((data.staleDashboards.length / data.totalDashboards) * 100) : 0;
+  if (data.staleDashboards.length > 20) {
+    items.push(createDebtItem('reportsDashboards', staleDashPct > 50 ? 'high' : 'medium',
+      `${data.staleDashboards.length} Dashboards Not Viewed in 6+ Months (${staleDashPct}% of total)`,
+      'Unused dashboards indicate abandoned initiatives or poor adoption.',
+      'Delete dashboards not viewed in 6 months. Consolidate active dashboards by team or function.',
+      { count: data.staleDashboards.length, total: data.totalDashboards }));
+  }
+
+  if (data.totalReports > 2000) {
+    items.push(createDebtItem('reportsDashboards', 'medium', `${data.totalReports} Total Reports in Org`,
+      'An extremely high report count is difficult to govern and slows report folder navigation.',
+      'Implement a report governance policy. Set report retention rules and assign owners.',
+      { total: data.totalReports }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Reports & Dashboards', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessEmailTemplates(data: EmailTemplatesData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  if (data.classicTemplates.length > 0) {
+    items.push(createDebtItem('emailTemplates', 'medium',
+      `${data.classicTemplates.length} Classic (Non-Lightning) Email Templates`,
+      'Classic email templates (Text, HTML, Visualforce) are legacy and do not support modern branding or responsive design.',
+      'Migrate Classic templates to Lightning Email Templates (custom3 type) for consistent branding and drag-and-drop editing.',
+      { count: data.classicTemplates.length }));
+  }
+
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+  const allTemplates = [...data.classicTemplates, ...data.lightningTemplates];
+  const staleTemplates = allTemplates.filter((t: any) => t.LastModifiedDate && new Date(t.LastModifiedDate) < twoYearsAgo);
+  if (staleTemplates.length > 0) {
+    items.push(createDebtItem('emailTemplates', 'low',
+      `${staleTemplates.length} Email Templates Not Modified in 2+ Years`,
+      'Stale templates may contain outdated branding, links, or messaging.',
+      'Review templates not updated in 2 years. Archive or delete those no longer in use.',
+      { count: staleTemplates.length }));
+  }
+
+  if (allTemplates.length === 0) {
+    items.push(createDebtItem('emailTemplates', 'low', 'No Email Templates Found',
+      'No email templates detected. If email is used in automation or Service Cloud, templates should be standardised.',
+      'Create and standardise Lightning Email Templates for common communications.'));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Email Templates', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessPlatformEvents(data: PlatformEventsData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  if (data.platformEvents.length > 0 && data.eventBusSubscribers.length === 0) {
+    items.push(createDebtItem('platformEvents', 'high',
+      `${data.platformEvents.length} Platform Event Channels with No Active Subscribers`,
+      'Platform events with no subscribers are producing events that nobody is consuming — wasted processing and potential limit consumption.',
+      'Audit platform event usage. Remove events no longer consumed, or wire up missing subscribers.',
+      { count: data.platformEvents.length }));
+  }
+
+  if (data.cdcEntities.length > 20) {
+    items.push(createDebtItem('platformEvents', 'medium',
+      `${data.cdcEntities.length} Change Data Capture Entities Enabled`,
+      'A high number of CDC entities increases event volume and may push the org toward daily event limits.',
+      'Enable CDC only for objects with active consumers. Review and disable unused CDC entities.',
+      { count: data.cdcEntities.length }));
+  }
+
+  if (data.platformEvents.length === 0 && data.cdcEntities.length === 0) {
+    items.push(createDebtItem('platformEvents', 'low', 'No Platform Events or CDC Configured',
+      'Platform Events and Change Data Capture are not in use. This is informational — not a debt item unless integrations require real-time events.',
+      'Consider Platform Events for loosely-coupled integrations as a modern alternative to polling APIs.'));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Platform Events & CDC', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessManagedPackages(data: ManagedPackagesData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  if (data.packages.length > 20) {
+    items.push(createDebtItem('managedPackages', 'medium',
+      `${data.packages.length} Managed Packages Installed`,
+      'A high number of installed packages increases org complexity and the risk of conflicts, governor limit pressure, and security exposure.',
+      'Audit installed packages. Uninstall any that are unused or have been replaced.',
+      { count: data.packages.length }));
+  }
+
+  const betaPackages = data.packages.filter((p: any) => p.ReleaseState === 'Beta');
+  if (betaPackages.length > 0) {
+    items.push(createDebtItem('managedPackages', 'high',
+      `${betaPackages.length} Beta Managed Packages Installed in Org`,
+      'Beta packages are not supported for production use and may be unstable.',
+      'Replace beta packages with GA versions or remove if no longer needed.',
+      { packages: betaPackages.map((p: any) => p.Name) }));
+  }
+
+  if (data.packages.length > 0) {
+    items.push(createDebtItem('managedPackages', 'low',
+      `${data.packages.length} Managed Packages — Review for Currency`,
+      'Installed packages should be kept up to date to receive security patches and stay compatible with Salesforce releases.',
+      'Check each package version against the AppExchange listing. Subscribe to release notes for critical packages.',
+      { packages: data.packages.map((p: any) => ({ name: p.Name, version: `${p.MajorVersion}.${p.MinorVersion}.${p.PatchVersion}`, state: p.ReleaseState })) }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Managed Packages', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessCustomMetadata(data: CustomMetadataData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  if (data.customSettings.length > 0) {
+    items.push(createDebtItem('customMetadata', 'medium',
+      `${data.customSettings.length} Custom Settings in Use`,
+      'Custom Settings are a legacy configuration pattern. Custom Metadata Types are the modern replacement — they support deployment via change sets and packages.',
+      'Migrate Custom Settings to Custom Metadata Types wherever they store org-wide or profile-level configuration.',
+      { count: data.customSettings.length, settings: data.customSettings.slice(0, 10).map((s: any) => s.DeveloperName) }));
+  }
+
+  const undocumentedSettings = data.customSettings.filter((s: any) => !s.Description || s.Description.trim() === '');
+  if (undocumentedSettings.length > 0) {
+    items.push(createDebtItem('customMetadata', 'low',
+      `${undocumentedSettings.length} Custom Settings Without Descriptions`,
+      'Undocumented Custom Settings make it impossible to audit their purpose during deployments.',
+      'Add descriptions to all Custom Settings explaining their purpose and valid value ranges.',
+      { count: undocumentedSettings.length }));
+  }
+
+  if (data.customSettings.length > 0 && data.customMetadataTypes.length === 0) {
+    items.push(createDebtItem('customMetadata', 'medium',
+      'No Custom Metadata Types Found — All Config Uses Custom Settings',
+      'The org relies entirely on Custom Settings for configuration, missing deployment and packaging benefits of Custom Metadata Types.',
+      'Begin migrating new configuration patterns to Custom Metadata Types. Prioritise settings used in multi-environment deployments.'));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Custom Metadata & Settings', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessRecordTypesLayouts(data: RecordTypesLayoutsData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const inactiveRT = data.recordTypes.filter((rt: any) => !rt.IsActive);
+  if (inactiveRT.length > 0) {
+    items.push(createDebtItem('recordTypesLayouts', 'medium',
+      `${inactiveRT.length} Inactive Record Types`,
+      'Inactive record types create noise in setup and may still be referenced by flows or assignment rules.',
+      'Delete inactive record types after confirming no automation references them.',
+      { count: inactiveRT.length, types: inactiveRT.slice(0, 10).map((rt: any) => `${rt.SobjectType}: ${rt.Name}`) }));
+  }
+
+  if (data.recordTypes.length > 100) {
+    items.push(createDebtItem('recordTypesLayouts', 'medium',
+      `${data.recordTypes.length} Custom Record Types Across Org`,
+      'A very high record type count indicates complexity that can make page layouts, profiles, and automation hard to manage.',
+      'Audit record types for each object. Consolidate where minor variations can be handled with picklist values.',
+      { count: data.recordTypes.length }));
+  }
+
+  const undocumentedRT = data.recordTypes.filter((rt: any) => !rt.Description || rt.Description.trim() === '');
+  if (undocumentedRT.length > 10) {
+    items.push(createDebtItem('recordTypesLayouts', 'low',
+      `${undocumentedRT.length} Record Types Without Descriptions`,
+      'Undocumented record types make it hard to understand their business purpose during audits.',
+      'Add descriptions to all record types explaining the business scenario they represent.',
+      { count: undocumentedRT.length }));
+  }
+
+  if (data.pageLayouts.length > 100) {
+    items.push(createDebtItem('recordTypesLayouts', 'medium',
+      `${data.pageLayouts.length} Page Layouts Configured`,
+      'Excessive page layouts are hard to maintain and keep in sync as objects evolve.',
+      'Consolidate page layouts. Consider Dynamic Forms on Lightning pages to replace layout proliferation.',
+      { count: data.pageLayouts.length }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Record Types & Page Layouts', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const settings: Record<string, string> = {};
+  (data.einsteinSettings || []).forEach((s: any) => { settings[s.SettingName] = s.SettingValue; });
+
+  const einsteinEnabled = settings['EinsteinGptEnabled'] === 'true' || settings['AgentforceEnabled'] === 'true';
+  const predictionBuilderEnabled = settings['EinsteinPredictionBuilderEnabled'] === 'true';
+  if (!einsteinEnabled) {
+    items.push(createDebtItem('einsteinAI', 'low',
+      'Einstein Generative AI / Agentforce Not Enabled',
+      'Einstein Generative AI and Agentforce are not enabled in this org.',
+      'Enable Einstein Generative AI in Setup if the org has the required licenses. Evaluate Agentforce for automation use cases.'));
+  }
+
+  if (predictionBuilderEnabled && data.promptTemplates.length === 0) {
+    items.push(createDebtItem('einsteinAI', 'medium',
+      'Einstein Enabled but No Prompt Templates Configured',
+      'Einstein features are active but no prompt templates are defined, suggesting AI features are enabled but not implemented.',
+      'Either configure prompt templates for your AI use cases or disable unused Einstein features to reduce confusion.'));
+  }
+
+  if (data.bots && (data.bots as any[]).length > 0) {
+    const inactiveBots = (data.bots as any[]).filter((b: any) => b.Status !== 'Active');
+    if (inactiveBots.length > 0) {
+      items.push(createDebtItem('einsteinAI', 'medium',
+        `${inactiveBots.length} Inactive Bot/Agent Definitions`,
+        'Inactive bots or Agentforce agent definitions indicate abandoned AI implementations.',
+        'Delete inactive bot definitions that are not planned for reactivation to keep the org clean.',
+        { count: inactiveBots.length, bots: inactiveBots.map((b: any) => b.DeveloperName) }));
+    }
+  }
+
+  if (einsteinEnabled && data.promptTemplates.length === 0 && (!data.bots || (data.bots as any[]).length === 0)) {
+    items.push(createDebtItem('einsteinAI', 'low',
+      'Einstein/Agentforce Enabled but No Implementation Found',
+      'AI features are enabled but no prompt templates or agents are configured. License may be unused.',
+      'Evaluate current Einstein license utilisation. Plan AI use cases or discuss with Salesforce if licenses can be reallocated.'));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Einstein & AI Usage', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessTerritory(data: TerritoryData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  if (data.territoryModels.length === 0) {
+    items.push(createDebtItem('territory', 'low',
+      'Territory Management Not Configured',
+      'Territory Management is not in use. This is informational — only relevant if the org uses territory-based sales coverage.',
+      'If territory-based coverage is needed, set up Territory2 models. Otherwise no action required.'));
+    const maxScore = 100;
+    return { category: 'Territory Management', score: maxScore, maxScore, percentage: 100, items };
+  }
+
+  const activeModels = data.territoryModels.filter((m: any) => m.State === 'Active');
+  const draftModels = data.territoryModels.filter((m: any) => m.State === 'Planning');
+  if (draftModels.length > 0) {
+    items.push(createDebtItem('territory', 'medium',
+      `${draftModels.length} Territory Models Still in Planning State`,
+      'Territory models in Planning state are not live. If these are abandoned plans, they add confusion.',
+      'Activate territory models that are ready, or archive Planning models that are no longer in use.',
+      { models: draftModels.map((m: any) => m.Name) }));
+  }
+
+  if (activeModels.length > 1) {
+    items.push(createDebtItem('territory', 'medium',
+      `${activeModels.length} Active Territory Models`,
+      'Multiple active territory models can cause confusion and conflict in opportunity assignment.',
+      'Consolidate to a single active territory model. Archive models from prior fiscal years.',
+      { count: activeModels.length }));
+  }
+
+  const inactiveRules = data.assignmentRules.filter((r: any) => !r.IsActive);
+  if (inactiveRules.length > 0) {
+    items.push(createDebtItem('territory', 'low',
+      `${inactiveRules.length} Inactive Territory Assignment Rules`,
+      'Inactive territory rules are dead configuration and may confuse admins.',
+      'Delete inactive territory assignment rules that are no longer needed.',
+      { count: inactiveRules.length }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Territory Management', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
 }
 
 export function calculateOverallScore(categories: CategoryScore[]): AssessmentResult {

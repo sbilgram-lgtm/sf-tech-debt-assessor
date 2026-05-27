@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
-import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, calculateOverallScore } from '../utils/scoring';
+import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData } from '../services/api';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 
@@ -57,6 +57,33 @@ export const DashboardPage: React.FC = () => {
       setProgress('Checking org limits...');
       const orgLimitsData = await getOrgLimitsData();
 
+      setProgress('Checking duplicate & matching rules...');
+      const duplicateRulesData = await getDuplicateRulesData();
+
+      setProgress('Analysing reports & dashboards...');
+      const reportsDashboardsData = await getReportsDashboardsData();
+
+      setProgress('Reviewing email templates...');
+      const emailTemplatesData = await getEmailTemplatesData();
+
+      setProgress('Checking platform events & CDC...');
+      const platformEventsData = await getPlatformEventsData();
+
+      setProgress('Scanning managed packages...');
+      const managedPackagesData = await getManagedPackagesData();
+
+      setProgress('Reviewing custom metadata & settings...');
+      const customMetadataData = await getCustomMetadataData();
+
+      setProgress('Checking record types & page layouts...');
+      const recordTypesLayoutsData = await getRecordTypesLayoutsData();
+
+      setProgress('Assessing Einstein & AI usage...');
+      const einsteinAIData = await getEinsteinAIData();
+
+      setProgress('Checking territory management...');
+      const territoryData = await getTerritoryData();
+
       setProgress('Calculating scores...');
       const configScore = assessConfiguration(automationData, validationData);
       const codeScore = assessCodeQuality(apexData);
@@ -66,8 +93,22 @@ export const DashboardPage: React.FC = () => {
       const integrationScore = assessIntegrations(integrationData);
       const testScore = assessTestCoverage(testCoverageData);
       const limitsScore = assessOrgLimits(orgLimitsData);
+      const duplicateScore = assessDuplicateRules(duplicateRulesData);
+      const reportsScore = assessReportsDashboards(reportsDashboardsData);
+      const emailScore = assessEmailTemplates(emailTemplatesData);
+      const platformEventsScore = assessPlatformEvents(platformEventsData);
+      const packagesScore = assessManagedPackages(managedPackagesData);
+      const customMetadataScore = assessCustomMetadata(customMetadataData);
+      const recordTypesScore = assessRecordTypesLayouts(recordTypesLayoutsData);
+      const einsteinScore = assessEinsteinAI(einsteinAIData);
+      const territoryScore = assessTerritory(territoryData);
 
-      const result = calculateOverallScore([configScore, codeScore, dataScore, serviceScore, sharingScore, integrationScore, testScore, limitsScore]);
+      const result = calculateOverallScore([
+        configScore, codeScore, dataScore, serviceScore, sharingScore,
+        integrationScore, testScore, limitsScore, duplicateScore, reportsScore,
+        emailScore, platformEventsScore, packagesScore, customMetadataScore,
+        recordTypesScore, einsteinScore, territoryScore
+      ]);
 
       const authStatus = await getAuthStatus();
       result.instanceUrl = authStatus.instanceUrl;
