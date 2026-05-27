@@ -19,7 +19,8 @@ import {
   CustomMetadataData,
   RecordTypesLayoutsData,
   EinsteinAIData,
-  TerritoryData
+  TerritoryData,
+  ExperienceCloudData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -1309,6 +1310,102 @@ export function assessTerritory(data: TerritoryData): CategoryScore {
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Territory Management', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const activeSites = (data.sites || []).filter((s: any) => s.Status === 'Active');
+  const allNetworks = data.networks || [];
+  const customDomains = data.customDomains || [];
+
+  // 1. Aura/Visualforce templates still in use (legacy)
+  const legacyTemplateSites = activeSites.filter((s: any) =>
+    s.Template && (s.Template.toLowerCase().includes('aura') || s.Template.toLowerCase().includes('visualforce') || s.Template.toLowerCase().includes('aloha'))
+  );
+  if (legacyTemplateSites.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${legacyTemplateSites.length} Sites Using Legacy Template (Aura/Visualforce)`,
+      'Aura and Visualforce-based Experience Cloud templates are legacy. LWR (Lightning Web Runtime) delivers significantly better performance and is Salesforce\'s strategic direction.',
+      'Plan migration to LWR-based templates. LWR sites support headless and composable architecture and receive Salesforce investment first.',
+      { sites: legacyTemplateSites.map((s: any) => ({ name: s.Name, template: s.Template })) }));
+  }
+
+  // 2. Inactive / draft sites never published (stale config)
+  const inactiveSites = (data.sites || []).filter((s: any) => s.Status !== 'Active');
+  if (inactiveSites.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'low',
+      `${inactiveSites.length} Inactive/Draft Experience Cloud Sites`,
+      'Sites that were never published or are no longer active remain in the org as configuration debt.',
+      'Delete or archive inactive sites that are no longer needed to keep the org clean.',
+      { sites: inactiveSites.map((s: any) => ({ name: s.Name, status: s.Status })) }));
+  }
+
+  // 3. Self-registration enabled (governance/spam risk)
+  const selfRegNetworks = allNetworks.filter((n: any) => n.SelfRegistrationEnabled === true);
+  if (selfRegNetworks.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${selfRegNetworks.length} Sites with Self-Registration Enabled`,
+      'Self-registration allows anyone on the internet to create an account. Without proper validation and approval workflows this can lead to spam accounts and unauthorized data access.',
+      'Add reCAPTCHA, email domain restrictions, or an approval workflow. Ensure the self-registration Apex handler validates input and limits record access.',
+      { sites: selfRegNetworks.map((n: any) => n.Name) }));
+  }
+
+  // 4. Guest user access enabled on active sites
+  const guestSites = activeSites.filter((s: any) => s.GuestUserId && s.GuestUser?.IsActive);
+  if (guestSites.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${guestSites.length} Active Sites with Guest User Access`,
+      'Guest users can access org data without authentication. Guest profiles are a frequent source of data exposure if OWD and sharing rules are not locked down.',
+      'Audit the guest user profile on each site. Ensure sensitive objects are Private in OWD. Review all Apex, Flows, and Visualforce accessible to the guest profile.',
+      { sites: guestSites.map((s: any) => ({ name: s.Name, guestProfile: s.GuestUser?.Name })) }));
+  }
+
+  // 5. Active sites without a custom domain (still on *.force.com or *.salesforce.com)
+  const siteIdsWithCustomDomain = new Set(customDomains.map((d: any) => d.SiteId));
+  const sitesWithoutCustomDomain = activeSites.filter((s: any) => !siteIdsWithCustomDomain.has(s.Id));
+  if (sitesWithoutCustomDomain.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'low',
+      `${sitesWithoutCustomDomain.length} Active Sites Without a Custom Domain`,
+      'Sites running on the default *.force.com or *.site.com domain look unprofessional and may trigger browser trust warnings for end users.',
+      'Configure a branded custom domain in Setup → Domains. Apply an SSL certificate for the custom domain.',
+      { sites: sitesWithoutCustomDomain.map((s: any) => s.Name) }));
+  }
+
+  // 6. Too many active sites (governance flag)
+  if (activeSites.length > 5) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${activeSites.length} Active Experience Cloud Sites — Review for Governance`,
+      'A large number of active sites can indicate ungoverned proliferation. Each site introduces a guest profile, sharing model surface, and ongoing maintenance burden.',
+      'Establish a site governance process. Consolidate sites where possible and ensure each active site has a named owner and documented purpose.',
+      { count: activeSites.length }));
+  }
+
+  // 7. CDN not enabled on public-facing sites
+  const publicSitesWithoutCdn = allNetworks.filter((n: any) =>
+    n.Status === 'Live' && n.CdnBasedOnLocation === false
+  );
+  if (publicSitesWithoutCdn.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'low',
+      `${publicSitesWithoutCdn.length} Live Sites Without CDN Enabled`,
+      'CDN (Content Delivery Network) improves page load time for geographically distributed users by caching static assets closer to the visitor.',
+      'Enable CDN in Experience Builder → Administration → General for each public-facing site.',
+      { sites: publicSitesWithoutCdn.map((n: any) => n.Name) }));
+  }
+
+  // 8. HTTPS not enforced on custom domains
+  const insecureDomains = customDomains.filter((d: any) => d.HttpsOption !== 'Required');
+  if (insecureDomains.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${insecureDomains.length} Custom Domains Without HTTPS Enforced`,
+      'Allowing non-HTTPS connections exposes session tokens and data in transit.',
+      'Set HTTPS Option to "Required" on all custom domains in Setup → Domains.',
+      { domains: insecureDomains.map((d: any) => d.Domain) }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Experience Cloud', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
 }
 
 export function calculateOverallScore(categories: CategoryScore[]): AssessmentResult {

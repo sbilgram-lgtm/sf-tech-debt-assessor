@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -152,4 +152,11 @@ export interface TerritoryData {
   territoryModels: any[];
   territories: any[];
   assignmentRules: any[];
+}
+
+export interface ExperienceCloudData {
+  sites: any[];
+  networks: any[];
+  networkMembers: any[];
+  customDomains: any[];
 }

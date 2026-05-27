@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
-import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, calculateOverallScore } from '../utils/scoring';
+import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData, getExperienceCloudData } from '../services/api';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, assessExperienceCloud, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 
@@ -84,6 +84,9 @@ export const DashboardPage: React.FC = () => {
       setProgress('Checking territory management...');
       const territoryData = await getTerritoryData();
 
+      setProgress('Assessing Experience Cloud sites...');
+      const experienceCloudData = await getExperienceCloudData();
+
       setProgress('Calculating scores...');
       const configScore = assessConfiguration(automationData, validationData);
       const codeScore = assessCodeQuality(apexData);
@@ -102,12 +105,13 @@ export const DashboardPage: React.FC = () => {
       const recordTypesScore = assessRecordTypesLayouts(recordTypesLayoutsData);
       const einsteinScore = assessEinsteinAI(einsteinAIData);
       const territoryScore = assessTerritory(territoryData);
+      const experienceCloudScore = assessExperienceCloud(experienceCloudData);
 
       const result = calculateOverallScore([
         configScore, codeScore, dataScore, serviceScore, sharingScore,
         integrationScore, testScore, limitsScore, duplicateScore, reportsScore,
         emailScore, platformEventsScore, packagesScore, customMetadataScore,
-        recordTypesScore, einsteinScore, territoryScore
+        recordTypesScore, einsteinScore, territoryScore, experienceCloudScore
       ]);
 
       const authStatus = await getAuthStatus();

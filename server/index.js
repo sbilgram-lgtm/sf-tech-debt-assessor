@@ -681,6 +681,61 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Experience Cloud ─────────────────────────────────────────────────────────
+app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    // All sites with template, status, and self-registration info
+    let sites = { records: [] };
+    try {
+      sites = await conn.query(
+        "SELECT Id, Name, Status, SiteType, UrlPathPrefix, GuestUserId, " +
+        "GuestUser.IsActive, OptionsAllowGuestSupportApi, Template " +
+        "FROM Site LIMIT 200"
+      );
+    } catch (e) { /* not available in all orgs */ }
+
+    // Network (Experience Cloud site) settings including self-reg and CDN
+    let networks = { records: [] };
+    try {
+      networks = await conn.query(
+        "SELECT Id, Name, Status, UrlPathPrefix, SelfRegistrationEnabled, " +
+        "AllowMembersToFlag, BrowserNotificationsEnabled, " +
+        "CdnBasedOnLocation, NavigationType " +
+        "FROM Network LIMIT 200"
+      );
+    } catch (e) { /* optional */ }
+
+    // Network member configurations (guest access settings)
+    let networkMembers = { records: [] };
+    try {
+      networkMembers = await conn.query(
+        "SELECT Id, NetworkId, ProfileId, Profile.Name, Profile.UserType " +
+        "FROM NetworkMember LIMIT 500"
+      );
+    } catch (e) { /* optional */ }
+
+    // Custom domains configured for Experience Cloud sites
+    let customDomains = { records: [] };
+    try {
+      customDomains = await conn.query(
+        "SELECT Id, Domain, SiteId, HttpsOption " +
+        "FROM Domain LIMIT 100"
+      );
+    } catch (e) { /* optional */ }
+
+    res.json({
+      sites: sites.records || [],
+      networks: networks.records || [],
+      networkMembers: networkMembers.records || [],
+      customDomains: customDomains.records || []
+    });
+  } catch (err) {
+    console.error('Experience Cloud assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Territory Management ─────────────────────────────────────────────────────
 app.get('/api/assess/territory', requireAuth, async (req, res) => {
   const conn = getConnection(req);
