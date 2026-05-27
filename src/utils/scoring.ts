@@ -63,7 +63,7 @@ export function assessConfiguration(
       `${automation.workflowRules.length} Active Workflow Rules`,
       'Workflow Rules are legacy automation. Salesforce recommends migrating to Flows.',
       'Use the Migrate to Flow tool in Setup to convert Workflow Rules to record-triggered flows.',
-      { count: automation.workflowRules.length, items: automation.workflowRules.slice(0, 10) }
+      { records: automation.workflowRules.slice(0,20).map((r:any) => ({ name: r.Name, detail: r.TableEnumOrId })) }
     ));
   }
 
@@ -75,7 +75,7 @@ export function assessConfiguration(
       `${automation.processBuilders.length} Active Process Builders`,
       'Process Builders are deprecated. Salesforce will retire them in a future release.',
       'Migrate Process Builders to record-triggered flows using the Migrate to Flow tool.',
-      { count: automation.processBuilders.length, items: automation.processBuilders.slice(0, 10) }
+      { records: automation.processBuilders.slice(0,20).map((r:any) => ({ name: r.MasterLabel || r.Label, detail: r.ProcessType })) }
     ));
   }
 
@@ -127,7 +127,7 @@ export function assessConfiguration(
       `${undocumented.length} Validation Rules Without Descriptions`,
       'Validation rules without descriptions make it difficult for admins to understand their purpose.',
       'Add clear descriptions explaining the business rule each validation enforces.',
-      { count: undocumented.length }
+      { records: undocumented.slice(0,20).map((r:any) => ({ name: r.ValidationName || r.DeveloperName || r.EntityDefinitionId })) }
     ));
   }
 
@@ -160,7 +160,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       `${triggersWithLogic.length} Triggers with Business Logic`,
       'Triggers should delegate to handler classes. Logic in triggers is hard to test and maintain.',
       'Refactor triggers to call handler/service classes. Adopt a trigger framework.',
-      { triggers: triggersWithLogic.map((t: any) => t.Name) }
+      { records: triggersWithLogic.map((t:any) => ({ name: t.Name, detail: `${t.TableEnumOrId || ''}` })) }
     ));
   }
 
@@ -196,7 +196,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       `${totalOutdated} Components on Outdated API Versions`,
       'Components on old API versions may miss security patches and new platform features.',
       'Update API versions incrementally, testing each batch. Prioritize security-sensitive code.',
-      { classes: outdatedClasses.length, triggers: outdatedTriggers.length }
+      { records: [...outdatedClasses.map((c:any) => ({ name: c.Name, detail: `Class · API v${c.ApiVersion}` })), ...outdatedTriggers.map((t:any) => ({ name: t.Name, detail: `Trigger · API v${t.ApiVersion}` }))] }
     ));
   }
 
@@ -214,7 +214,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       `${soqlInLoops.length} Classes with SOQL in Loops`,
       'SOQL queries inside loops cause governor limit exceptions in bulk operations.',
       'Move queries outside loops. Use collections and maps for bulk-safe patterns.',
-      { classes: soqlInLoops.map((c: any) => c.Name) }
+      { records: soqlInLoops.map((c:any) => ({ name: c.Name })) }
     ));
   }
 
@@ -232,7 +232,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       `${hardcodedIds.length} Classes with Hardcoded IDs`,
       'Hardcoded Salesforce IDs break when deploying between environments.',
       'Use Custom Metadata Types, Custom Settings, or Custom Labels instead of hardcoded IDs.',
-      { classes: hardcodedIds.map((c: any) => c.Name) }
+      { records: hardcodedIds.map((c:any) => ({ name: c.Name })) }
     ));
   }
 
@@ -300,7 +300,7 @@ export function assessDataModel(data: DataModelData): CategoryScore {
       `${bloatedObjects.length} Objects with 100+ Custom Fields`,
       'Objects with excessive fields indicate possible data model issues or unused fields.',
       'Audit field usage, archive unused fields, and consider splitting into related objects.',
-      { objects: bloatedObjects.map(([name, count]) => ({ name, count })) }
+      { records: bloatedObjects.map(([name, count]) => ({ name, detail: `${count} custom fields` })) }
     ));
   }
 
@@ -340,7 +340,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       `${data.caseRecordTypes.length} Case Record Types`,
       'Too many record types adds complexity to page layouts, automation, and reporting.',
       'Consolidate record types where possible. Use picklist values for minor variations.',
-      { recordTypes: data.caseRecordTypes.map((rt: any) => rt.Name) }
+      { records: data.caseRecordTypes.map((rt:any) => ({ name: rt.Name })) }
     ));
   }
 
@@ -419,7 +419,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${publicReadWrite.length} Objects with Public Read/Write OWD`,
       'Objects with Public Read/Write sharing expose all records to all users, violating least-privilege.',
       'Change OWD to Private or Public Read Only, then use sharing rules to open up access as needed.',
-      { objects: publicReadWrite.map((o: any) => o.QualifiedApiName) }
+      { records: publicReadWrite.map((o:any) => ({ name: o.QualifiedApiName, detail: o.InternalSharingModel })) }
     ));
   }
 
@@ -434,7 +434,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${publicReadOnly.length} Objects with Public Read Only OWD`,
       'Public Read Only OWD may expose sensitive records. Evaluate whether all users need visibility.',
       'Review each object and tighten OWD to Private where record-level access control is needed.',
-      { count: publicReadOnly.length, objects: publicReadOnly.slice(0, 10).map((o: any) => o.QualifiedApiName) }
+      { records: publicReadOnly.slice(0,20).map((o:any) => ({ name: o.QualifiedApiName })) }
     ));
   }
 
@@ -492,7 +492,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${broadPermUsers.length} Active Users with Modify All Data`,
       'Modify All Data grants unrestricted write access to every record in the org. This is a critical over-privilege.',
       'Revoke Modify All Data from all non-admin profiles. Use granular object permissions instead.',
-      { users: broadPermUsers.map((u: any) => ({ name: u.Name, username: u.Username, profile: u.Profile?.Name })) }
+      { records: broadPermUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
     ));
   }
 
@@ -505,16 +505,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${staleUsers.length} Active Users Inactive for 90+ Days`,
       `${neverLoggedIn.length} have never logged in. Stale accounts are a common attack vector for credential stuffing.`,
       'Deactivate users who have not logged in within 90 days. Implement an offboarding process.',
-      {
-        count: staleUsers.length,
-        neverLoggedIn: neverLoggedIn.length,
-        users: staleUsers.slice(0, 10).map((u: any) => ({
-          name: u.Name,
-          username: u.Username,
-          lastLogin: u.LastLoginDate || 'Never',
-          profile: u.Profile?.Name
-        }))
-      }
+      { records: staleUsers.slice(0,20).map((u:any) => ({ name: u.Name, detail: `Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'} · ${u.Profile?.Name}` })) }
     ));
   }
 
@@ -531,14 +522,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
         `${integrationUsers.length} Integration/API Users Detected`,
         `Service account users with API-style profile names found. Verify each has IP restrictions and uses minimum required permissions.`,
         'Restrict integration user profiles to trusted IP ranges. Use Named Credentials instead of user credentials for callouts.',
-        {
-          users: integrationUsers.slice(0, 15).map((u: any) => ({
-            name: u.Name,
-            username: u.Username,
-            profile: u.Profile?.Name,
-            lastLogin: u.LastLoginDate || 'Never'
-          }))
-        }
+        { records: integrationUsers.slice(0,15).map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
       ));
     }
   }
@@ -555,7 +539,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${profilesWithoutRestrictions.length} Standard Profiles Without Login IP Restrictions`,
       'Profiles with no IP range restrictions allow logins from any location, increasing brute-force and phishing exposure.',
       'Add trusted IP ranges to profiles, or enforce MFA as a compensating control for all unrestricted profiles.',
-      { count: profilesWithoutRestrictions.length, profiles: profilesWithoutRestrictions.slice(0, 10).map((p: any) => p.Name) }
+      { records: profilesWithoutRestrictions.slice(0,15).map((p:any) => ({ name: p.Name })) }
     ));
   }
 
@@ -571,17 +555,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
         `${unenrolledUsers.length} Active Users Not Enrolled in MFA (${unenrolledPct}%)`,
         `${unenrolledUsers.length} of ${allUsers.length} active standard users have no MFA method registered. Salesforce mandates MFA for all users.`,
         'Enable MFA enforcement in Setup > Identity > MFA for UI Logins. Use Salesforce Authenticator or TOTP. Track enrollment via the Identity Verification report.',
-        {
-          total: allUsers.length,
-          unenrolled: unenrolledUsers.length,
-          percentage: unenrolledPct,
-          users: unenrolledUsers.slice(0, 15).map((u: any) => ({
-            name: u.Name,
-            username: u.Username,
-            profile: u.Profile?.Name,
-            lastLogin: u.LastLoginDate || 'Never'
-          }))
-        }
+        { records: unenrolledUsers.slice(0,20).map((u:any) => ({ name: u.Name, detail: `${u.Username} · Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'}` })) }
       ));
     }
   }
@@ -633,15 +607,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${uniqueUsers.size} Users with Standard-Assurance Sessions (No MFA Step-Up)`,
       'These active sessions were authenticated without a high-assurance MFA challenge. Sensitive operations should require step-up auth.',
       'Configure Session Security Level policies in Setup to require High Assurance for sensitive permissions and connected apps.',
-      {
-        sessionCount: data.lowSecuritySessions.length,
-        uniqueUsers: uniqueUsers.size,
-        users: data.lowSecuritySessions.slice(0, 10).map((s: any) => ({
-          name: s.User?.Name,
-          username: s.User?.Username,
-          loginType: s.LoginType
-        }))
-      }
+      { records: data.lowSecuritySessions.slice(0,15).map((s:any) => ({ name: s.User?.Name || s.UserId, detail: s.LoginType })) }
     ));
   }
 
@@ -653,14 +619,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${data.usersPasswordNeverExpires.length} Users with Passwords That Never Expire`,
       'Non-expiring passwords increase the window of exposure if credentials are compromised.',
       'Remove the "Password Never Expires" permission from all profiles. Set org-wide password expiry to 90 days or less.',
-      {
-        count: data.usersPasswordNeverExpires.length,
-        users: data.usersPasswordNeverExpires.slice(0, 15).map((u: any) => ({
-          name: u.Name,
-          username: u.Username,
-          profile: u.Profile?.Name
-        }))
-      }
+      { records: data.usersPasswordNeverExpires.slice(0,15).map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
     ));
   }
 
@@ -673,14 +632,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${activeSites.length} Active Sites with Guest User Access`,
       'Each active site exposes a guest user profile that can access org data without authentication. Guest profiles are a frequent source of data exposure.',
       'Audit guest user profile permissions for each site. Ensure OWD for sensitive objects is Private. Review guest-accessible Apex and Flows.',
-      {
-        count: activeSites.length,
-        sites: activeSites.map((s: any) => ({
-          name: s.Name,
-          guestUser: s.GuestUser?.Name,
-          isActive: s.GuestUser?.IsActive
-        }))
-      }
+      { records: activeSites.map((s:any) => ({ name: s.Name, detail: s.GuestUser?.Name || 'Guest User' })) }
     ));
   }
 
@@ -711,7 +663,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       `${insecureRemoteSites.length} Remote Sites with Protocol Security Disabled`,
       'Disabling protocol security allows connections to sites with invalid SSL certificates.',
       'Re-enable protocol security. Fix certificate issues on target systems instead of bypassing validation.',
-      { sites: insecureRemoteSites.map((rs: any) => rs.EndpointUrl) }
+      { records: insecureRemoteSites.map((rs:any) => ({ name: rs.EndpointUrl })) }
     ));
   }
 
@@ -726,7 +678,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       `${inactiveRemoteSites.length} Inactive Remote Site Settings`,
       'Inactive remote site settings add clutter and may indicate abandoned integrations.',
       'Delete remote site settings for integrations that are no longer in use.',
-      { count: inactiveRemoteSites.length }
+      { records: inactiveRemoteSites.map((rs:any) => ({ name: rs.EndpointUrl })) }
     ));
   }
 
@@ -741,7 +693,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       `${undocumentedApps.length} Connected Apps Without Descriptions`,
       'Undocumented connected apps make it impossible to audit which systems have access to the org.',
       'Document each connected app with its purpose, owning team, and data it accesses.',
-      { count: undocumentedApps.length, apps: undocumentedApps.map((a: any) => a.Name) }
+      { records: undocumentedApps.map((a:any) => ({ name: a.Name })) }
     ));
   }
 
@@ -757,7 +709,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       `${hardcodedEndpoints.length} Classes with Hardcoded HTTP Endpoints`,
       'Hardcoded endpoints bypass Named Credentials, exposing URLs/credentials and breaking across sandboxes.',
       'Migrate callouts to use Named Credentials so credentials are managed centrally and securely.',
-      { classes: hardcodedEndpoints.map((c: any) => c.Name) }
+      { records: hardcodedEndpoints.map((c:any) => ({ name: c.Name })) }
     ));
   }
 
@@ -772,7 +724,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       `${perUserCreds.length} Named Credentials Using Per-User Auth`,
       'Per-user named credentials require every user to authenticate, which breaks automated processes.',
       'Use Named Principal credentials for system integrations. Reserve Per-User only for user-delegated flows.',
-      { count: perUserCreds.length, names: perUserCreds.map((nc: any) => nc.DeveloperName) }
+      { records: perUserCreds.map((nc:any) => ({ name: nc.DeveloperName })) }
     ));
   }
 
@@ -821,10 +773,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
       `${totalUntested} Classes/Triggers with No Test Coverage`,
       `${untestedClasses.length} classes and ${untestedTriggers.length} triggers have zero coverage. These will block deployments.`,
       'Write at minimum a test class that exercises the primary happy path for each untested component.',
-      {
-        untestedClasses: untestedClasses.slice(0, 10).map((c: any) => c.Name),
-        untestedTriggers: untestedTriggers.map((t: any) => t.Name)
-      }
+      { records: [...untestedClasses.slice(0,20).map((c:any) => ({ name: c.Name, detail: 'Class · 0%' })), ...untestedTriggers.map((t:any) => ({ name: t.Name, detail: 'Trigger · 0%' }))] }
     ));
   }
 
@@ -862,7 +811,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
       `${triggersWithoutTest.length} Triggers Without a Dedicated Test Class`,
       'Triggers lacking a dedicated test class are often tested indirectly and incompletely.',
       'Create a dedicated test class per trigger that covers all trigger contexts (insert, update, delete, bulk).',
-      { triggers: triggersWithoutTest }
+      { records: triggersWithoutTest.slice(0,20).map((name:string) => ({ name })) }
     ));
   }
 
@@ -1133,7 +1082,7 @@ export function assessManagedPackages(data: ManagedPackagesData): CategoryScore 
       `${betaPackages.length} Beta Managed Packages Installed in Org`,
       'Beta packages are not supported for production use and may be unstable.',
       'Replace beta packages with GA versions or remove if no longer needed.',
-      { packages: betaPackages.map((p: any) => p.Name) }));
+      { records: betaPackages.map((p:any) => ({ name: p.Name, detail: `v${p.MajorVersion}.${p.MinorVersion}.${p.PatchVersion} · Beta` })) }));
   }
 
   if (data.packages.length > 0) {
@@ -1141,7 +1090,7 @@ export function assessManagedPackages(data: ManagedPackagesData): CategoryScore 
       `${data.packages.length} Managed Packages — Review for Currency`,
       'Installed packages should be kept up to date to receive security patches and stay compatible with Salesforce releases.',
       'Check each package version against the AppExchange listing. Subscribe to release notes for critical packages.',
-      { packages: data.packages.map((p: any) => ({ name: p.Name, version: `${p.MajorVersion}.${p.MinorVersion}.${p.PatchVersion}`, state: p.ReleaseState })) }));
+      { records: data.packages.map((p:any) => ({ name: p.Name, detail: `v${p.MajorVersion}.${p.MinorVersion}.${p.PatchVersion} · ${p.ReleaseState}` })) }));
   }
 
   const maxScore = 100;
@@ -1157,7 +1106,7 @@ export function assessCustomMetadata(data: CustomMetadataData): CategoryScore {
       `${data.customSettings.length} Custom Settings in Use`,
       'Custom Settings are a legacy configuration pattern. Custom Metadata Types are the modern replacement — they support deployment via change sets and packages.',
       'Migrate Custom Settings to Custom Metadata Types wherever they store org-wide or profile-level configuration.',
-      { count: data.customSettings.length, settings: data.customSettings.slice(0, 10).map((s: any) => s.DeveloperName) }));
+      { records: data.customSettings.slice(0,20).map((s:any) => ({ name: s.DeveloperName, detail: s.SettingType || 'Custom Setting' })) }));
   }
 
   const undocumentedSettings = data.customSettings.filter((s: any) => !s.Description || s.Description.trim() === '');
@@ -1190,7 +1139,7 @@ export function assessRecordTypesLayouts(data: RecordTypesLayoutsData): Category
       `${inactiveRT.length} Inactive Record Types`,
       'Inactive record types create noise in setup and may still be referenced by flows or assignment rules.',
       'Delete inactive record types after confirming no automation references them.',
-      { count: inactiveRT.length, types: inactiveRT.slice(0, 10).map((rt: any) => `${rt.SobjectType}: ${rt.Name}`) }));
+      { records: inactiveRT.slice(0,20).map((rt:any) => ({ name: rt.Name, detail: rt.SobjectType })) }));
   }
 
   if (data.recordTypes.length > 100) {
@@ -1252,7 +1201,7 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
         `${inactiveBots.length} Inactive Bot/Agent Definitions`,
         'Inactive bots or Agentforce agent definitions indicate abandoned AI implementations.',
         'Delete inactive bot definitions that are not planned for reactivation to keep the org clean.',
-        { count: inactiveBots.length, bots: inactiveBots.map((b: any) => b.DeveloperName) }));
+        { records: inactiveBots.map((b:any) => ({ name: b.DeveloperName, detail: b.Status })) }));
     }
   }
 
@@ -1287,7 +1236,7 @@ export function assessTerritory(data: TerritoryData): CategoryScore {
       `${draftModels.length} Territory Models Still in Planning State`,
       'Territory models in Planning state are not live. If these are abandoned plans, they add confusion.',
       'Activate territory models that are ready, or archive Planning models that are no longer in use.',
-      { models: draftModels.map((m: any) => m.Name) }));
+      { records: draftModels.map((m:any) => ({ name: m.Name, detail: 'Planning' })) }));
   }
 
   if (activeModels.length > 1) {
@@ -1328,7 +1277,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${legacyTemplateSites.length} Sites Using Legacy Template (Aura/Visualforce)`,
       'Aura and Visualforce-based Experience Cloud templates are legacy. LWR (Lightning Web Runtime) delivers significantly better performance and is Salesforce\'s strategic direction.',
       'Plan migration to LWR-based templates. LWR sites support headless and composable architecture and receive Salesforce investment first.',
-      { sites: legacyTemplateSites.map((s: any) => ({ name: s.Name, template: s.Template })) }));
+      { records: legacyTemplateSites.map((s:any) => ({ name: s.Name, detail: s.Template || 'Legacy Template' })) }));
   }
 
   // 2. Inactive / draft sites never published (stale config)
@@ -1338,7 +1287,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${inactiveSites.length} Inactive/Draft Experience Cloud Sites`,
       'Sites that were never published or are no longer active remain in the org as configuration debt.',
       'Delete or archive inactive sites that are no longer needed to keep the org clean.',
-      { sites: inactiveSites.map((s: any) => ({ name: s.Name, status: s.Status })) }));
+      { records: inactiveSites.map((s:any) => ({ name: s.Name, detail: s.Status })) }));
   }
 
   // 3. Self-registration enabled (governance/spam risk)
@@ -1348,7 +1297,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${selfRegNetworks.length} Sites with Self-Registration Enabled`,
       'Self-registration allows anyone on the internet to create an account. Without proper validation and approval workflows this can lead to spam accounts and unauthorized data access.',
       'Add reCAPTCHA, email domain restrictions, or an approval workflow. Ensure the self-registration Apex handler validates input and limits record access.',
-      { sites: selfRegNetworks.map((n: any) => n.Name) }));
+      { records: selfRegNetworks.map((n:any) => ({ name: n.Name })) }));
   }
 
   // 4. Guest user access enabled on active sites
@@ -1358,7 +1307,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${guestSites.length} Active Sites with Guest User Access`,
       'Guest users can access org data without authentication. Guest profiles are a frequent source of data exposure if OWD and sharing rules are not locked down.',
       'Audit the guest user profile on each site. Ensure sensitive objects are Private in OWD. Review all Apex, Flows, and Visualforce accessible to the guest profile.',
-      { sites: guestSites.map((s: any) => ({ name: s.Name, guestProfile: s.GuestUser?.Name })) }));
+      { records: guestSites.map((s:any) => ({ name: s.Name, detail: s.GuestUser?.Name || 'Guest User' })) }));
   }
 
   // 5. Active sites without a custom domain (still on *.force.com or *.salesforce.com)
@@ -1369,7 +1318,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${sitesWithoutCustomDomain.length} Active Sites Without a Custom Domain`,
       'Sites running on the default *.force.com or *.site.com domain look unprofessional and may trigger browser trust warnings for end users.',
       'Configure a branded custom domain in Setup → Domains. Apply an SSL certificate for the custom domain.',
-      { sites: sitesWithoutCustomDomain.map((s: any) => s.Name) }));
+      { records: sitesWithoutCustomDomain.map((s:any) => ({ name: s.Name })) }));
   }
 
   // 6. Too many active sites (governance flag)
@@ -1390,7 +1339,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${publicSitesWithoutCdn.length} Live Sites Without CDN Enabled`,
       'CDN (Content Delivery Network) improves page load time for geographically distributed users by caching static assets closer to the visitor.',
       'Enable CDN in Experience Builder → Administration → General for each public-facing site.',
-      { sites: publicSitesWithoutCdn.map((n: any) => n.Name) }));
+      { records: publicSitesWithoutCdn.map((n:any) => ({ name: n.Name })) }));
   }
 
   // 8. HTTPS not enforced on custom domains
@@ -1400,7 +1349,7 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       `${insecureDomains.length} Custom Domains Without HTTPS Enforced`,
       'Allowing non-HTTPS connections exposes session tokens and data in transit.',
       'Set HTTPS Option to "Required" on all custom domains in Setup → Domains.',
-      { domains: insecureDomains.map((d: any) => d.Domain) }));
+      { records: insecureDomains.map((d:any) => ({ name: d.Domain, detail: `HTTPS: ${d.HttpsOption || 'Not Required'}` })) }));
   }
 
   const maxScore = 100;

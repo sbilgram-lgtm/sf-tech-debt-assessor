@@ -7,151 +7,16 @@ interface DebtItemCardProps {
 
 const severityStyles: Record<string, { bg: string; border: string; text: string }> = {
   critical: { bg: '#fdf0ed', border: '#c0392b', text: '#c0392b' },
-  high: { bg: '#fef5e7', border: '#d35400', text: '#d35400' },
-  medium: { bg: '#fef9e7', border: '#f39c12', text: '#f39c12' },
-  low: { bg: '#eafaf1', border: '#27ae60', text: '#27ae60' }
+  high:     { bg: '#fef5e7', border: '#d35400', text: '#d35400' },
+  medium:   { bg: '#fef9e7', border: '#f39c12', text: '#f39c12' },
+  low:      { bg: '#eafaf1', border: '#27ae60', text: '#27ae60' }
 };
-
-const DISPLAY_FIELDS = ['Name', 'name', 'MasterLabel', 'DeveloperName', 'developerName', 'title', 'EndpointUrl', 'Domain', 'domain', 'Username', 'username'];
-const SECONDARY_FIELDS = ['version', 'state', 'ApiVersion', 'ProcessType', 'SobjectType', 'TemplateType', 'template', 'guestProfile', 'LastLoginDate', 'status', 'Status'];
-
-function getDisplayField(obj: Record<string, any>): string | null {
-  for (const f of DISPLAY_FIELDS) {
-    if (obj[f] != null && obj[f] !== '') return f;
-  }
-  return null;
-}
-
-function getSecondaryField(obj: Record<string, any>): string | null {
-  for (const f of SECONDARY_FIELDS) {
-    if (obj[f] != null && obj[f] !== '') return f;
-  }
-  return null;
-}
-
-function renderMetadataValue(key: string, value: any): React.ReactNode {
-  if (key === 'count') return null;
-  if (value == null) return null;
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return null;
-    const capped = value.slice(0, 20);
-    const overflow = value.length - 20;
-
-    if (typeof capped[0] === 'string') {
-      return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-          {capped.map((s: string, i: number) => (
-            <span key={i} style={{
-              backgroundColor: 'rgba(0,0,0,0.07)',
-              borderRadius: '4px',
-              padding: '1px 7px',
-              fontSize: '0.75rem',
-              fontFamily: 'monospace'
-            }}>{s}</span>
-          ))}
-          {overflow > 0 && <span style={{ fontSize: '0.75rem', color: '#888', alignSelf: 'center' }}>+{overflow} more</span>}
-        </div>
-      );
-    }
-
-    if (typeof capped[0] === 'object' && capped[0] !== null) {
-      return (
-        <div style={{ marginTop: '2px' }}>
-          {capped.map((obj: Record<string, any>, i: number) => {
-            const df = getDisplayField(obj);
-            const sf = getSecondaryField(obj);
-            const label = df ? obj[df] : JSON.stringify(obj).slice(0, 60);
-            const secondary = sf ? obj[sf] : null;
-            return (
-              <div key={i} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '2px 0',
-                borderBottom: i < capped.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                fontSize: '0.78rem'
-              }}>
-                <span style={{ fontFamily: 'monospace', color: '#2c3e50' }}>{label}</span>
-                {secondary && (
-                  <span style={{ color: '#888', fontStyle: 'italic' }}>{String(secondary)}</span>
-                )}
-              </div>
-            );
-          })}
-          {overflow > 0 && (
-            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '4px' }}>+{overflow} more</div>
-          )}
-        </div>
-      );
-    }
-  }
-
-  if (typeof value === 'string' || typeof value === 'number') {
-    return <span style={{ fontSize: '0.78rem', fontFamily: 'monospace' }}>{value}</span>;
-  }
-
-  return null;
-}
-
-function MetadataSection({ metadata }: { metadata: Record<string, any> }) {
-  const entries = Object.entries(metadata).filter(([k, v]) => {
-    if (k === 'count') return false;
-    if (Array.isArray(v) && v.length === 0) return false;
-    return v != null;
-  });
-
-  if (entries.length === 0) return null;
-
-  const labelMap: Record<string, string> = {
-    items: 'Records',
-    flows: 'Flows',
-    classes: 'Classes',
-    triggers: 'Triggers',
-    profiles: 'Profiles',
-    permSets: 'Permission Sets',
-    users: 'Users',
-    sites: 'Sites',
-    apps: 'Connected Apps',
-    credentials: 'Named Credentials',
-    domains: 'Domains',
-    packages: 'Packages',
-    rules: 'Rules',
-    queues: 'Queues',
-    objects: 'Objects',
-    fields: 'Fields',
-    templates: 'Templates',
-    types: 'Types',
-  };
-
-  return (
-    <div style={{ marginTop: '10px' }}>
-      {entries.map(([key, value]) => {
-        const rendered = renderMetadataValue(key, value);
-        if (!rendered) return null;
-        const label = labelMap[key] || key.charAt(0).toUpperCase() + key.slice(1);
-        return (
-          <div key={key} style={{ marginBottom: '6px' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {label}
-            </span>
-            <div style={{ marginTop: '2px' }}>{rendered}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export const DebtItemCard: React.FC<DebtItemCardProps> = ({ item }) => {
   const style = severityStyles[item.severity];
   const [showDetails, setShowDetails] = useState(false);
 
-  const hasDetails = item.metadata && Object.entries(item.metadata).some(([k, v]) => {
-    if (k === 'count') return false;
-    if (Array.isArray(v)) return v.length > 0;
-    return v != null;
-  });
+  const records: { name: string; detail?: string }[] = item.metadata?.records || [];
 
   return (
     <div style={{
@@ -170,8 +35,8 @@ export const DebtItemCard: React.FC<DebtItemCardProps> = ({ item }) => {
           padding: '2px 8px',
           borderRadius: '12px',
           fontSize: '0.7rem',
-          fontWeight: 'bold',
-          textTransform: 'uppercase'
+          fontWeight: 'bold' as const,
+          textTransform: 'uppercase' as const
         }}>
           {item.severity}
         </span>
@@ -187,7 +52,7 @@ export const DebtItemCard: React.FC<DebtItemCardProps> = ({ item }) => {
         <span style={{ fontSize: '0.8rem', color: '#555' }}>{item.recommendation}</span>
       </div>
 
-      {hasDetails && (
+      {records.length > 0 && (
         <div style={{ marginTop: '10px' }}>
           <button
             onClick={() => setShowDetails(!showDetails)}
@@ -202,16 +67,34 @@ export const DebtItemCard: React.FC<DebtItemCardProps> = ({ item }) => {
               padding: '3px 10px'
             }}
           >
-            {showDetails ? 'Hide affected records' : 'Show affected records'}
+            {showDetails ? `Hide ${records.length} affected records` : `Show ${records.length} affected records`}
           </button>
           {showDetails && (
             <div style={{
               marginTop: '8px',
-              backgroundColor: 'rgba(255,255,255,0.8)',
+              backgroundColor: 'rgba(255,255,255,0.85)',
               borderRadius: '6px',
-              padding: '10px 12px'
+              padding: '8px 12px',
+              maxHeight: '300px',
+              overflowY: 'auto' as const
             }}>
-              <MetadataSection metadata={item.metadata!} />
+              {records.map((r, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '4px 0',
+                  borderBottom: i < records.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none',
+                  fontSize: '0.8rem'
+                }}>
+                  <span style={{ color: '#2c3e50', fontFamily: 'monospace' }}>{r.name}</span>
+                  {r.detail && (
+                    <span style={{ color: '#888', marginLeft: '12px', fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'right' }}>
+                      {r.detail}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
