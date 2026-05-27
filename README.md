@@ -1,7 +1,7 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram*
 
-A web app that connects to any Salesforce org and produces a scored technical debt report across 8 categories: Configuration, Code Quality, Data Model, Service Cloud, Sharing & Security, Integrations, Test Coverage, and Org Limits.
+A web app that connects to any Salesforce org and produces a scored technical debt report across 18 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
 
 ## Using the hosted app
 
@@ -37,8 +37,9 @@ Do this once per Salesforce org you want to assess.
 5. Under **OAuth Scopes**, add:
    - Access and manage your data (api)
    - Perform requests on your behalf at any time (refresh_token, offline_access)
-6. Click **Save** — wait ~10 minutes for Salesforce to activate it
-7. Go back to the External Client App → **View Consumer Details** to retrieve:
+6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** if it appears — leave it disabled
+7. Click **Save** — wait ~10 minutes for Salesforce to activate it
+8. Go back to the External Client App → **View Consumer Details** to retrieve:
    - **Consumer Key** → this is your Client ID
    - **Consumer Secret** → this is your Client Secret
 
@@ -59,12 +60,15 @@ Do this once per Salesforce org you want to assess.
 5. Under **Selected OAuth Scopes**, add:
    - Access and manage your data (api)
    - Perform requests on your behalf at any time (refresh_token, offline_access)
-6. Click **Save** — wait ~10 minutes for Salesforce to activate the Connected App
-7. Go back to the Connected App and click **Manage Consumer Details** to retrieve:
+6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** — this must be disabled
+7. Click **Save** — wait ~10 minutes for Salesforce to activate the Connected App
+8. Go back to the Connected App and click **Manage Consumer Details** to retrieve:
    - **Consumer Key** → this is your Client ID
    - **Consumer Secret** → this is your Client Secret
 
-> **Important:** If you see a `redirect_uri_mismatch` error when connecting, it means the Callback URL in your Connected App or External Client App doesn't match. Go back into Setup, update the Callback URL to exactly `https://sf-tech-debt-assessor.onrender.com/auth/callback`, save, and wait ~10 minutes before trying again.
+> **Important:** If you see a `redirect_uri_mismatch` error when connecting, the Callback URL in your app doesn't match. Update it to exactly `https://sf-tech-debt-assessor.onrender.com/auth/callback`, save, and wait ~10 minutes.
+>
+> **Important:** If you see a `missing required code challenge` error, PKCE is still enabled on your app. Go back into Setup and uncheck "Require Proof Key for Code Exchange (PKCE)", then save and retry.
 
 ### Permissions required
 
@@ -81,11 +85,13 @@ The user who authenticates must have:
 1. Open **https://sf-tech-debt-assessor.onrender.com**
 2. Enter:
    - **Sandbox / Org URL** — your org's My Domain URL, e.g. `https://mycompany--uat.sandbox.my.salesforce.com`
-   - **Client ID** — Consumer Key from the Connected App
-   - **Client Secret** — Consumer Secret from the Connected App
+   - **Client ID** — Consumer Key from the app setup above
+   - **Client Secret** — Consumer Secret from the app setup above
 3. Click **Connect to Salesforce** and authenticate
 4. Click **Run Assessment**
-5. Export results as PDF when done
+5. Click any category to expand its findings
+6. Click **Show affected records** on any issue to see the specific records, rules, or users causing the deduction
+7. Export results as PDF when done
 
 ---
 
@@ -101,6 +107,16 @@ The user who authenticates must have:
 | **Integrations** | Named Credentials usage, hardcoded endpoints, remote site SSL, connected apps |
 | **Test Coverage** | Zero-coverage classes, below-75% components, test class ratio |
 | **Org Limits** | All org limits — flags anything ≥50% consumed |
+| **Duplicate & Matching Rules** | Missing rules, inactive rules, undocumented rules |
+| **Reports & Dashboards** | Stale reports/dashboards, report proliferation |
+| **Email Templates** | Classic (legacy) templates, templates not updated in 2+ years |
+| **Platform Events & CDC** | Unsubscribed event channels, excessive CDC entities |
+| **Managed Packages** | Beta packages, package count, version currency |
+| **Custom Metadata & Settings** | Custom Settings vs Custom Metadata Types, undocumented settings |
+| **Record Types & Page Layouts** | Inactive record types, excessive layouts, undocumented types |
+| **Einstein & AI Usage** | Einstein/Agentforce enablement, prompt templates, inactive bot definitions |
+| **Territory Management** | Draft models, multiple active models, inactive assignment rules |
+| **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement |
 
 ---
 
@@ -108,7 +124,7 @@ The user who authenticates must have:
 
 ### Prerequisites
 - Node.js 18+
-- A Salesforce Connected App with callback URL `http://localhost:3000/auth/callback`
+- A Salesforce Connected App or External Client App with callback URL `http://localhost:3000/auth/callback`
 
 ### Steps
 
@@ -116,13 +132,12 @@ The user who authenticates must have:
 git clone https://github.com/sbilgram-lgtm/sf-tech-debt-assessor
 cd sf-tech-debt-assessor
 npm install
-cd server && npm install && cd ..
 npm run dev
 ```
 
 Open http://localhost:3000
 
-For local development you can optionally create a `.env` file to pre-fill credentials:
+Create a `.env` file in the project root for local credentials:
 
 ```
 SF_LOGIN_URL=https://yourorg.sandbox.my.salesforce.com
@@ -136,14 +151,17 @@ SESSION_SECRET=any-random-string
 
 ## Deploying your own instance to Render
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
 1. Push this repo to GitHub
 2. Go to [render.com](https://render.com) → New → Web Service
 3. Connect your GitHub repo
 4. Set:
-   - **Build Command:** `npm install && npm run build`
+   - **Build Command:** `npm install --production=false && npm run build`
    - **Start Command:** `node server/index.js`
 5. Add environment variables:
    - `NODE_ENV` = `production`
    - `SESSION_SECRET` = any long random string (e.g. output of `openssl rand -hex 32`)
+   - `NPM_CONFIG_PRODUCTION` = `false`
 6. Click **Deploy**
-7. Once live, update your Connected App callback URL to your Render URL + `/auth/callback`
+7. Once live, add your Render URL + `/auth/callback` to your Connected App's callback URLs
