@@ -119,15 +119,34 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// jsforce v1 query() returns a query object, not a Promise — wrap in callbacks
+function safeQuery(conn, soql) {
+  return new Promise((resolve) => {
+    conn.query(soql, (err, result) => {
+      if (err) resolve({ records: [], totalSize: 0 });
+      else resolve(result);
+    });
+  });
+}
+
+function safeToolingQuery(conn, soql) {
+  return new Promise((resolve) => {
+    conn.tooling.query(soql, (err, result) => {
+      if (err) resolve({ records: [], totalSize: 0 });
+      else resolve(result);
+    });
+  });
+}
+
 // Metadata: Flows & Process Builders
 app.get('/api/assess/automation', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const flows = await conn.tooling.query(
+    const flows = await safeToolingQuery(conn,
       "SELECT Id, Definition.DeveloperName, MasterLabel, ProcessType, Status, Description, LastModifiedDate " +
       "FROM Flow WHERE Status = 'Active'"
     );
-    const workflowRules = await conn.tooling.query(
+    const workflowRules = await safeToolingQuery(conn,
       "SELECT Id, Name, TableEnumOrId, CreatedDate, LastModifiedDate " +
       "FROM WorkflowRule"
     );
@@ -154,7 +173,7 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
 app.get('/api/assess/validation-rules', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const rules = await conn.tooling.query(
+    const rules = await safeToolingQuery(conn,
       "SELECT Id, ValidationName, EntityDefinitionId, Active, " +
       "Description, LastModifiedDate " +
       "FROM ValidationRule WHERE Active = true"
@@ -170,17 +189,17 @@ app.get('/api/assess/validation-rules', requireAuth, async (req, res) => {
 app.get('/api/assess/apex', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const classes = await conn.tooling.query(
+    const classes = await safeToolingQuery(conn,
       "SELECT Id, Name, Body, ApiVersion, LengthWithoutComments, " +
       "LastModifiedDate, NamespacePrefix " +
       "FROM ApexClass WHERE NamespacePrefix = null"
     );
-    const triggers = await conn.tooling.query(
+    const triggers = await safeToolingQuery(conn,
       "SELECT Id, Name, Body, TableEnumOrId, ApiVersion, " +
       "LastModifiedDate, NamespacePrefix " +
       "FROM ApexTrigger WHERE NamespacePrefix = null"
     );
-    const testCoverage = await conn.tooling.query(
+    const testCoverage = await safeToolingQuery(conn,
       "SELECT ApexClassOrTriggerId, NumLinesCovered, NumLinesUncovered " +
       "FROM ApexCodeCoverageAggregate"
     );
@@ -200,11 +219,11 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
 app.get('/api/assess/data-model', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const objects = await conn.tooling.query(
+    const objects = await safeToolingQuery(conn,
       "SELECT Id, DeveloperName, Description, NamespacePrefix, LastModifiedDate " +
       "FROM CustomObject WHERE NamespacePrefix = null"
     );
-    const fields = await conn.tooling.query(
+    const fields = await safeToolingQuery(conn,
       "SELECT Id, DeveloperName, TableEnumOrId, Description, NamespacePrefix, " +
       "LastModifiedDate " +
       "FROM CustomField WHERE NamespacePrefix = null"
@@ -234,14 +253,14 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
 
     let assignmentRules = { records: [] };
     try {
-      assignmentRules = await conn.tooling.query(
+      assignmentRules = await safeToolingQuery(conn,
         "SELECT Id, Name FROM AssignmentRule"
       );
     } catch (e) { /* not available in all orgs */ }
 
     let escalationRules = { records: [] };
     try {
-      escalationRules = await conn.tooling.query(
+      escalationRules = await safeToolingQuery(conn,
         "SELECT Id, Name FROM EscalationRule"
       );
     } catch (e) { /* not available in all orgs */ }
@@ -266,7 +285,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // OWD settings via EntityDefinition
     let owdSettings = { records: [] };
     try {
-      owdSettings = await conn.tooling.query(
+      owdSettings = await safeToolingQuery(conn,
         "SELECT QualifiedApiName, InternalSharingModel, ExternalSharingModel " +
         "FROM EntityDefinition WHERE IsCustomizable = true AND IsQueryable = true"
       );
@@ -285,7 +304,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // Connected App OAuth policies (proxy for session security)
     let sessionSettings = { records: [] };
     try {
-      sessionSettings = await conn.tooling.query(
+      sessionSettings = await safeToolingQuery(conn,
         "SELECT Id, SessionTimeout, LockTimeoutMinutes FROM SecuritySettings LIMIT 1"
       );
     } catch (e) { /* optional */ }
@@ -293,10 +312,10 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // Sharing rules via Metadata API describe
     let sharingRules = [];
     try {
-      const sharingCriteria = await conn.tooling.query(
+      const sharingCriteria = await safeToolingQuery(conn,
         "SELECT Id, DeveloperName, SobjectType FROM SharingCriteriaRule LIMIT 200"
       );
-      const sharingOwner = await conn.tooling.query(
+      const sharingOwner = await safeToolingQuery(conn,
         "SELECT Id, DeveloperName, SobjectType FROM SharingOwnerRule LIMIT 200"
       );
       sharingRules = [
@@ -347,7 +366,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // Login IP ranges — profiles with no IP restrictions
     let loginIpRanges = { records: [] };
     try {
-      loginIpRanges = await conn.tooling.query(
+      loginIpRanges = await safeToolingQuery(conn,
         "SELECT Id, ProfileId, StartAddress, EndAddress FROM ProfileIpRange LIMIT 500"
       );
     } catch (e) { /* optional */ }
@@ -445,7 +464,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     // Connected Apps
     let connectedApps = { records: [] };
     try {
-      connectedApps = await conn.tooling.query(
+      connectedApps = await safeToolingQuery(conn,
         "SELECT Id, Name, Description, MobileSessionTimeout " +
         "FROM ConnectedApplication"
       );
@@ -454,7 +473,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     // Named Credentials
     let namedCredentials = { records: [] };
     try {
-      namedCredentials = await conn.tooling.query(
+      namedCredentials = await safeToolingQuery(conn,
         "SELECT Id, DeveloperName, Endpoint, PrincipalType " +
         "FROM NamedCredential"
       );
@@ -463,7 +482,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     // Remote Site Settings
     let remoteSites = { records: [] };
     try {
-      remoteSites = await conn.tooling.query(
+      remoteSites = await safeToolingQuery(conn,
         "SELECT Id, EndpointUrl, IsActive, DisableProtocolSecurity " +
         "FROM RemoteProxy"
       );
@@ -472,7 +491,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     // Apex classes with HttpRequest/callout patterns
     let apexCallouts = { records: [] };
     try {
-      apexCallouts = await conn.tooling.query(
+      apexCallouts = await safeToolingQuery(conn,
         "SELECT Id, Name, Body FROM ApexClass WHERE NamespacePrefix = null"
       );
     } catch (e) { /* optional */ }
@@ -493,11 +512,11 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
 app.get('/api/assess/test-coverage', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const classes = await conn.tooling.query(
+    const classes = await safeToolingQuery(conn,
       "SELECT Id, Name, ApiVersion, LengthWithoutComments, NamespacePrefix " +
       "FROM ApexClass WHERE NamespacePrefix = null"
     );
-    const triggers = await conn.tooling.query(
+    const triggers = await safeToolingQuery(conn,
       "SELECT Id, Name, ApiVersion, TableEnumOrId, NamespacePrefix " +
       "FROM ApexTrigger WHERE NamespacePrefix = null"
     );
@@ -507,7 +526,7 @@ app.get('/api/assess/test-coverage', requireAuth, async (req, res) => {
     const testClasses = allClasses.filter(c => /test/i.test(c.Name));
     const nonTestClasses = allClasses.filter(c => !/test/i.test(c.Name));
 
-    const coverage = await conn.tooling.query(
+    const coverage = await safeToolingQuery(conn,
       "SELECT ApexClassOrTriggerId, ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered " +
       "FROM ApexCodeCoverageAggregate"
     );
@@ -552,8 +571,8 @@ app.get('/api/assess/duplicate-rules', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [duplicateRules, matchingRules] = await Promise.all([
-      conn.tooling.query("SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule LIMIT 100").catch(() => ({ records: [] })),
-      conn.tooling.query("SELECT Id, DeveloperName, Description FROM MatchingRule LIMIT 100").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule LIMIT 100"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM MatchingRule LIMIT 100")
     ]);
     res.json({ duplicateRules: duplicateRules.records || [], matchingRules: matchingRules.records || [] });
   } catch (err) {
@@ -569,10 +588,10 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const iso = sixMonthsAgo.toISOString();
     const [allReports, staleReports, allDashboards, staleDashboards] = await Promise.all([
-      conn.query("SELECT COUNT() FROM Report").catch(() => ({ totalSize: 0 })),
-      conn.query(`SELECT Id, Name, LastRunDate, OwnerId FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null LIMIT 200`).catch(() => ({ records: [] })),
-      conn.query("SELECT COUNT() FROM Dashboard").catch(() => ({ totalSize: 0 })),
-      conn.query(`SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`).catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT COUNT() FROM Report"),
+      safeQuery(conn, `SELECT Id, Name, LastRunDate, OwnerId FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null LIMIT 200`),
+      safeQuery(conn, "SELECT COUNT() FROM Dashboard"),
+      safeQuery(conn, `SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`)
     ]);
     res.json({
       totalReports: allReports.totalSize || 0,
@@ -590,8 +609,8 @@ app.get('/api/assess/email-templates', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [classicTemplates, lightningTemplates] = await Promise.all([
-      conn.query("SELECT Id, Name, TemplateType, LastModifiedDate FROM EmailTemplate WHERE TemplateType != 'custom3' LIMIT 500").catch(() => ({ records: [] })),
-      conn.query("SELECT Id, Name, LastModifiedDate FROM EmailTemplate WHERE TemplateType = 'custom3' LIMIT 500").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name, TemplateType, LastModifiedDate FROM EmailTemplate WHERE TemplateType != 'custom3' LIMIT 500"),
+      safeQuery(conn, "SELECT Id, Name, LastModifiedDate FROM EmailTemplate WHERE TemplateType = 'custom3' LIMIT 500")
     ]);
     res.json({ classicTemplates: classicTemplates.records || [], lightningTemplates: lightningTemplates.records || [] });
   } catch (err) {
@@ -604,10 +623,10 @@ app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [platformEvents, cdcEntities] = await Promise.all([
-      conn.tooling.query("SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100").catch(() => ({ records: [] })),
-      conn.tooling.query("SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100")
     ]);
-    const eventBusSubscribers = await conn.query("SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100").catch(() => ({ records: [] }));
+    const eventBusSubscribers = await safeQuery(conn, "SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100");
     res.json({
       platformEvents: platformEvents.records || [],
       cdcEntities: cdcEntities.records || [],
@@ -622,9 +641,9 @@ app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
 app.get('/api/assess/managed-packages', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const packages = await conn.tooling.query(
+    const packages = await safeToolingQuery(conn,
       "SELECT Id, Name, NamespacePrefix, MajorVersion, MinorVersion, PatchVersion, ReleaseState FROM InstalledSubscriberPackage LIMIT 100"
-    ).catch(() => ({ records: [] }));
+    );
     res.json({ packages: packages.records || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -636,12 +655,12 @@ app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [customSettings, customMetadataTypes] = await Promise.all([
-      conn.tooling.query("SELECT Id, DeveloperName, SettingType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100").catch(() => ({ records: [] })),
-      conn.tooling.query("SELECT Id, DeveloperName, Description FROM CustomObject WHERE CustomSettingsType = null AND IsCustomSetting = false AND DeveloperName LIKE '%mdt%' LIMIT 100").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, SettingType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE CustomSettingsType = null AND IsCustomSetting = false AND DeveloperName LIKE '%mdt%' LIMIT 100")
     ]);
-    const mdtTypes = await conn.tooling.query(
+    const mdtTypes = await safeToolingQuery(conn,
       "SELECT Id, DeveloperName, Description FROM CustomObject WHERE IsMDT = true LIMIT 100"
-    ).catch(() => ({ records: [] }));
+    );
     res.json({ customSettings: customSettings.records || [], customMetadataTypes: (customMetadataTypes.records || []).concat(mdtTypes.records || []) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -653,8 +672,8 @@ app.get('/api/assess/record-types-layouts', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [recordTypes, pageLayouts] = await Promise.all([
-      conn.query("SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE IsCustom = true LIMIT 500").catch(() => ({ records: [] })),
-      conn.tooling.query("SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE IsCustom = true LIMIT 500"),
+      safeToolingQuery(conn, "SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500")
     ]);
     res.json({ recordTypes: recordTypes.records || [], pageLayouts: pageLayouts.records || [] });
   } catch (err) {
@@ -667,9 +686,9 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [einsteinSettings, promptTemplates, bots] = await Promise.all([
-      conn.query("SELECT SettingName, SettingValue FROM OrganizationSetting WHERE SettingName IN ('EinsteinGptEnabled','AgentforceEnabled','EinsteinPredictionBuilderEnabled','EinsteinNextBestActionEnabled') LIMIT 20").catch(() => ({ records: [] })),
-      conn.query("SELECT Id, DeveloperName, Status FROM PromptTemplate LIMIT 50").catch(() => ({ records: [] })),
-      conn.query("SELECT Id, DeveloperName, Status FROM BotDefinition LIMIT 20").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT SettingName, SettingValue FROM OrganizationSetting WHERE SettingName IN ('EinsteinGptEnabled','AgentforceEnabled','EinsteinPredictionBuilderEnabled','EinsteinNextBestActionEnabled') LIMIT 20"),
+      safeQuery(conn, "SELECT Id, DeveloperName, Status FROM PromptTemplate LIMIT 50"),
+      safeQuery(conn, "SELECT Id, DeveloperName, Status FROM BotDefinition LIMIT 20")
     ]);
     res.json({
       einsteinSettings: einsteinSettings.records || [],
@@ -741,9 +760,9 @@ app.get('/api/assess/territory', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [territoryModels, territories, rules] = await Promise.all([
-      conn.query("SELECT Id, Name, State FROM Territory2Model LIMIT 20").catch(() => ({ records: [] })),
-      conn.query("SELECT Id, Name, Territory2ModelId FROM Territory2 LIMIT 200").catch(() => ({ records: [] })),
-      conn.query("SELECT Id, Name, IsActive, ObjectType FROM Territory2Rule LIMIT 100").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name, State FROM Territory2Model LIMIT 20"),
+      safeQuery(conn, "SELECT Id, Name, Territory2ModelId FROM Territory2 LIMIT 200"),
+      safeQuery(conn, "SELECT Id, Name, IsActive, ObjectType FROM Territory2Rule LIMIT 100")
     ]);
     res.json({ territoryModels: territoryModels.records || [], territories: territories.records || [], assignmentRules: rules.records || [] });
   } catch (err) {
