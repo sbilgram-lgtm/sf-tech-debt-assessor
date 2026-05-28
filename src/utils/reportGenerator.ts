@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { AssessmentResult } from '../types/assessment';
 
 declare module 'jspdf' {
@@ -163,6 +164,76 @@ export function generatePDFReport(assessment: AssessmentResult): void {
   });
 
   doc.save('sf-tech-debt-assessment.pdf');
+}
+
+export function generateExcelReport(assessment: AssessmentResult): void {
+  const wb = XLSX.utils.book_new();
+  const date = new Date(assessment.timestamp).toLocaleDateString();
+
+  // ── Sheet 1: Summary ──────────────────────────────────────────
+  const summaryRows: any[][] = [
+    ['Salesforce Technical Debt Assessment'],
+    [`Generated: ${date}${assessment.instanceUrl ? `   Org: ${assessment.instanceUrl}` : ''}`],
+    [`Overall Health Score: ${assessment.overallPercentage}%  —  ${getScoreLabel(assessment.overallPercentage)}`],
+    [],
+    ['Category', 'Score %', 'Rating', 'Issues Found']
+  ];
+  assessment.categories.forEach(cat => {
+    summaryRows.push([cat.category, cat.percentage, getScoreLabel(cat.percentage), cat.items.length]);
+  });
+
+  const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+  summaryWs['!cols'] = [{ wch: 36 }, { wch: 10 }, { wch: 20 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+  // ── One sheet per category ────────────────────────────────────
+  assessment.categories.forEach(category => {
+    const rows: any[][] = [
+      [category.category],
+      [`Score: ${category.percentage}%  —  ${getScoreLabel(category.percentage)}  —  ${category.items.length} issue${category.items.length !== 1 ? 's' : ''}`],
+      []
+    ];
+
+    if (category.items.length === 0) {
+      rows.push(['No issues found — this category is healthy.']);
+    } else {
+      const sorted = [...category.items].sort((a, b) => {
+        const order = { critical: 0, high: 1, medium: 2, low: 3 };
+        return order[a.severity] - order[b.severity];
+      });
+
+      sorted.forEach(item => {
+        const records: { name: string; detail?: string }[] = item.metadata?.records || [];
+        rows.push(['Severity', 'Finding', 'Description', 'Recommendation', 'Affected Record', 'Detail']);
+        if (records.length === 0) {
+          rows.push([item.severity.toUpperCase(), item.title, item.description, item.recommendation, '', '']);
+        } else {
+          records.forEach((r, i) => {
+            rows.push([
+              i === 0 ? item.severity.toUpperCase() : '',
+              i === 0 ? item.title : '',
+              i === 0 ? item.description : '',
+              i === 0 ? item.recommendation : '',
+              r.name,
+              r.detail || ''
+            ]);
+          });
+        }
+        rows.push([]);
+      });
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 10 }, { wch: 40 }, { wch: 50 }, { wch: 50 }, { wch: 36 }, { wch: 30 }
+    ];
+
+    // Truncate sheet name to 31 chars (Excel limit)
+    const sheetName = category.category.slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  XLSX.writeFile(wb, `sf-tech-debt-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 export function generateCSVReport(assessment: AssessmentResult): void {

@@ -5,7 +5,7 @@ import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
 import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData, getExperienceCloudData, getConnectedAppSecurityData } from '../services/api';
 import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, assessExperienceCloud, assessConnectedAppSecurity, calculateOverallScore } from '../utils/scoring';
-import { generatePDFReport, generateCSVReport } from '../utils/reportGenerator';
+import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 
 const COLORS = ['#27ae60', '#f39c12', '#d35400', '#c0392b'];
@@ -143,6 +143,12 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleExportExcel = () => {
+    if (assessment) {
+      generateExcelReport(assessment);
+    }
+  };
+
   const getSeverityDistribution = () => {
     if (!assessment) return [];
     const all = assessment.categories.flatMap(c => c.items);
@@ -248,6 +254,20 @@ export const DashboardPage: React.FC = () => {
                 }}
               >
                 Export CSV
+              </button>
+              <button
+                onClick={handleExportExcel}
+                style={{
+                  backgroundColor: 'white',
+                  border: '1px solid #27ae60',
+                  color: '#27ae60',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+              >
+                Export Excel
               </button>
               <button
                 onClick={handleExportPDF}
