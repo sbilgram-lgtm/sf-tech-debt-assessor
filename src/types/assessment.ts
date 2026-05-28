@@ -22,6 +22,10 @@ export interface AssessmentResult {
   categories: CategoryScore[];
   timestamp: string;
   orgId?: string;
+  orgName?: string;
+  orgType?: string;
+  isSandbox?: boolean;
+  instanceName?: string;
   instanceUrl?: string;
 }
 

@@ -120,7 +120,12 @@ export const DashboardPage: React.FC = () => {
       ]);
 
       const authStatus = await getAuthStatus();
-      result.instanceUrl = authStatus.instanceUrl;
+      result.instanceUrl  = authStatus.instanceUrl;
+      result.orgId        = authStatus.orgId;
+      result.orgName      = authStatus.orgName;
+      result.orgType      = authStatus.orgType;
+      result.isSandbox    = authStatus.isSandbox;
+      result.instanceName = authStatus.instanceName;
 
       setAssessment(result);
     } catch (err: any) {

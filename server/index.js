@@ -90,6 +90,28 @@ app.get('/auth/callback', async (req, res) => {
     req.session.accessToken = conn.accessToken;
     req.session.instanceUrl = conn.instanceUrl;
     req.session.refreshToken = conn.refreshToken;
+
+    // Fetch org identifying info and store in session
+    try {
+      await new Promise((resolve) => {
+        conn.query(
+          "SELECT Id, Name, OrganizationType, IsSandbox, InstanceName, PrimaryContact " +
+          "FROM Organization LIMIT 1",
+          (err, result) => {
+            if (!err && result.records && result.records.length > 0) {
+              const org = result.records[0];
+              req.session.orgId       = org.Id;
+              req.session.orgName     = org.Name;
+              req.session.orgType     = org.OrganizationType;
+              req.session.isSandbox   = org.IsSandbox;
+              req.session.instanceName = org.InstanceName;
+            }
+            resolve(null);
+          }
+        );
+      });
+    } catch (e) { /* non-fatal */ }
+
     req.session.save(err => {
       if (err) {
         console.error('Session save error after auth:', err);
@@ -106,7 +128,12 @@ app.get('/auth/callback', async (req, res) => {
 app.get('/auth/status', (req, res) => {
   res.json({
     authenticated: !!(req.session.accessToken && req.session.instanceUrl),
-    instanceUrl: req.session.instanceUrl || null
+    instanceUrl:   req.session.instanceUrl  || null,
+    orgId:         req.session.orgId        || null,
+    orgName:       req.session.orgName      || null,
+    orgType:       req.session.orgType      || null,
+    isSandbox:     req.session.isSandbox    || false,
+    instanceName:  req.session.instanceName || null
   });
 });
 

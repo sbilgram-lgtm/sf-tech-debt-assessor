@@ -35,26 +35,36 @@ export function generatePDFReport(assessment: AssessmentResult): void {
   doc.setFontSize(11);
   doc.setTextColor(127, 140, 141);
   doc.text(`Generated: ${new Date(assessment.timestamp).toLocaleDateString()}`, pageWidth / 2, 33, { align: 'center' });
-  if (assessment.instanceUrl) {
-    doc.text(`Org: ${assessment.instanceUrl}`, pageWidth / 2, 39, { align: 'center' });
-  }
+
+  const orgLines: string[] = [];
+  if (assessment.orgName)    orgLines.push(`Org: ${assessment.orgName}${assessment.isSandbox ? ' (Sandbox)' : ''}`);
+  if (assessment.orgId)      orgLines.push(`Org ID: ${assessment.orgId}`);
+  if (assessment.instanceUrl) orgLines.push(`URL: ${assessment.instanceUrl}`);
+  if (assessment.orgType)    orgLines.push(`Type: ${assessment.orgType}${assessment.instanceName ? `  |  Instance: ${assessment.instanceName}` : ''}`);
+
+  let headerY = 39;
+  orgLines.forEach(line => {
+    doc.text(line, pageWidth / 2, headerY, { align: 'center' });
+    headerY += 6;
+  });
 
   // Overall score
+  const scoreStartY = headerY + 8;
   doc.setFontSize(16);
   doc.setTextColor(44, 62, 80);
-  doc.text('Overall Health Score', 14, 55);
+  doc.text('Overall Health Score', 14, scoreStartY);
 
   const scoreColor = getScoreColor(assessment.overallPercentage);
   doc.setFontSize(36);
   doc.setTextColor(scoreColor.r, scoreColor.g, scoreColor.b);
-  doc.text(`${assessment.overallPercentage}%`, 14, 72);
+  doc.text(`${assessment.overallPercentage}%`, 14, scoreStartY + 17);
 
   doc.setFontSize(11);
   doc.setTextColor(100, 100, 100);
-  doc.text(getScoreLabel(assessment.overallPercentage), 55, 72);
+  doc.text(getScoreLabel(assessment.overallPercentage), 55, scoreStartY + 17);
 
   // Category summary table
-  let yPos = 85;
+  let yPos = scoreStartY + 30;
   doc.setFontSize(14);
   doc.setTextColor(44, 62, 80);
   doc.text('Category Scores', 14, yPos);
@@ -173,7 +183,12 @@ export function generateExcelReport(assessment: AssessmentResult): void {
   // ── Sheet 1: Summary ──────────────────────────────────────────
   const summaryRows: any[][] = [
     ['Salesforce Technical Debt Assessment'],
-    [`Generated: ${date}${assessment.instanceUrl ? `   Org: ${assessment.instanceUrl}` : ''}`],
+    [`Generated: ${date}`],
+    ...(assessment.orgName    ? [[`Org Name: ${assessment.orgName}${assessment.isSandbox ? ' (Sandbox)' : ''}`]] : []),
+    ...(assessment.orgId      ? [[`Org ID: ${assessment.orgId}`]] : []),
+    ...(assessment.instanceUrl ? [[`URL: ${assessment.instanceUrl}`]] : []),
+    ...(assessment.orgType    ? [[`Type: ${assessment.orgType}${assessment.instanceName ? `  |  Instance: ${assessment.instanceName}` : ''}`]] : []),
+    [],
     [`Overall Health Score: ${assessment.overallPercentage}%  —  ${getScoreLabel(assessment.overallPercentage)}`],
     [],
     ['Category', 'Score %', 'Rating', 'Issues Found']
@@ -239,7 +254,17 @@ export function generateExcelReport(assessment: AssessmentResult): void {
 export function generateCSVReport(assessment: AssessmentResult): void {
   const rows: string[][] = [];
 
-  // Header
+  // Org info header rows
+  rows.push(['Salesforce Technical Debt Assessment']);
+  rows.push([`Generated: ${new Date(assessment.timestamp).toLocaleDateString()}`]);
+  if (assessment.orgName)     rows.push([`Org Name: ${assessment.orgName}${assessment.isSandbox ? ' (Sandbox)' : ''}`]);
+  if (assessment.orgId)       rows.push([`Org ID: ${assessment.orgId}`]);
+  if (assessment.instanceUrl) rows.push([`URL: ${assessment.instanceUrl}`]);
+  if (assessment.orgType)     rows.push([`Type: ${assessment.orgType}${assessment.instanceName ? `  |  Instance: ${assessment.instanceName}` : ''}`]);
+  rows.push([`Overall Score: ${assessment.overallPercentage}%  —  ${getScoreLabel(assessment.overallPercentage)}`]);
+  rows.push([]);
+
+  // Column headers
   rows.push(['Category', 'Score %', 'Severity', 'Issue', 'Description', 'Recommendation', 'Affected Record', 'Detail']);
 
   assessment.categories.forEach(category => {
