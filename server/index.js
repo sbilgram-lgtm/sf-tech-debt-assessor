@@ -755,6 +755,46 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Connected App Security ───────────────────────────────────────────────────
+app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    // All connected apps with metadata
+    const connectedApps = await safeToolingQuery(conn,
+      "SELECT Id, Name, Description, MobileSessionTimeout, StartUrl " +
+      "FROM ConnectedApplication LIMIT 200"
+    );
+
+    // Active OAuth tokens — who holds live sessions and when last used
+    const oauthTokens = await safeQuery(conn,
+      "SELECT Id, AppName, UserId, User.Name, User.Username, " +
+      "LastUsedDate, UseCount, CreatedDate " +
+      "FROM OauthToken ORDER BY LastUsedDate DESC NULLS LAST LIMIT 500"
+    );
+
+    // SetupEntityAccess — which profiles/permsets have access to each app
+    const setupAccess = await safeQuery(conn,
+      "SELECT SetupEntityId, SetupEntityType, ParentId " +
+      "FROM SetupEntityAccess WHERE SetupEntityType = 'ConnectedApplication' LIMIT 500"
+    );
+
+    // Permission sets that grant connected app access
+    const permSetAccess = await safeQuery(conn,
+      "SELECT Id, Name, Label FROM PermissionSet WHERE IsCustom = true LIMIT 200"
+    );
+
+    res.json({
+      connectedApps: connectedApps.records || [],
+      oauthTokens: oauthTokens.records || [],
+      setupAccess: setupAccess.records || [],
+      permSets: permSetAccess.records || []
+    });
+  } catch (err) {
+    console.error('Connected App Security assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Territory Management ─────────────────────────────────────────────────────
 app.get('/api/assess/territory', requireAuth, async (req, res) => {
   const conn = getConnection(req);

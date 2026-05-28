@@ -96,3 +96,7 @@ export async function getTerritoryData() {
 export async function getExperienceCloudData() {
   return fetchApi('/api/assess/experience-cloud');
 }
+
+export async function getConnectedAppSecurityData() {
+  return fetchApi('/api/assess/connected-app-security');
+}

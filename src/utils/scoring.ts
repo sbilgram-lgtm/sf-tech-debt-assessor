@@ -20,7 +20,8 @@ import {
   RecordTypesLayoutsData,
   EinsteinAIData,
   TerritoryData,
-  ExperienceCloudData
+  ExperienceCloudData,
+  ConnectedAppSecurityData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -1355,6 +1356,102 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Experience Cloud', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const apps = data.connectedApps || [];
+  const tokens = data.oauthTokens || [];
+
+  // 1. Apps without session timeout set
+  const noTimeout = apps.filter((a: any) => !a.MobileSessionTimeout || a.MobileSessionTimeout === 'None');
+  if (noTimeout.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'high',
+      `${noTimeout.length} Connected Apps Without Session Timeout`,
+      'Connected apps with no session timeout allow OAuth tokens to remain valid indefinitely, increasing exposure if a token is compromised.',
+      'Set a session timeout on all connected apps in Setup → App Manager → Manage → Edit Policies.',
+      { records: noTimeout.map((a: any) => ({ name: a.Name })) }
+    ));
+  }
+
+  // 2. Apps without descriptions (ungoverned / unauditable)
+  const noDesc = apps.filter((a: any) => !a.Description || a.Description.trim() === '');
+  if (noDesc.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'medium',
+      `${noDesc.length} Connected Apps Without Descriptions`,
+      'Undocumented connected apps cannot be audited for purpose, owner, or data access. Shadow IT and abandoned apps are a common source of credential leaks.',
+      'Add a description to every connected app including its owner, purpose, and what data it accesses.',
+      { records: noDesc.map((a: any) => ({ name: a.Name })) }
+    ));
+  }
+
+  // 3. Apps with high active token count (broad OAuth exposure)
+  const tokensByApp: Record<string, number> = {};
+  tokens.forEach((t: any) => {
+    tokensByApp[t.AppName] = (tokensByApp[t.AppName] || 0) + 1;
+  });
+  const highVolumeApps = Object.entries(tokensByApp)
+    .filter(([_, count]) => count > 20)
+    .sort((a, b) => b[1] - a[1]);
+  if (highVolumeApps.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'medium',
+      `${highVolumeApps.length} Connected Apps with 20+ Active OAuth Tokens`,
+      'Apps with many active tokens represent broad OAuth exposure. A compromised app credential could affect all those users simultaneously.',
+      'Review whether each high-volume app requires access for all those users. Restrict app access via profiles or permission sets where possible.',
+      { records: highVolumeApps.map(([name, count]) => ({ name, detail: `${count} active tokens` })) }
+    ));
+  }
+
+  // 4. Stale OAuth tokens — apps not used in 90+ days but still holding live tokens
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const staleTokens = tokens.filter((t: any) =>
+    !t.LastUsedDate || new Date(t.LastUsedDate) < ninetyDaysAgo
+  );
+  const staleByApp: Record<string, number> = {};
+  staleTokens.forEach((t: any) => {
+    staleByApp[t.AppName] = (staleByApp[t.AppName] || 0) + 1;
+  });
+  const staleApps = Object.entries(staleByApp).sort((a, b) => b[1] - a[1]);
+  if (staleApps.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'high',
+      `${staleTokens.length} Stale OAuth Tokens Not Used in 90+ Days`,
+      'Live tokens for apps that haven\'t been used in 90+ days represent dormant credentials. If compromised, the breach may go unnoticed.',
+      'Revoke stale OAuth tokens in Setup → Connected Apps OAuth Usage. Configure token expiry policies to auto-expire idle sessions.',
+      { records: staleApps.map(([name, count]) => ({ name, detail: `${count} stale token${count > 1 ? 's' : ''}` })) }
+    ));
+  }
+
+  // 5. Duplicate app names (shadow IT / abandoned clones)
+  const nameCounts: Record<string, number> = {};
+  apps.forEach((a: any) => {
+    const key = (a.Name || '').toLowerCase().trim();
+    nameCounts[key] = (nameCounts[key] || 0) + 1;
+  });
+  const duplicateNames = Object.entries(nameCounts).filter(([_, c]) => c > 1);
+  if (duplicateNames.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'medium',
+      `${duplicateNames.length} Duplicate Connected App Names Detected`,
+      'Multiple connected apps with the same name suggest abandoned copies or uncontrolled provisioning.',
+      'Audit duplicate apps and delete those that are no longer in use. Enforce a naming convention for new apps.',
+      { records: duplicateNames.map(([name, count]) => ({ name, detail: `${count} copies` })) }
+    ));
+  }
+
+  // 6. Total connected app count — governance flag
+  if (apps.length > 30) {
+    items.push(createDebtItem('connectedAppSecurity', 'low',
+      `${apps.length} Connected Apps in Org`,
+      'A high number of connected apps is difficult to govern and audit. Each app is a potential OAuth entry point.',
+      'Establish a connected app governance process. Assign an owner to each app and remove any that are unused.',
+      { records: apps.map((a: any) => ({ name: a.Name, detail: a.Description ? undefined : 'No description' })) }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Connected App Security', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
 }
 
 export function calculateOverallScore(categories: CategoryScore[]): AssessmentResult {

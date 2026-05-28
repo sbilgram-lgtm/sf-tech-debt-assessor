@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -159,4 +159,11 @@ export interface ExperienceCloudData {
   networks: any[];
   networkMembers: any[];
   customDomains: any[];
+}
+
+export interface ConnectedAppSecurityData {
+  connectedApps: any[];
+  oauthTokens: any[];
+  setupAccess: any[];
+  permSets: any[];
 }
