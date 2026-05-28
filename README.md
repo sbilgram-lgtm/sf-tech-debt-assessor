@@ -95,6 +95,7 @@ The user who authenticates must have:
    - **Export PDF** — full report with category scores, findings, recommendations, and affected records per issue. Ideal for customer presentations.
    - **Export Excel** — one tab per category plus a Summary tab. Each tab lists findings with affected records. Opens directly in Excel.
    - **Export CSV** — flat file with one row per affected record across all categories. Ideal for importing into a project tracker or remediation backlog.
+   - **Remediation Roadmap** — opens a full-screen display grouped into four phases (Critical → High → Medium → Low), then by category within each phase. Each item shows the title, description, recommended action, and affected record count. Use the **Print / Save as PDF** button in the toolbar to export the roadmap as a PDF.
 
 ---
 
