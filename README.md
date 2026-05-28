@@ -91,7 +91,9 @@ The user who authenticates must have:
 4. Click **Run Assessment**
 5. Click any category to expand its findings
 6. Click **Show affected records** on any issue to see the specific records, rules, or users causing the deduction
-7. Export results as PDF when done
+7. Export results:
+   - **Export PDF** — full report with category scores, findings, recommendations, and affected records per issue. Ideal for customer presentations.
+   - **Export CSV** — one row per affected record across all categories. Opens directly in Excel. Ideal for building a remediation backlog.
 
 ---
 
