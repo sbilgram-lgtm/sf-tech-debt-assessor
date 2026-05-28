@@ -7,6 +7,7 @@ import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getD
 import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, assessExperienceCloud, assessConnectedAppSecurity, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
+import { RemediationRoadmap } from '../components/RemediationRoadmap';
 
 const COLORS = ['#27ae60', '#f39c12', '#d35400', '#c0392b'];
 
@@ -15,6 +16,7 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
+  const [showRoadmap, setShowRoadmap] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -288,6 +290,20 @@ export const DashboardPage: React.FC = () => {
               >
                 Export PDF
               </button>
+              <button
+                onClick={() => setShowRoadmap(true)}
+                style={{
+                  backgroundColor: '#8e44ad',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 20px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+              >
+                Remediation Roadmap
+              </button>
             </div>
           </div>
 
@@ -355,6 +371,10 @@ export const DashboardPage: React.FC = () => {
               <CategoryPanel key={category.category} category={category} />
             ))}
           </div>
+
+          {showRoadmap && (
+            <RemediationRoadmap assessment={assessment} onClose={() => setShowRoadmap(false)} />
+          )}
         </>
       )}
     </div>
