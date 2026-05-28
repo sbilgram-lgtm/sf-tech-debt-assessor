@@ -62,7 +62,14 @@ app.get('/auth/login', (req, res) => {
     redirectUri: getCallbackUrl(req)
   });
 
-  res.redirect(oauth.getAuthorizationUrl({ scope: 'api refresh_token' }));
+  const authUrl = oauth.getAuthorizationUrl({ scope: 'api refresh_token' });
+  req.session.save(err => {
+    if (err) {
+      console.error('Session save error:', err);
+      return res.redirect(`${getBaseUrl(req)}/login?error=session_error`);
+    }
+    res.redirect(authUrl);
+  });
 });
 
 app.get('/auth/callback', async (req, res) => {
@@ -83,7 +90,13 @@ app.get('/auth/callback', async (req, res) => {
     req.session.accessToken = conn.accessToken;
     req.session.instanceUrl = conn.instanceUrl;
     req.session.refreshToken = conn.refreshToken;
-    res.redirect(`${getBaseUrl(req)}/dashboard`);
+    req.session.save(err => {
+      if (err) {
+        console.error('Session save error after auth:', err);
+        return res.redirect(`${getBaseUrl(req)}/login?error=auth_failed`);
+      }
+      res.redirect(`${getBaseUrl(req)}/dashboard`);
+    });
   } catch (err) {
     console.error('OAuth error:', err);
     res.redirect(`${getBaseUrl(req)}/login?error=auth_failed`);
