@@ -83,17 +83,18 @@ The user who authenticates must have:
 ## Running an assessment
 
 1. Open **https://sf-tech-debt-assessor.onrender.com**
-2. Enter:
+2. Enter your org credentials (auto-filled on return visits if you checked "Remember credentials"):
    - **Sandbox / Org URL** — your org's My Domain URL, e.g. `https://mycompany--uat.sandbox.my.salesforce.com`
    - **Client ID** — Consumer Key from the app setup above
    - **Client Secret** — Consumer Secret from the app setup above
-3. Click **Connect to Salesforce** and authenticate
+3. Click **Connect to Salesforce**, log in, and click **Allow**
 4. Click **Run Assessment**
 5. Click any category to expand its findings
 6. Click **Show affected records** on any issue to see the specific records, rules, or users causing the deduction
-7. Export results:
+7. Export results (all exports include Org Name, Org ID, Type, Instance, and URL):
    - **Export PDF** — full report with category scores, findings, recommendations, and affected records per issue. Ideal for customer presentations.
-   - **Export CSV** — one row per affected record across all categories. Opens directly in Excel. Ideal for building a remediation backlog.
+   - **Export Excel** — one tab per category plus a Summary tab. Each tab lists findings with affected records. Opens directly in Excel.
+   - **Export CSV** — flat file with one row per affected record across all categories. Ideal for importing into a project tracker or remediation backlog.
 
 ---
 
