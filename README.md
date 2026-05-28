@@ -1,7 +1,7 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram*
 
-A web app that connects to any Salesforce org and produces a scored technical debt report across 18 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
+A web app that connects to any Salesforce org and produces a scored technical debt report across 19 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
 
 ## Using the hosted app
 
@@ -117,6 +117,7 @@ The user who authenticates must have:
 | **Einstein & AI Usage** | Einstein/Agentforce enablement, prompt templates, inactive bot definitions |
 | **Territory Management** | Draft models, multiple active models, inactive assignment rules |
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement |
+| **Connected App Security** | Session timeouts, stale OAuth tokens, high token volume, undocumented apps, duplicate app names |
 
 ---
 
