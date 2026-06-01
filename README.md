@@ -3,6 +3,19 @@
 
 A web app that connects to any Salesforce org and produces a scored technical debt report across 19 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
 
+## Data & Privacy
+
+All metadata is **ephemeral** — nothing is written to a database or stored server-side beyond your active session:
+
+| Data | Where it lives | Lifetime |
+|---|---|---|
+| OAuth tokens | Server memory (express-session) | 1 hour |
+| Assessment results | Browser tab (React state) | Until page refresh |
+| Credentials (if remembered) | Browser localStorage | Until you clear it |
+| Exported files (PDF / Excel / CSV) | Your local Downloads folder | Permanent |
+
+Nothing is written back to Salesforce. No external database is used. Assessment results exist only in the browser tab while the session is active.
+
 ## Using the hosted app
 
 > Share this URL with colleagues: **https://sf-tech-debt-assessor.onrender.com**
