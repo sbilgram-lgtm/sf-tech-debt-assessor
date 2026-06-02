@@ -137,7 +137,44 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Territory Management** | Draft models, multiple active models, inactive assignment rules |
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
 | **Connected App Security** | Session timeouts, stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
-| **Lightning Web Components** | LWC bundles without descriptions; LWC on outdated API versions (<v57); LWC on retired API versions (≤v30) ⚠️ retired Summer '25; Aura-to-LWC migration debt; Aura RENDERER complexity; Aura EVENT coupling; LWC bundles without Jest test files; stale LWC/Aura components; modified managed package components; `eval()` usage ⚠️ critical security; `.innerHTML` XSS risk; `document.querySelector` Shadow DOM bypass; `addEventListener` without cleanup; `setTimeout`/`setInterval` leaks; `async/await` in restricted contexts; SSR-incompatible browser globals; deprecated `if:true`/`if:false` directives; `for:each` without `key` attribute; inline `style=` in templates; `console.log` in production; deprecated `@track`; `JSON.parse(JSON.stringify())` clone anti-pattern; inline `.style.` JS mutation; JS files >500 lines; stale/excess Lightning pages; FlexiPage sprawl per object — 32 checks total |
+| **Lightning Web Components** | 32 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
+
+### Lightning Web Components — All 32 Checks
+
+| # | Check | Severity |
+|---|---|---|
+| 1 | LWC bundles without descriptions | Low |
+| 2 | LWC on outdated API versions (< v57) | Medium |
+| 3 | LWC on retired API versions (≤ v30) ⚠️ broken since Summer '25 | Critical |
+| 4 | Aura component count vs LWC — migration debt (>40% Aura) | Medium |
+| 5 | Aura components with no LWC migration started | High |
+| 6 | Aura components with custom RENDERER definitions | Medium |
+| 7 | Aura application/component EVENT definitions | Low |
+| 8 | LWC bundles without Jest test files | Medium |
+| 9 | LWC/Aura components not modified in 2+ years | Low |
+| 10 | Managed package LWC components modified locally | Medium |
+| 11 | `debugger` statements in production code | Critical |
+| 12 | `.innerHTML` assignment — XSS risk | High |
+| 13 | `document.querySelector` / `getElementById` — Shadow DOM bypass | High |
+| 14 | `addEventListener` without `removeEventListener` — memory leak | Medium |
+| 15 | `setTimeout` / `setInterval` / `requestAnimationFrame` | Medium |
+| 16 | `async` / `await` in restricted contexts | Medium |
+| 17 | `window.` / `navigator.` / `location.` — SSR-incompatible browser globals | Medium |
+| 18 | `for...of` loops — polyfill dependency | Low |
+| 19 | Rest parameters (`...args`) in functions | Low |
+| 20 | `process.env.NODE_ENV` — Node.js construct in browser code | Low |
+| 21 | Duplicate `import` statements from same module | Low |
+| 22 | `eval()` usage ⚠️ critical security vulnerability + performance | Critical |
+| 23 | `console.log` / `warn` / `info` statements in production | Medium |
+| 24 | Deprecated `@track` decorator (redundant since Spring '20) | Low |
+| 25 | `JSON.parse(JSON.stringify())` deep clone anti-pattern | Medium |
+| 26 | Inline `.style.` mutation via JavaScript | Low |
+| 27 | JS files exceeding 500 lines | Medium |
+| 28 | Deprecated `if:true` / `if:false` template directives (removed v60) | Medium |
+| 29 | `for:each` without `key` attribute — full list re-render on every change | High |
+| 30 | Inline `style=` attributes in HTML templates | Low |
+| 31 | Lightning pages not modified in 2+ years | Low |
+| 32 | High total Lightning page count (>50) — governance flag | Low |
 
 ### Spring '26 / Summer '26 Breaking Changes Summary
 
@@ -150,7 +187,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | Unverified OWAs fail to send (no more noreply fallback) | Spring '26 | Service Cloud |
 | Classic Approval Processes superseded by Flow Approvals | Spring '26 | Configuration |
 | Phishing-resistant MFA required for privileged users | Active May 2026 | Sharing & Security |
-| API versions 21–30 retired — broken in production | Summer '25 | Integrations |
+| API versions 21–30 retired — broken in production | Summer '25 | Integrations, Lightning Web Components |
 | WCAG 2.2 accessibility Release Updates force-applied | Summer '26 | Experience Cloud |
 | Async Sharing Recalculation enforced | Spring '27 | Sharing & Security |
 
