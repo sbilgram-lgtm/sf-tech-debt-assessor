@@ -193,4 +193,5 @@ export interface LwcData {
   flexiPages: any[];
   lwcResources: any[];
   jsResources: any[];
+  htmlResources: any[];
 }

@@ -1642,6 +1642,7 @@ export function assessLwc(data: LwcData): CategoryScore {
   const flexiPages: any[] = data.flexiPages || [];
   const lwcResources: any[] = data.lwcResources || [];
   const jsResources: any[] = data.jsResources || [];
+  const htmlResources: any[] = data.htmlResources || [];
 
   // 1. LWC bundles missing descriptions
   const lwcNoDesc = lwcBundles.filter((b: any) => !b.Description || b.Description.trim() === '');
@@ -1934,6 +1935,171 @@ export function assessLwc(data: LwcData): CategoryScore {
       'Duplicate import statements from the same module add unnecessary overhead and indicate copy-paste errors. This violates the no-duplicate-imports ESLint rule.',
       'Consolidate all imports from the same module into a single import statement.',
       { records: dupImportHits.slice(0, 50).map(h => ({ name: h.name, detail: 'duplicate import from same module — no-duplicate-imports violation' })) }
+    ));
+  }
+
+  // ── Additional JS source checks ──────────────────────────────────────────────
+
+  // 22. eval() usage — security + performance
+  const evalHits = sourceScan(/\beval\s*\(/);
+  if (evalHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'critical',
+      `${evalHits.length} LWC Component${evalHits.length !== 1 ? 's' : ''} Use eval()`,
+      'eval() executes arbitrary strings as code, introducing critical security vulnerabilities (XSS, code injection) and severely degrading JavaScript engine optimization. It is never acceptable in LWC.',
+      'Remove all eval() calls. Replace dynamic code execution with data-driven logic, JSON.parse for data, or explicit function maps.',
+      { records: evalHits.slice(0, 50).map(h => ({ name: h.name, detail: 'eval() usage — security vulnerability and performance anti-pattern' })) }
+    ));
+  }
+
+  // 23. console.log/warn/info in production — performance + data exposure
+  const consoleHits = sourceScan(/\bconsole\.(log|warn|info|error|debug)\s*\(/);
+  if (consoleHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${consoleHits.length} LWC Component${consoleHits.length !== 1 ? 's' : ''} Contain console Statements`,
+      'console.log/warn/info statements left in production code expose internal data to browser developer tools, add processing overhead, and indicate code not cleaned up before deployment.',
+      'Remove all console statements before deployment. Use a logging service or build-time stripping (e.g. Babel plugin) to prevent them reaching production.',
+      { records: consoleHits.slice(0, 50).map(h => ({ name: h.name, detail: 'console statement in production code — data exposure and performance risk' })) }
+    ));
+  }
+
+  // 24. Deprecated @track decorator — removed as required in Spring '20
+  const trackHits = sourceScan(/@track\b/);
+  if (trackHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${trackHits.length} LWC Component${trackHits.length !== 1 ? 's' : ''} Use Deprecated @track Decorator`,
+      '@track was deprecated in Spring \'20. All LWC properties are now reactive by default — @track is redundant and signals the component has not been updated since early LWC adoption.',
+      'Remove @track decorators and the corresponding import from lwc. All object/array property mutations are now tracked automatically.',
+      { records: trackHits.slice(0, 50).map(h => ({ name: h.name, detail: '@track decorator — deprecated since Spring \'20, now redundant' })) }
+    ));
+  }
+
+  // 25. JSON.parse(JSON.stringify(...)) deep clone anti-pattern
+  const jsonCloneHits = sourceScan(/JSON\.parse\s*\(\s*JSON\.stringify\s*\(/);
+  if (jsonCloneHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${jsonCloneHits.length} LWC Component${jsonCloneHits.length !== 1 ? 's' : ''} Use JSON.parse(JSON.stringify()) for Cloning`,
+      'JSON.parse(JSON.stringify()) is a slow deep-clone pattern that strips undefined values, Dates, functions, and circular references. On large objects it causes noticeable UI lag.',
+      'Replace with structuredClone() (supported in all modern browsers and LWC runtime) or a targeted spread/Object.assign for shallow clones.',
+      { records: jsonCloneHits.slice(0, 50).map(h => ({ name: h.name, detail: 'JSON.parse(JSON.stringify()) — slow deep clone, use structuredClone()' })) }
+    ));
+  }
+
+  // 26. Inline style mutation via JS (.style.)
+  const styleMutationHits = sourceScan(/\.style\.(cssText\s*=|\w+\s*=)/);
+  if (styleMutationHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${styleMutationHits.length} LWC Component${styleMutationHits.length !== 1 ? 's' : ''} Mutate Inline Styles via JavaScript`,
+      'Directly mutating element.style in LWC bypasses the component\'s CSS encapsulation, breaks theme token inheritance, and causes style recalculations that degrade rendering performance.',
+      'Replace inline style mutations with CSS class toggles (classList.add/remove) driven by reactive LWC properties. Use CSS custom properties for dynamic theming.',
+      { records: styleMutationHits.slice(0, 50).map(h => ({ name: h.name, detail: 'element.style mutation — bypasses LWC CSS encapsulation' })) }
+    ));
+  }
+
+  // 27. Large JS files — complexity flag (>500 lines)
+  const largeBundleIds = new Set<string>();
+  const largeBundleMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+  for (const r of jsResources) {
+    const src: string = r.Source || '';
+    const lineCount = (src.match(/\n/g) || []).length + 1;
+    if (lineCount > 500) {
+      largeBundleIds.add(r.LightningComponentBundleId);
+    }
+  }
+  if (largeBundleIds.size > 0) {
+    const largeNames = Array.from(largeBundleIds).map(id => largeBundleMap.get(id) || id);
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${largeBundleIds.size} LWC Component${largeBundleIds.size !== 1 ? 's' : ''} Exceed 500 Lines of JavaScript`,
+      'LWC components with >500 lines of JavaScript are doing too much. Large components are hard to test, maintain, and reuse, and contribute to slow initial render times.',
+      'Split large components into smaller, focused child components. Extract business logic into ES modules (utility files) imported by the component.',
+      { records: largeNames.slice(0, 50).map(name => ({ name, detail: 'JS file >500 lines — consider decomposing into smaller components' })) }
+    ));
+  }
+
+  // ── HTML template checks ──────────────────────────────────────────────────────
+
+  // Helper: scan HTML resources
+  function htmlScan(
+    pattern: RegExp,
+    counterPattern?: RegExp
+  ): { bundleId: string; name: string }[] {
+    const hits: { bundleId: string; name: string }[] = [];
+    const bundleMap2 = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    for (const r of htmlResources) {
+      const src: string = r.Source || '';
+      if (!pattern.test(src)) continue;
+      if (counterPattern && counterPattern.test(src)) continue;
+      const name = bundleMap2.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!hits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        hits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+    return hits;
+  }
+
+  // 28. Deprecated if:true / if:false directives
+  const ifTrueHits = htmlScan(/\bif:(true|false)\b/);
+  if (ifTrueHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${ifTrueHits.length} LWC Component${ifTrueHits.length !== 1 ? 's' : ''} Use Deprecated if:true / if:false Directives`,
+      'if:true and if:false were deprecated in API v57 and removed in v60. Components using them are on old API versions and will break when the org enforces minimum API versions.',
+      'Replace if:true={expr} with lwc:if={expr} and if:false={expr} with lwc:if={!expr} or lwc:else. Requires API v57+.',
+      { records: ifTrueHits.slice(0, 50).map(h => ({ name: h.name, detail: 'if:true/if:false — deprecated in v57, removed in v60; migrate to lwc:if' })) }
+    ));
+  }
+
+  // 29. for:each without key — forces full list re-render
+  const forEachHits = htmlScan(/for:each=/, /\bkey=/);
+  if (forEachHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${forEachHits.length} LWC Component${forEachHits.length !== 1 ? 's' : ''} Use for:each Without a key Attribute`,
+      'Omitting the key attribute on for:each items forces LWC to destroy and recreate all list items on every render cycle instead of patching only changed items. This is a major performance issue for any list with more than a handful of items.',
+      'Add a unique key={item.Id} or key={item.uniqueField} to the direct child element inside every for:each loop.',
+      { records: forEachHits.slice(0, 50).map(h => ({ name: h.name, detail: 'for:each without key — full list re-render on every change' })) }
+    ));
+  }
+
+  // 30. Inline style attributes in templates
+  const inlineStyleHits = htmlScan(/\bstyle=["'][^"']/);
+  if (inlineStyleHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${inlineStyleHits.length} LWC Component${inlineStyleHits.length !== 1 ? 's' : ''} Use Inline style= Attributes in Templates`,
+      'Hardcoded inline styles in LWC templates bypass SLDS theme tokens, break dark mode and high-contrast accessibility themes, and are not scoped by Shadow DOM CSS encapsulation.',
+      'Replace inline styles with CSS classes defined in the component\'s .css file. Use CSS custom properties (var(--slds-...)) for dynamic theming.',
+      { records: inlineStyleHits.slice(0, 50).map(h => ({ name: h.name, detail: 'inline style= attribute in template — bypasses SLDS tokens and theming' })) }
+    ));
+  }
+
+  // ── FlexiPage checks ──────────────────────────────────────────────────────────
+
+  // 31. Stale FlexiPages not modified in 2+ years
+  const stalePages = flexiPages.filter((p: any) => p.LastModifiedDate && new Date(p.LastModifiedDate) < twoYearsAgo);
+  if (stalePages.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${stalePages.length} Lightning Page${stalePages.length !== 1 ? 's' : ''} Not Modified in 2+ Years`,
+      'Lightning pages not updated in over 2 years may reference deprecated components, old API versions, or removed fields. They accumulate maintenance burden and slow down org audits.',
+      'Review stale Lightning pages. Delete those no longer assigned, update components on active pages, and document the owner and purpose of each page.',
+      { records: stalePages.slice(0, 50).map((p: any) => ({ name: p.DeveloperName, detail: `Last modified: ${new Date(p.LastModifiedDate).toLocaleDateString()} · ${p.Type}` })) }
+    ));
+  }
+
+  // 32. High total FlexiPage count — governance flag
+  if (flexiPages.length > 50) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${flexiPages.length} Lightning Pages Configured — Governance Review Recommended`,
+      'A high number of Lightning pages is difficult to govern. Each page must be assigned, maintained, and kept compatible with component updates.',
+      'Audit all Lightning pages. Establish a governance process with named owners. Delete unassigned pages and consolidate objects that have excessive page variants.',
+      { count: flexiPages.length }
     ));
   }
 

@@ -882,7 +882,7 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
 app.get('/api/assess/lwc', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources, jsResources] = await Promise.all([
+    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources, jsResources, htmlResources] = await Promise.all([
       safeToolingQuery(conn,
         "SELECT Id, DeveloperName, ApiVersion, Description, IsExposed, ManageableState, LastModifiedDate " +
         "FROM LightningComponentBundle WHERE NamespacePrefix = null LIMIT 500"
@@ -906,6 +906,10 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Source " +
         "FROM LightningComponentResource WHERE FilePath LIKE '%.js' AND FilePath NOT LIKE '%.test.js' LIMIT 1000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, LightningComponentBundleId, FilePath, Source " +
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.html' LIMIT 1000"
       )
     ]);
 
@@ -915,7 +919,8 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       auraDefinitions: auraDefinitions.records || [],
       flexiPages: flexiPages.records || [],
       lwcResources: lwcResources.records || [],
-      jsResources: jsResources.records || []
+      jsResources: jsResources.records || [],
+      htmlResources: htmlResources.records || []
     });
   } catch (err) {
     console.error('LWC assessment error:', err);
