@@ -578,6 +578,276 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     ));
   }
 
+  // ── Omnichannel ──────────────────────────────────────────────────────────────
+
+  // OC-1: No ServiceChannels despite queues existing
+  if ((data.serviceChannels || []).length === 0 && data.queues.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'No Omni-Channel Service Channels Configured',
+      'Queues exist but no Omni-Channel Service Channels are configured. Work is routed manually with no capacity management, queue metrics, or supervisor visibility.',
+      'Create Service Channels in Setup → Omni-Channel → Service Channels for each work type (Cases, Chats, Messaging Sessions). Route all queues through Omni-Channel.'));
+  }
+
+  // OC-2: RoutingConfiguration uses Tab-based capacity (legacy)
+  const tabCapacityConfigs = (data.routingConfigurations || []).filter((rc: any) => rc.CapacityType === 'Tab');
+  if (tabCapacityConfigs.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${tabCapacityConfigs.length} Routing Configuration${tabCapacityConfigs.length !== 1 ? 's' : ''} Use Legacy Tab-Based Capacity`,
+      'Tab-based capacity counts browser tabs, not work complexity. Agents can be overloaded with high-effort items. Salesforce replaced this with Count and Percentage-based capacity models.',
+      'Update Routing Configurations to use Count or Percentage-based capacity. This requires re-evaluating agent capacity limits across all queues.',
+      { records: tabCapacityConfigs.map((rc: any) => ({ name: rc.DeveloperName, detail: 'CapacityType = Tab — legacy model' })) }));
+  }
+
+  // OC-3: RoutingConfiguration has no PushTimeout — stalled work never re-routed
+  const noPushTimeout = (data.routingConfigurations || []).filter((rc: any) => !rc.PushTimeout || rc.PushTimeout === 0);
+  if (noPushTimeout.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${noPushTimeout.length} Routing Configuration${noPushTimeout.length !== 1 ? 's' : ''} Have No Push Timeout`,
+      'Without a push timeout, work items that agents do not accept sit indefinitely in the assigned state, silently violating SLAs and blocking queue throughput.',
+      'Set a push timeout (60–120 seconds recommended) on all Routing Configurations so unaccepted work items are re-queued automatically.',
+      { records: noPushTimeout.map((rc: any) => ({ name: rc.DeveloperName, detail: 'PushTimeout = 0 — work can stall indefinitely' })) }));
+  }
+
+  // OC-4: All RoutingConfigurations use MostAvailable — no skills-based routing
+  const allMostAvailable = (data.routingConfigurations || []).length > 0 &&
+    (data.routingConfigurations || []).every((rc: any) => rc.RoutingModel === 'MostAvailable' || rc.RoutingModel === 'LeastActive');
+  if (allMostAvailable) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'No Skills-Based Routing Configured — All Queues Use Availability-Only Routing',
+      'All Routing Configurations use availability-based routing (Most Available / Least Active). Specialized cases (billing, technical, escalations) are sent to any available agent, reducing first-contact resolution and increasing transfers.',
+      'Implement skills-based routing for differentiated support tiers. Define agent skills in Setup → Omni-Channel → Skills and assign routing configurations to use skill requirements.'));
+  }
+
+  // OC-5: PresenceConfiguration capacity = 0 or null
+  const noCapacityPresence = (data.presenceConfigurations || []).filter((pc: any) => !pc.Capacity || pc.Capacity === 0);
+  if (noCapacityPresence.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${noCapacityPresence.length} Presence Configuration${noCapacityPresence.length !== 1 ? 's' : ''} Have No Capacity Limit`,
+      'Presence Configurations with no capacity limit allow agents to receive unlimited simultaneous work items, causing overload and breaking workload balancing.',
+      'Set a capacity limit on all Presence Configurations. Typical values are 5–10 for chat-only agents, 2–4 for mixed voice/chat. Review with supervisors to calibrate.',
+      { records: noCapacityPresence.map((pc: any) => ({ name: pc.DeveloperName, detail: 'Capacity = 0 — no concurrency limit on agents' })) }));
+  }
+
+  // OC-6: No PresenceConfigurations despite ServiceChannels existing
+  if ((data.presenceConfigurations || []).length === 0 && (data.serviceChannels || []).length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'No Presence Configurations Defined Despite Active Service Channels',
+      'Service Channels are configured but no Presence Configurations exist. Agents have no presence statuses, cannot receive routed work, and supervisor monitoring is unavailable.',
+      'Create Presence Configurations in Setup → Omni-Channel → Presence Configurations. Assign them to agent profiles.'));
+  }
+
+  // ── Knowledge ──────────────────────────────────────────────────────────────
+
+  // KN-1: Knowledge enabled but zero published articles
+  if ((data.publishedArticleCount || 0) === 0 && data.queues.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'Knowledge Enabled but No Published Articles Found',
+      'No published Knowledge articles detected despite Service Cloud configuration. Article recommendations, Einstein Replies, and search deflection are all non-functional without published content.',
+      'Publish initial Knowledge articles for your top case categories. Use existing case resolution notes as source material. Set a target of 50+ articles before enabling agent-facing Knowledge search.'));
+  }
+
+  // KN-2: Stalled drafts
+  if ((data.draftStalledCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.draftStalledCount} Draft Knowledge Articles Stalled for 180+ Days`,
+      'Draft articles not modified in over 6 months indicate broken authoring workflows — missing approval processes, no owner accountability, or no article lifecycle automation.',
+      'Audit stalled draft articles. Assign owners and due dates. Implement an approval process to move articles from Draft to Published with defined SLAs.',
+      { count: data.draftStalledCount }));
+  }
+
+  // KN-3: Stale published articles (12+ months)
+  if ((data.staleArticleCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.staleArticleCount} Published Knowledge Articles Not Updated in 12+ Months`,
+      'Stale published articles degrade search quality, cause incorrect agent guidance, and actively harm customer-facing deflection. Salesforce recommends a 6–12 month review cycle.',
+      'Implement an article review workflow triggered by LastModifiedDate. Set article expiry dates and assign article owners responsible for periodic reviews.',
+      { count: data.staleArticleCount }));
+  }
+
+  // KN-4: No Data Category Groups
+  if ((data.dataCategoryGroupCount || 0) === 0 && (data.publishedArticleCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      'No Data Category Groups Configured — Knowledge Cannot Be Filtered by Audience',
+      'Without data categories, article visibility cannot be segmented by audience (internal vs. customer vs. partner) and search filtering is unavailable. This is a fundamental governance gap.',
+      'Create Data Category Groups in Setup → Data Categories for each dimension (Product, Topic, Audience). Assign categories to all published articles.'));
+  }
+
+  // KN-5: Published articles with no data category
+  if ((data.uncategorizedArticleCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.uncategorizedArticleCount} Published Articles Have No Data Category Assignment`,
+      'Uncategorized articles are not visible through category-based channel filtering, meaning customers or partners cannot find relevant content through filtered search.',
+      'Assign at least one data category to every published article. Use bulk assignment in the Knowledge Management setup or via Data Loader.',
+      { count: data.uncategorizedArticleCount }));
+  }
+
+  // KN-6: ValidationStatus blank on published articles
+  if ((data.articlesWithoutValidationCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.articlesWithoutValidationCount} Published Articles Have No Validation Status`,
+      'Published articles without a validation status had no editorial review enforced before publication — content accuracy is unverified.',
+      'Set ValidationStatus on all published articles. Implement an approval process that requires validation before articles can be published.',
+      { count: data.articlesWithoutValidationCount }));
+  }
+
+  // ── Entitlements ────────────────────────────────────────────────────────────
+
+  // ENT-1: Active Entitlement Processes without Business Hours
+  if ((data.entitlementProcessesWithoutBusinessHours || []).length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${data.entitlementProcessesWithoutBusinessHours.length} Active Entitlement Process${data.entitlementProcessesWithoutBusinessHours.length !== 1 ? 'es' : ''} Have No Business Hours Assigned`,
+      'Without business hours, SLA milestone countdowns run 24/7 including weekends and holidays. This causes false SLA violations overnight and on weekends, invalidating all SLA reporting.',
+      'Assign Business Hours to all active Entitlement Processes in Setup → Entitlements → Entitlement Processes. Create separate Business Hours records for different support tiers (standard vs. premium).',
+      { records: data.entitlementProcessesWithoutBusinessHours.map((ep: any) => ({ name: ep.Name, detail: 'No Business Hours — SLA runs 24/7' })) }));
+  }
+
+  // ENT-2: Active Entitlement Processes without Milestone Actions
+  if ((data.entitlementProcessesWithoutMilestoneActions || []).length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${data.entitlementProcessesWithoutMilestoneActions.length} Active Entitlement Process${data.entitlementProcessesWithoutMilestoneActions.length !== 1 ? 'es' : ''} Have No Milestone Actions`,
+      'Milestones track SLA status but no automated escalation, notification, or action fires on warning or violation. SLA tracking is passive — operators must manually monitor dashboards.',
+      'Configure warning and violation actions on each milestone in active Entitlement Processes. At minimum, add email alerts to case owners and managers when SLAs are breached.',
+      { records: data.entitlementProcessesWithoutMilestoneActions.map((ep: any) => ({ name: ep.Name, detail: 'No milestone warning/violation actions configured' })) }));
+  }
+
+  // ENT-3: Open cases with entitlement but no SLA start date
+  if ((data.openCasesEntitlementNoSla || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.openCasesEntitlementNoSla} Open Cases Have an Entitlement but No SLA Start Date`,
+      'Cases with an entitlement assigned but no SlaStartDate mean the SLA clock never started. These cases are breaching SLAs silently with no tracking.',
+      'Investigate why SlaStartDate is null — typically the case does not meet the entitlement activation criteria. Review the Entitlement Process activation rules and case field requirements.',
+      { count: data.openCasesEntitlementNoSla }));
+  }
+
+  // ENT-4: Service Contracts without Entitlements
+  if ((data.serviceContractsWithoutEntitlements || []).length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.serviceContractsWithoutEntitlements.length} Service Contract${data.serviceContractsWithoutEntitlements.length !== 1 ? 's' : ''} Have No Linked Entitlements`,
+      'Service Contracts without entitlements are skeleton records — they exist in the data model but enforce no SLA rules. These are a common outcome of incomplete Service Cloud implementations.',
+      'Add Entitlement records to all Service Contracts. Link each Entitlement to the appropriate Entitlement Process to activate SLA tracking.',
+      { records: data.serviceContractsWithoutEntitlements.map((sc: any) => ({ name: sc.Name, detail: 'Service Contract with no Entitlement — SLA not enforced' })) }));
+  }
+
+  // ── Email-to-Case ────────────────────────────────────────────────────────────
+
+  // ETC-1: Email routing addresses without TLS
+  const noTlsAddresses = (data.emailRoutingAddresses || []).filter((a: any) => !a.TlsMode || a.TlsMode === 'Disabled');
+  if (noTlsAddresses.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${noTlsAddresses.length} Email-to-Case Routing Address${noTlsAddresses.length !== 1 ? 'es' : ''} Without TLS`,
+      'Email-to-Case routing addresses without TLS transmit customer communications in plaintext, exposing PII and violating GDPR/CCPA requirements.',
+      'Enable TLS (Preferred or Required) on all Email-to-Case routing addresses in Setup → Email-to-Case → Routing Addresses.',
+      { records: noTlsAddresses.map((a: any) => ({ name: a.RoutingName || a.EmailAddress, detail: `TLS: ${a.TlsMode || 'Disabled'} — customer emails transmitted in plaintext` })) }));
+  }
+
+  // ETC-2: Email routing addresses with no owner/queue
+  const noOwnerAddresses = (data.emailRoutingAddresses || []).filter((a: any) => !a.OwnerId);
+  if (noOwnerAddresses.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${noOwnerAddresses.length} Email-to-Case Routing Address${noOwnerAddresses.length !== 1 ? 'es' : ''} Have No Default Owner`,
+      'Email-to-Case addresses with no default owner or queue create cases with no owner, making them invisible to all agents and queues.',
+      'Assign a default owner (queue or user) to every Email-to-Case routing address in Setup → Email-to-Case → Routing Addresses.',
+      { records: noOwnerAddresses.map((a: any) => ({ name: a.RoutingName || a.EmailAddress, detail: 'No OwnerId — cases created with no owner' })) }));
+  }
+
+  // ETC-3: Email threading gap
+  if ((data.emailThreadingGapCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.emailThreadingGapCount} Inbound Emails in the Last 30 Days Created New Cases Instead of Threading`,
+      'Customer reply emails without a thread identifier create new cases instead of appending to existing ones, inflating case volume and losing conversation context.',
+      'Ensure Email-to-Case threading tokens are included in all outbound case emails. Verify the email template includes the {!Case.Thread_Id} merge field. Check that threading is enabled in Email-to-Case settings.',
+      { count: data.emailThreadingGapCount }));
+  }
+
+  // ETC-4: EmailServicesAddress with no sender restrictions
+  const unrestrictedEmailServices = (data.emailServicesAddresses || []).filter((a: any) => !a.AuthorizedSenders);
+  if (unrestrictedEmailServices.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${unrestrictedEmailServices.length} Email Service Address${unrestrictedEmailServices.length !== 1 ? 'es' : ''} Accept Emails from Any Sender`,
+      'Email service addresses with no authorized sender restrictions can be exploited to generate spam cases, exhaust daily email limits (5,000/day), and drop legitimate inbound emails.',
+      'Add authorized sender restrictions to Email Service Addresses in Setup → Email Services. Use domain-based filtering (e.g. *.yourcompany.com) at minimum.',
+      { records: unrestrictedEmailServices.map((a: any) => ({ name: a.LocalPart, detail: 'No AuthorizedSenders restriction — accepts any sender' })) }));
+  }
+
+  // ── Live Chat / Messaging ────────────────────────────────────────────────────
+
+  // MSG-1: LiveChatButton routing not Omni-Channel
+  const nonOmniChatButtons = (data.liveChatButtons || []).filter((b: any) => b.RoutingType !== 'Omni');
+  if (nonOmniChatButtons.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${nonOmniChatButtons.length} Live Chat Button${nonOmniChatButtons.length !== 1 ? 's' : ''} Not Routed Through Omni-Channel`,
+      'Chat buttons using legacy button-based routing bypass Omni-Channel capacity management entirely. Chat volume is invisible to agent workload calculations, causing overload and inaccurate queue metrics.',
+      'Update Live Chat Button routing type to Omni-Channel in Setup → Live Agent → Chat Buttons & Invitations. Create a corresponding Service Channel for Chats.',
+      { records: nonOmniChatButtons.map((b: any) => ({ name: b.DeveloperName, detail: `RoutingType: ${b.RoutingType} — bypasses Omni-Channel` })) }));
+  }
+
+  // MSG-2: Active LiveChatDeployments with no EmbeddedServiceConfig
+  if ((data.liveChatDeployments || []).length > 0 && (data.embeddedServiceConfigs || []).length === 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${data.liveChatDeployments.length} Active Legacy Live Agent Deployment${data.liveChatDeployments.length !== 1 ? 's' : ''} — No Embedded Service Config Found`,
+      'Active LiveChatDeployments without an Embedded Service Config indicate the org is on the legacy LiveAgent JavaScript stack. Embedded Service provides enhanced branding, mobile SDK support, and the migration path to Messaging for In-App and Web.',
+      'Create an Embedded Service Deployment in Setup → Embedded Service Deployments. Migrate the legacy LiveAgent snippet to the Embedded Service Chat snippet.',
+      { records: data.liveChatDeployments.map((d: any) => ({ name: d.DeveloperName, detail: 'Legacy LiveAgent deployment — no Embedded Service Config' })) }));
+  }
+
+  // MSG-3: Legacy LiveChat only, no MessagingChannel (MIAW not adopted)
+  if ((data.liveChatButtons || []).length > 0 && (data.messagingChannels || []).length === 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      'Legacy Live Chat Active but Messaging for In-App and Web (MIAW) Not Adopted',
+      'The org uses Legacy Live Chat exclusively with no Messaging Channels configured. Messaging for In-App and Web (MIAW) is the strategic successor — it provides asynchronous messaging, bot integration, and unified conversation history.',
+      'Begin the transition to Messaging for In-App and Web. Create Messaging Channels in Setup → Messaging → Messaging Settings. Legacy Live Chat is on a deprecation trajectory.',
+      { count: data.liveChatButtons.length }));
+  }
+
+  // MSG-4: Chat buttons pointing to empty queues
+  const chatButtonQueueIds = (data.liveChatButtons || []).map((b: any) => b.QueueId).filter(Boolean);
+  const queueIds = new Set(data.queues.map((q: any) => q.Id));
+  const orphanedChatButtons = chatButtonQueueIds.filter((id: string) => !queueIds.has(id));
+  if (orphanedChatButtons.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${orphanedChatButtons.length} Live Chat Button${orphanedChatButtons.length !== 1 ? 's' : ''} Point to Queues That May Be Empty or Deleted`,
+      'Chat buttons routing to empty or missing queues silently fail — chats queue indefinitely with no agent to accept them.',
+      'Verify each Live Chat Button is linked to an active queue with members. Review Setup → Live Agent → Chat Buttons & Invitations.',
+      { count: orphanedChatButtons.length }));
+  }
+
+  // ── Service Console ──────────────────────────────────────────────────────────
+
+  // SC-1: No Console App configured
+  if ((data.consoleApps || []).length === 0 && data.queues.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      'No Lightning Service Console App Configured',
+      'No Lightning App of type Console found. Agents are using standard navigation for case management — no split-view, no workspace tabs, no utility bar (Omni-Channel widget, macros, telephony). This negates the core productivity architecture of Service Cloud.',
+      'Create a Service Console App in Setup → App Manager → New Lightning App. Set Navigation Style to Console. Add the Omni-Channel utility item, Knowledge sidebar, and case-specific quick actions.'));
+  }
+
+  // SC-2: No active Macros
+  if ((data.activeMacroCount || 0) === 0 && data.queues.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      'No Active Macros Configured in Service Console',
+      'Zero active macros means all repetitive agent actions (close case, send standard reply, update status) are performed manually, step by step. Macros are one of the primary AHT reduction tools in Service Cloud.',
+      'Create macros for the top 10 most common agent actions. Start with case closure, standard email replies, and status updates. Macros require a Console App with Quick Actions configured.',
+      { count: 0 }));
+  }
+
+  // SC-3: No active Einstein Next Best Action strategy
+  if ((data.activeRecommendationStrategyCount || 0) === 0 && data.queues.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      'No Einstein Next Best Action Recommendation Strategies Configured',
+      'Einstein Next Best Action surfaces contextual recommendations to agents (entitlement checks, knowledge links, follow-up tasks) in the console. Zero active strategies means this capability is entirely unused.',
+      'Create Recommendation Strategies in Setup → Einstein → Next Best Action. Connect strategies to the Case record page in the Service Console via a Recommendation component on the Lightning page.',
+      { count: 0 }));
+  }
+
+  // SC-4: CTI licensed but no softphone layout
+  if ((data.callCenters || 0) > 0 && (data.softphoneLayouts || 0) === 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'Call Center Configured but No Default Softphone Layout Assigned',
+      'A Call Center is configured but no default Softphone Layout is defined. Agents cannot use the integrated softphone in the console — call controls, screen pops, and call logging are all manual.',
+      'Create a Softphone Layout in Setup → Call Centers → Softphone Layouts and mark it as default. Assign it to agent profiles.',
+      { count: data.callCenters }));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1449,6 +1719,29 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
       'Evaluate current Einstein license utilisation. Plan AI use cases or discuss with Salesforce if licenses can be reallocated.'));
   }
 
+  // EIN-1: Einstein features licensed but no AiApplication active
+  const aiApplications = (data.aiApplications || []);
+  const activeAiApps = aiApplications.filter((a: any) => a.Status === 'Active');
+  if (aiApplications.length > 0 && activeAiApps.length === 0) {
+    items.push(createDebtItem('einsteinAI', 'medium',
+      `${aiApplications.length} Einstein AI Application${aiApplications.length !== 1 ? 's' : ''} Exist but None Are Active — License Unused`,
+      'Einstein AI Applications are configured but none are in Active status. Features are licensed but not delivering value.',
+      'Activate Einstein AI Applications in Setup → Einstein → AI Applications. Review each application\'s configuration and training data requirements.',
+      { records: aiApplications.map((a: any) => ({ name: a.DeveloperName, detail: `Status: ${a.Status}` })) }));
+  }
+
+  // EIN-2: Einstein Case Classification — insufficient training data
+  const caseClassificationApps = aiApplications.filter((a: any) =>
+    a.DeveloperName && a.DeveloperName.toLowerCase().includes('classification')
+  );
+  if (caseClassificationApps.length > 0 && (data.recentClosedCaseCount || 0) < 1000) {
+    items.push(createDebtItem('einsteinAI', 'high',
+      `Einstein Case Classification Active but Only ${data.recentClosedCaseCount || 0} Closed Cases in the Past Year — Insufficient Training Data`,
+      'Salesforce requires approximately 1,000+ closed cases with the target fields populated to train an accurate classification model. Low case volume produces low-confidence predictions that agents learn to ignore.',
+      'Pause Einstein Case Classification until sufficient case history accumulates. Focus on ensuring target fields (Type, Reason, Priority) are consistently populated on all closed cases.',
+      { count: data.recentClosedCaseCount || 0 }));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Einstein & AI Usage', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -1599,6 +1892,36 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       'Enable the chained WCAG 2.2 accessibility Release Updates in Setup → Release Updates in order: Update 1 first (Page Headers & Modals), then Update 2 (Date Pickers, Popovers, etc.). Test Experience Cloud pages and Lightning pages for layout changes before Summer \'26 enforcement.',
       {}
     ));
+  }
+
+  // Clickjack protection disabled — AllowAll
+  const clickjackSites = (data.clickjackVulnerableSites || []);
+  if (clickjackSites.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'critical',
+      `${clickjackSites.length} Active Site${clickjackSites.length !== 1 ? 's' : ''} with Clickjack Protection Disabled (AllowAll)`,
+      'Sites with Clickjack Protection set to AllowAll permit iframe embedding from any origin. This enables UI redressing / clickjacking attacks where malicious sites overlay your pages to steal clicks and credentials.',
+      'Set Clickjack Protection to "Allow framing by same-origin sites only" or stricter on all active Sites in Setup → Sites. Review whether any legitimate integration requires iframe embedding.',
+      { records: clickjackSites.map((s: any) => ({ name: s.Name, detail: 'ClickjackProtection = AllowAll — iframe embedding unrestricted' })) }));
+  }
+
+  // XSS protection disabled
+  const xssNetworks = (data.xssUnprotectedNetworks || []);
+  if (xssNetworks.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${xssNetworks.length} Live Experience Cloud Site${xssNetworks.length !== 1 ? 's' : ''} with Browser XSS Protection Disabled`,
+      'Browser XSS Protection headers (X-XSS-Protection) are disabled on these sites. While modern browsers have built-in XSS mitigation, disabling this header reduces defence-in-depth for older browsers.',
+      'Enable Browser XSS Protection in Setup → Digital Experiences → Settings for each site, or in the Network record.',
+      { records: xssNetworks.map((n: any) => ({ name: n.Name, detail: 'BrowserXssProtection = false' })) }));
+  }
+
+  // Content sniffing protection disabled
+  const contentSniffNetworks = (data.contentSniffingUnprotectedNetworks || []);
+  if (contentSniffNetworks.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${contentSniffNetworks.length} Live Experience Cloud Site${contentSniffNetworks.length !== 1 ? 's' : ''} with Content Sniffing Protection Disabled`,
+      'Content Sniffing Protection (X-Content-Type-Options: nosniff) prevents browsers from MIME-sniffing responses away from the declared content type. Disabling this enables content injection attacks.',
+      'Enable Content Sniffing Protection in Setup → Digital Experiences → Settings for each network.',
+      { records: contentSniffNetworks.map((n: any) => ({ name: n.Name, detail: 'ContentSniffingProtection = false' })) }));
   }
 
   const maxScore = 100;

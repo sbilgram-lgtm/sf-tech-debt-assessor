@@ -59,6 +59,39 @@ export interface ServiceCloudData {
   assignmentRules: any[];
   escalationRules: any[];
   unverifiedOWAs: any[];
+  // Omnichannel
+  serviceChannels: any[];
+  routingConfigurations: any[];
+  presenceConfigurations: any[];
+  // Knowledge
+  publishedArticleCount: number;
+  staleArticleCount: number;  // published, not modified in 12+ months
+  draftStalledCount: number;  // draft, not modified in 180+ days
+  dataCategoryGroupCount: number;
+  uncategorizedArticleCount: number;
+  articlesWithoutValidationCount: number;
+  // Entitlements
+  entitlementProcesses: any[];
+  entitlementProcessesWithoutBusinessHours: any[];
+  entitlementProcessesWithoutMilestoneActions: any[];
+  openCasesEntitlementNoSla: number;
+  serviceContractsWithoutEntitlements: any[];
+  entitlementTemplateCount: number;
+  // Email-to-Case
+  emailRoutingAddresses: any[];
+  emailServicesAddresses: any[];
+  emailThreadingGapCount: number;
+  // Live Chat / Messaging
+  liveChatButtons: any[];
+  liveChatDeployments: any[];
+  messagingChannels: any[];
+  embeddedServiceConfigs: any[];
+  // Service Console
+  consoleApps: any[];
+  activeMacroCount: number;
+  activeRecommendationStrategyCount: number;
+  callCenters: number;
+  softphoneLayouts: number;
 }
 
 export interface ValidationRuleData {
@@ -159,6 +192,8 @@ export interface EinsteinAIData {
   aiFeatures: any[];
   promptTemplates: any[];
   bots: any[];
+  aiApplications: any[];
+  recentClosedCaseCount: number;
 }
 
 export interface TerritoryData {
@@ -174,6 +209,9 @@ export interface ExperienceCloudData {
   customDomains: any[];
   wcagUpdatesActive: boolean;
   wcagUpdates: any[];
+  clickjackVulnerableSites: any[];
+  xssUnprotectedNetworks: any[];
+  contentSniffingUnprotectedNetworks: any[];
 }
 
 export interface ConnectedAppSecurityData {
