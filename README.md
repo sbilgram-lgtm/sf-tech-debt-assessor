@@ -119,7 +119,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | Category | What it checks |
 |---|---|
 | **Configuration** | Workflow Rules, Process Builders, automation overlap, validation rules; Classic Approval Processes ⚠️ Spring '26; legacy Einstein for Flow actions ⚠️ Spring '26 |
-| **Code Quality** | SOQL in loops, hardcoded IDs, trigger patterns, outdated API versions; empty catch blocks, DML in loops, `Schema.getGlobalDescribe()`, missing sharing declarations, `System.setPassword()`, `UserInfo.getSessionId()`, SOQL without FLS enforcement (`WITH SECURITY_ENFORCED` / `WITH USER_MODE`); SOAP `login()` usage ⚠️ Spring '26; hardcoded `login.salesforce.com` URLs ⚠️ Spring '26 My Domain enforcement |
+| **Apex Code Quality** | SOQL in loops, hardcoded IDs, trigger patterns, outdated API versions; empty catch blocks, DML in loops, `Schema.getGlobalDescribe()`, missing sharing declarations, `System.setPassword()`, `UserInfo.getSessionId()`, SOQL without FLS enforcement (`WITH SECURITY_ENFORCED` / `WITH USER_MODE`); SOAP `login()` usage ⚠️ Spring '26; hardcoded `login.salesforce.com` URLs ⚠️ Spring '26 My Domain enforcement |
 | **Data Model** | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | Record types, queues, assignment/escalation rules; unverified Organization-Wide Email Addresses ⚠️ Spring '26 — fail to send |
 | **Sharing & Security** | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens; privileged users without phishing-resistant MFA ⚠️ enforced May 2026; active Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; Async Sharing Recalculation Release Update ⚠️ enforced Spring '27 |
@@ -137,9 +137,9 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Territory Management** | Draft models, multiple active models, inactive assignment rules |
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
 | **Connected App Security** | Session timeouts, stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
-| **Lightning Web Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
+| **LWC & Aura Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
 
-### Lightning Web Components — All 34 Checks
+### LWC & Aura Components — All 34 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -184,12 +184,12 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 |---|---|---|
 | Session IDs in Outbound Messages retired | February 2026 | Sharing & Security, Connected App Security |
 | CA-signed certificate max lifespan 200 days | March 2026 | Connected App Security |
-| My Domain login URL enforced for production | Spring '26 | Code Quality |
+| My Domain login URL enforced for production | Spring '26 | Apex Code Quality |
 | Connected App creation disabled by default (ECAs are standard) | Spring '26 | Connected App Security |
 | Unverified OWAs fail to send (no more noreply fallback) | Spring '26 | Service Cloud |
 | Classic Approval Processes superseded by Flow Approvals | Spring '26 | Configuration |
 | Phishing-resistant MFA required for privileged users | Active May 2026 | Sharing & Security |
-| API versions 21–30 retired — broken in production | Summer '25 | Integrations, Lightning Web Components |
+| API versions 21–30 retired — broken in production | Summer '25 | Integrations, LWC & Aura Components |
 | WCAG 2.2 accessibility Release Updates force-applied | Summer '26 | Experience Cloud |
 | Async Sharing Recalculation enforced | Spring '27 | Sharing & Security |
 
