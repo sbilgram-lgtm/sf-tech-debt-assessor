@@ -264,6 +264,125 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
+  // Check for empty catch blocks (swallowed exceptions)
+  const emptyCatch = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /catch\s*\([^)]*\)\s*\{\s*\}/g.test(body);
+  });
+  if (emptyCatch.length > 0) {
+    items.push(createDebtItem(
+      'code', 'high',
+      `${emptyCatch.length} Classes with Empty catch Blocks`,
+      'Empty catch blocks silently swallow exceptions, hiding errors from logs and making debugging impossible. This is a PMD static analysis violation.',
+      'Add meaningful error handling in every catch block. At minimum log the exception with System.debug or a logging framework. Never leave catch blocks empty.',
+      { records: emptyCatch.map((c: any) => ({ name: c.Name, detail: 'Empty catch block — exceptions silently swallowed' })) }
+    ));
+  }
+
+  // DML operations in loops (insert/update/delete/upsert/merge in for/while)
+  const dmlInLoops = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /for\s*\([\s\S]*?\)\s*\{[\s\S]*?\b(insert|update|delete|upsert|merge)\b/gi.test(body) ||
+           /while\s*\([^)]*\)\s*\{[\s\S]*?\b(insert|update|delete|upsert|merge)\b/gi.test(body);
+  });
+  if (dmlInLoops.length > 0) {
+    items.push(createDebtItem(
+      'code', 'critical',
+      `${dmlInLoops.length} Classes with DML Operations in Loops`,
+      'DML statements (insert, update, delete, upsert, merge) inside loops hit governor limits in bulk operations. Each iteration counts against the 150 DML statements per transaction limit.',
+      'Collect records into a List before the loop and perform a single bulk DML after. Use Database.insert/update with allOrNone=false for partial success handling.',
+      { records: dmlInLoops.map((c: any) => ({ name: c.Name, detail: 'DML in loop — governor limit risk' })) }
+    ));
+  }
+
+  // Schema.getGlobalDescribe() — expensive schema lookup
+  const schemaLookups = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /Schema\.getGlobalDescribe\s*\(\s*\)/gi.test(body);
+  });
+  if (schemaLookups.length > 0) {
+    items.push(createDebtItem(
+      'code', 'medium',
+      `${schemaLookups.length} Classes Use Schema.getGlobalDescribe()`,
+      'Schema.getGlobalDescribe() loads all object metadata in the org into memory on every call. It is one of the most expensive Apex operations and causes severe performance degradation at scale.',
+      'Cache the result in a static variable or use Schema.describeSObjects() for targeted lookups. Prefer Token-based describe calls (SObjectType.Account.getDescribe()) where possible.',
+      { records: schemaLookups.map((c: any) => ({ name: c.Name, detail: 'Schema.getGlobalDescribe() — expensive mass schema lookup' })) }
+    ));
+  }
+
+  // Classes without with sharing / inherited sharing
+  const noSharing = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    // Skip interfaces, abstract classes, test classes, and @isTest
+    if (/@isTest\b/i.test(body)) return false;
+    if (/\binterface\b/i.test(body)) return false;
+    // Flag classes that declare a class keyword but lack with sharing / inherited sharing / without sharing declaration
+    return /\bclass\b/i.test(body) &&
+      !/\bwith\s+sharing\b/i.test(body) &&
+      !/\binherited\s+sharing\b/i.test(body) &&
+      !/\bwithout\s+sharing\b/i.test(body);
+  });
+  if (noSharing.length > 0) {
+    items.push(createDebtItem(
+      'code', 'high',
+      `${noSharing.length} Apex Classes Without a Sharing Declaration`,
+      'Classes without with sharing, without sharing, or inherited sharing run in the default system context, potentially exposing records the running user should not see. This is a sharing enforcement gap (UseWithSharingOnDatabaseOperation).',
+      'Add with sharing to all classes that perform database operations unless there is a documented business reason to escalate privileges. Use inherited sharing for utility classes called from both sharing contexts.',
+      { records: noSharing.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'No sharing declaration — defaults to system context' })) }
+    ));
+  }
+
+  // System.setPassword() — AppExchange security violation
+  const setPasswordClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /System\.setPassword\s*\(/gi.test(body);
+  });
+  if (setPasswordClasses.length > 0) {
+    items.push(createDebtItem(
+      'code', 'critical',
+      `${setPasswordClasses.length} Classes Use System.setPassword()`,
+      'System.setPassword() is flagged by Salesforce AppExchange security review as a high-risk method. It can be exploited to change user passwords programmatically, bypassing normal authentication controls.',
+      'Remove all System.setPassword() calls. Use standard Salesforce password reset flows or the Auth.setPasswordPolicy API where password management is legitimately required.',
+      { records: setPasswordClasses.map((c: any) => ({ name: c.Name, detail: 'System.setPassword() — AppExchange security violation' })) }
+    ));
+  }
+
+  // UserInfo.getSessionId() — session ID exposure risk
+  const sessionIdClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /UserInfo\.getSessionId\s*\(\s*\)/gi.test(body);
+  });
+  if (sessionIdClasses.length > 0) {
+    items.push(createDebtItem(
+      'code', 'high',
+      `${sessionIdClasses.length} Classes Access UserInfo.getSessionId()`,
+      'Accessing session IDs in Apex and passing them to external systems or storing them is a security risk. Session IDs in Outbound Messages were retired in February 2026. This pattern is flagged by AppExchange security review.',
+      'Replace session ID usage with OAuth Named Credentials for external callouts. Do not pass session IDs to Visualforce, LWC, or external endpoints.',
+      { records: sessionIdClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'UserInfo.getSessionId() — session ID exposure, retired pattern' })) }
+    ));
+  }
+
+  // SOQL without WITH SECURITY_ENFORCED or WITH USER_MODE — FLS enforcement gap
+  const soqlNoFls = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    // Find SOQL queries (simplified: [...]) that lack security enforcement keywords
+    const soqlBlocks = body.match(/\[SELECT[\s\S]*?\]/gi) || [];
+    return soqlBlocks.some((q: string) =>
+      !/WITH\s+SECURITY_ENFORCED/i.test(q) &&
+      !/WITH\s+USER_MODE/i.test(q)
+    );
+  });
+  if (soqlNoFls.length > 0) {
+    items.push(createDebtItem(
+      'code', 'medium',
+      `${soqlNoFls.length} Classes Have SOQL Queries Without FLS Enforcement`,
+      'SOQL queries without WITH SECURITY_ENFORCED or WITH USER_MODE bypass Field-Level Security checks, potentially exposing fields the running user should not see. This is a CRUD/FLS violation.',
+      'Add WITH USER_MODE to SOQL queries in classes that run in user context. Use WITH SECURITY_ENFORCED as an alternative. Supplement with stripInaccessible() for DML operations.',
+      { records: soqlNoFls.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'SOQL without WITH SECURITY_ENFORCED or WITH USER_MODE — FLS bypass' })) }
+    ));
+  }
+
   // SOAP login() usage — retired Spring '26 default, hard retirement Summer '27
   const soapLoginClasses = (apex.soapLoginApex || []);
   if (soapLoginClasses.length > 0) {
@@ -1643,6 +1762,7 @@ export function assessLwc(data: LwcData): CategoryScore {
   const lwcResources: any[] = data.lwcResources || [];
   const jsResources: any[] = data.jsResources || [];
   const htmlResources: any[] = data.htmlResources || [];
+  const cssResources: any[] = data.cssResources || [];
 
   // 1. LWC bundles missing descriptions
   const lwcNoDesc = lwcBundles.filter((b: any) => !b.Description || b.Description.trim() === '');
@@ -2079,6 +2199,41 @@ export function assessLwc(data: LwcData): CategoryScore {
   }
 
   // ── FlexiPage checks ──────────────────────────────────────────────────────────
+
+  // 33. CustomEvent with bubbles:true AND composed:true — AppExchange security rule
+  const composedBubbleHits = sourceScan(/bubbles\s*:\s*true[\s\S]{0,100}composed\s*:\s*true|composed\s*:\s*true[\s\S]{0,100}bubbles\s*:\s*true/);
+  if (composedBubbleHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${composedBubbleHits.length} LWC Component${composedBubbleHits.length !== 1 ? 's' : ''} Fire Events with bubbles:true AND composed:true`,
+      'CustomEvents with both bubbles:true and composed:true cross Shadow DOM boundaries and can expose internal component data to parent components in the page — including components from other namespaces. This is flagged by AppExchange security review.',
+      'Set composed:false unless there is a specific requirement to cross Shadow DOM boundaries. If cross-boundary propagation is needed, use Lightning Message Service (LMS) instead.',
+      { records: composedBubbleHits.slice(0, 50).map(h => ({ name: h.name, detail: 'CustomEvent bubbles:true + composed:true — Shadow DOM boundary breach risk' })) }
+    ));
+  }
+
+  // 34. Hard-coded SLDS class overrides in CSS (c-scoped overrides breaking theme)
+  const sldsOverrideHits: { bundleId: string; name: string }[] = [];
+  const cssBundleMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+  for (const r of cssResources) {
+    const src: string = r.Source || '';
+    // Flag CSS that overrides SLDS variables with hardcoded hex/rgb values instead of tokens
+    if (/(#[0-9a-fA-F]{3,6}|rgb\s*\(|rgba\s*\()[\s\S]{0,200}\.slds-|\.slds-[\s\S]{0,200}(#[0-9a-fA-F]{3,6}|rgb\s*\(|rgba\s*\()/.test(src)) {
+      const name = cssBundleMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!sldsOverrideHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        sldsOverrideHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (sldsOverrideHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${sldsOverrideHits.length} LWC Component${sldsOverrideHits.length !== 1 ? 's' : ''} Override SLDS Classes with Hardcoded Colors`,
+      'Overriding SLDS classes with hardcoded hex or RGB values bypasses the Salesforce design token system. These components will not respect org-level theme customisations, dark mode, or high-contrast accessibility modes.',
+      'Replace hardcoded color values with SLDS design tokens (var(--slds-g-color-*)). Use CSS custom properties scoped to the component for any non-SLDS styling.',
+      { records: sldsOverrideHits.slice(0, 50).map(h => ({ name: h.name, detail: 'SLDS class override with hardcoded color — breaks theme tokens and accessibility' })) }
+    ));
+  }
 
   // 31. Stale FlexiPages not modified in 2+ years
   const stalePages = flexiPages.filter((p: any) => p.LastModifiedDate && new Date(p.LastModifiedDate) < twoYearsAgo);

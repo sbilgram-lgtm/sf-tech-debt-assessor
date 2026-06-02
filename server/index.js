@@ -910,6 +910,10 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Source " +
         "FROM LightningComponentResource WHERE FilePath LIKE '%.html' LIMIT 1000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, LightningComponentBundleId, FilePath, Source " +
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.css' LIMIT 1000"
       )
     ]);
 
@@ -920,7 +924,8 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       flexiPages: flexiPages.records || [],
       lwcResources: lwcResources.records || [],
       jsResources: jsResources.records || [],
-      htmlResources: htmlResources.records || []
+      htmlResources: htmlResources.records || [],
+      cssResources: cssResources.records || []
     });
   } catch (err) {
     console.error('LWC assessment error:', err);

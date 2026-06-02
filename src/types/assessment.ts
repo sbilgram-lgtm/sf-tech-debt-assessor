@@ -194,4 +194,5 @@ export interface LwcData {
   lwcResources: any[];
   jsResources: any[];
   htmlResources: any[];
+  cssResources: any[];
 }
