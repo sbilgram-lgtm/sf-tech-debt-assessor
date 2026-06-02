@@ -192,4 +192,5 @@ export interface LwcData {
   auraDefinitions: any[];
   flexiPages: any[];
   lwcResources: any[];
+  jsResources: any[];
 }

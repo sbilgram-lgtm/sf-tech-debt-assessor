@@ -1641,6 +1641,7 @@ export function assessLwc(data: LwcData): CategoryScore {
   const auraDefinitions: any[] = data.auraDefinitions || [];
   const flexiPages: any[] = data.flexiPages || [];
   const lwcResources: any[] = data.lwcResources || [];
+  const jsResources: any[] = data.jsResources || [];
 
   // 1. LWC bundles missing descriptions
   const lwcNoDesc = lwcBundles.filter((b: any) => !b.Description || b.Description.trim() === '');
@@ -1765,6 +1766,174 @@ export function assessLwc(data: LwcData): CategoryScore {
       'LWC components from managed packages that have been locally modified will be overwritten on the next package upgrade, losing the changes silently.',
       'Document why each managed component was modified. Where possible, use extension points or override patterns instead of direct modification. Plan to re-apply changes after each package upgrade.',
       { records: modifiedManaged.slice(0, 30).map((b: any) => ({ name: b.DeveloperName, detail: 'Managed package component — local modifications will be overwritten on upgrade' })) }
+    ));
+  }
+
+  // ── Source-level ESLint-rule checks (via LightningComponentResource.Source) ──
+
+  // Helper: aggregate affected bundle names from source matches
+  function sourceScan(
+    pattern: RegExp,
+    counterPattern?: RegExp
+  ): { bundleId: string; name: string }[] {
+    const hits: { bundleId: string; name: string }[] = [];
+    const bundleMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!pattern.test(src)) continue;
+      // For leaky-listener check: skip if counter-pattern also present
+      if (counterPattern && counterPattern.test(src)) continue;
+      const name = bundleMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!hits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        hits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+    return hits;
+  }
+
+  // 11. no-debugger — debugger statement in production code
+  const debuggerHits = sourceScan(/\bdebugger\b/);
+  if (debuggerHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'critical',
+      `${debuggerHits.length} LWC Component${debuggerHits.length !== 1 ? 's' : ''} Contain debugger Statements`,
+      'debugger statements halt execution in developer tools and must never ship to production. They indicate code that was not properly cleaned up before deployment.',
+      'Remove all debugger statements. Use console.log or a structured logging approach for diagnostics. Add a lint pre-commit hook to catch these automatically.',
+      { records: debuggerHits.slice(0, 50).map(h => ({ name: h.name, detail: 'debugger statement found — no-debugger violation' })) }
+    ));
+  }
+
+  // 12. @lwc/lwc/no-inner-html — .innerHTML assignment (XSS risk)
+  const innerHtmlHits = sourceScan(/\.innerHTML\s*=/);
+  if (innerHtmlHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${innerHtmlHits.length} LWC Component${innerHtmlHits.length !== 1 ? 's' : ''} Use .innerHTML (XSS Risk)`,
+      'Setting .innerHTML directly bypasses LWC\'s template engine and introduces Cross-Site Scripting (XSS) vulnerabilities. This violates the @lwc/lwc/no-inner-html ESLint rule.',
+      'Replace .innerHTML assignments with LWC template directives (lwc:if, for:each, etc.) or sanitized rendering. Use DOMPurify only as a last resort for third-party HTML.',
+      { records: innerHtmlHits.slice(0, 50).map(h => ({ name: h.name, detail: '.innerHTML assignment — XSS risk, no-inner-html violation' })) }
+    ));
+  }
+
+  // 13. @lwc/lwc/no-document-query — document.querySelector / getElementById etc.
+  const docQueryHits = sourceScan(/document\.(querySelector|querySelectorAll|getElementById|getElementsBy)/);
+  if (docQueryHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${docQueryHits.length} LWC Component${docQueryHits.length !== 1 ? 's' : ''} Query the Document Directly`,
+      'Using document.querySelector or document.getElementById in LWC bypasses Shadow DOM encapsulation and breaks in SSR (Server-Side Rendering). This violates the @lwc/lwc/no-document-query ESLint rule.',
+      'Replace document.querySelector with this.template.querySelector to scope queries within the component\'s shadow root.',
+      { records: docQueryHits.slice(0, 50).map(h => ({ name: h.name, detail: 'document.querySelector/getElementById — no-document-query violation' })) }
+    ));
+  }
+
+  // 14. @lwc/lwc/no-leaky-event-listeners — addEventListener without removeEventListener
+  const addListenerHits = sourceScan(/addEventListener\s*\(/, /removeEventListener\s*\(/);
+  if (addListenerHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${addListenerHits.length} LWC Component${addListenerHits.length !== 1 ? 's' : ''} Add Event Listeners Without Removing Them`,
+      'Event listeners added without a corresponding removeEventListener cause memory leaks — the component is retained in memory after it is removed from the DOM. This violates @lwc/lwc/no-leaky-event-listeners.',
+      'Remove event listeners in the disconnectedCallback lifecycle hook. Use this.template.addEventListener for component-scoped events where possible.',
+      { records: addListenerHits.slice(0, 50).map(h => ({ name: h.name, detail: 'addEventListener without removeEventListener — memory leak risk' })) }
+    ));
+  }
+
+  // 15. @lwc/lwc/no-async-operation — setTimeout / setInterval / requestAnimationFrame
+  const asyncOpHits = sourceScan(/\b(setTimeout|setInterval|requestAnimationFrame)\s*\(/);
+  if (asyncOpHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${asyncOpHits.length} LWC Component${asyncOpHits.length !== 1 ? 's' : ''} Use Async Timer Operations`,
+      'setTimeout, setInterval, and requestAnimationFrame in LWC components can cause memory leaks if not cleared in disconnectedCallback, and break in SSR environments. This violates @lwc/lwc/no-async-operation.',
+      'Clear all timers in disconnectedCallback. Use LWC reactive properties and wire adapters instead of polling timers where possible.',
+      { records: asyncOpHits.slice(0, 50).map(h => ({ name: h.name, detail: 'setTimeout/setInterval/requestAnimationFrame — no-async-operation violation' })) }
+    ));
+  }
+
+  // 16. @lwc/lwc/no-async-await — async/await usage
+  const asyncAwaitHits = sourceScan(/\basync\s+(function|\(|[a-zA-Z_$])/);
+  if (asyncAwaitHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${asyncAwaitHits.length} LWC Component${asyncAwaitHits.length !== 1 ? 's' : ''} Use async/await`,
+      'async/await is not supported in all LWC execution contexts, particularly in getter functions and some lifecycle hooks. It also does not work correctly in LWC SSR. This violates @lwc/lwc/no-async-await in strict mode.',
+      'Replace async/await with Promise chains (.then/.catch) or use wire adapters for data fetching. If async/await is intentional, verify it is only used in event handlers.',
+      { records: asyncAwaitHits.slice(0, 50).map(h => ({ name: h.name, detail: 'async/await usage — no-async-await violation' })) }
+    ));
+  }
+
+  // 17. @lwc/lwc/no-restricted-browser-globals-during-ssr — window/navigator/location
+  const ssrGlobalHits = sourceScan(/\b(window\.|navigator\.|location\.(?!href\s*=))/);
+  if (ssrGlobalHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${ssrGlobalHits.length} LWC Component${ssrGlobalHits.length !== 1 ? 's' : ''} Reference Browser Globals (SSR Incompatible)`,
+      'Accessing window, navigator, or location directly breaks LWC Server-Side Rendering (SSR) because these globals are not available in a Node.js environment. This violates @lwc/lwc/no-restricted-browser-globals-during-ssr.',
+      'Guard browser global usage with a check: if (typeof window !== "undefined"). For navigation, use NavigationMixin. For user agent detection, use wire adapters or server-side properties.',
+      { records: ssrGlobalHits.slice(0, 50).map(h => ({ name: h.name, detail: 'window/navigator/location — SSR incompatible, no-restricted-browser-globals-during-ssr violation' })) }
+    ));
+  }
+
+  // 18. @lwc/lwc/no-for-of — for...of loops
+  const forOfHits = sourceScan(/for\s*\(\s*(const|let|var)\s+\w+\s+of\s+/);
+  if (forOfHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${forOfHits.length} LWC Component${forOfHits.length !== 1 ? 's' : ''} Use for...of Loops`,
+      'for...of loops require an iterator polyfill in older browsers and some LWC runtime environments. This violates @lwc/lwc/no-for-of in projects targeting broad browser compatibility.',
+      'Replace for...of with Array.forEach(), Array.map(), or a standard indexed for loop for maximum compatibility.',
+      { records: forOfHits.slice(0, 50).map(h => ({ name: h.name, detail: 'for...of loop — no-for-of violation' })) }
+    ));
+  }
+
+  // 19. @lwc/lwc/no-rest-parameter — rest parameters (...args)
+  const restParamHits = sourceScan(/function\s*\w*\s*\([^)]*\.\.\.[a-zA-Z_$]/);
+  if (restParamHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${restParamHits.length} LWC Component${restParamHits.length !== 1 ? 's' : ''} Use Rest Parameters`,
+      'Rest parameters (...args) require spread/rest polyfills and may cause issues in some LWC compilation targets. This violates @lwc/lwc/no-rest-parameter in strict compatibility mode.',
+      'Replace rest parameters with explicit parameter lists or use the arguments object for variadic functions.',
+      { records: restParamHits.slice(0, 50).map(h => ({ name: h.name, detail: 'rest parameter (...args) — no-rest-parameter violation' })) }
+    ));
+  }
+
+  // 20. @lwc/lwc/no-node-env-in-ssr — process.env.NODE_ENV
+  const nodeEnvHits = sourceScan(/process\.env\.NODE_ENV/);
+  if (nodeEnvHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${nodeEnvHits.length} LWC Component${nodeEnvHits.length !== 1 ? 's' : ''} Reference process.env.NODE_ENV`,
+      'process.env.NODE_ENV is a Node.js construct not available in browser LWC contexts. While it is replaced at build time in some bundlers, relying on it in LWC source is fragile and violates @lwc/lwc/no-node-env-in-ssr.',
+      'Remove process.env.NODE_ENV checks from LWC source. Use Salesforce-native mechanisms like Custom Labels or Custom Metadata Types for environment-specific configuration.',
+      { records: nodeEnvHits.slice(0, 50).map(h => ({ name: h.name, detail: 'process.env.NODE_ENV — no-node-env-in-ssr violation' })) }
+    ));
+  }
+
+  // 21. no-duplicate-imports — same module imported multiple times
+  const dupImportHits: { bundleId: string; name: string }[] = [];
+  const bundleMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+  for (const r of jsResources) {
+    const src: string = r.Source || '';
+    const importMatches = src.match(/from\s+['"]([^'"]+)['"]/g) || [];
+    const modules = importMatches.map(m => m.replace(/from\s+['"]/, '').replace(/['"]$/, '').trim());
+    const seen = new Set<string>();
+    const hasDup = modules.some(m => { if (seen.has(m)) return true; seen.add(m); return false; });
+    if (hasDup) {
+      const name = bundleMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!dupImportHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        dupImportHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (dupImportHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${dupImportHits.length} LWC Component${dupImportHits.length !== 1 ? 's' : ''} Have Duplicate Import Statements`,
+      'Duplicate import statements from the same module add unnecessary overhead and indicate copy-paste errors. This violates the no-duplicate-imports ESLint rule.',
+      'Consolidate all imports from the same module into a single import statement.',
+      { records: dupImportHits.slice(0, 50).map(h => ({ name: h.name, detail: 'duplicate import from same module — no-duplicate-imports violation' })) }
     ));
   }
 
