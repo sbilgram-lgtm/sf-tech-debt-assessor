@@ -121,7 +121,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Configuration** | Workflow Rules, Process Builders, automation overlap, validation rules; Classic Approval Processes ⚠️ Spring '26; legacy Einstein for Flow actions ⚠️ Spring '26 |
 | **Apex Code Quality** | 14 checks across triggers, classes, API versions, security patterns, and FLS enforcement — see detail table below |
 | **Data Model** | Object/field descriptions, field sprawl, object count |
-| **Service Cloud** | Record types, queues, assignment/escalation rules; unverified Organization-Wide Email Addresses ⚠️ Spring '26 — fail to send |
+| **Service Cloud** | 34 checks across case configuration, Omni-Channel routing/capacity, Knowledge governance, Entitlement SLAs, Email-to-Case, Live Chat/MIAW migration, and Service Console — see detail table below |
 | **Sharing & Security** | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens; privileged users without phishing-resistant MFA ⚠️ enforced May 2026; active Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; Async Sharing Recalculation Release Update ⚠️ enforced Spring '27 |
 | **Integrations** | Named Credentials usage, hardcoded endpoints, remote site SSL, connected apps; Apex classes on API versions ≤30 ⚠️ retired Summer '25 — broken in production |
 | **Test Coverage** | Zero-coverage classes, below-75% components, test class ratio |
@@ -133,9 +133,9 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Managed Packages** | Beta packages, package count, version currency |
 | **Custom Metadata & Settings** | Custom Settings vs Custom Metadata Types, undocumented settings |
 | **Record Types & Page Layouts** | Inactive record types, excessive layouts, undocumented types |
-| **Einstein & AI Usage** | Einstein/Agentforce enablement, prompt templates, inactive bot definitions |
+| **Einstein & AI Usage** | Einstein/Agentforce enablement, prompt templates, inactive bot definitions, inactive AI Applications, Case Classification training data gap |
 | **Territory Management** | Draft models, multiple active models, inactive assignment rules |
-| **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
+| **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement, clickjack protection ⚠️ critical, XSS protection, content sniffing protection; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
 | **Connected App Security** | Session timeouts, stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
 | **LWC & Aura Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
 
@@ -157,6 +157,45 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 12 | SOQL without FLS enforcement (`WITH SECURITY_ENFORCED` / `WITH USER_MODE`) | Medium |
 | 13 | SOAP `login()` usage ⚠️ disabled by default Spring '26; hard retirement Summer '27 | Medium |
 | 14 | Hardcoded `login.salesforce.com` URLs ⚠️ My Domain enforced Spring '26 | High |
+
+### Service Cloud — All 34 Checks
+
+| # | Check | Area | Severity |
+|---|---|---|---|
+| 1 | Excessive Case Record Types (>10) | Case Config | Medium |
+| 2 | Inactive Case Record Types | Case Config | Low |
+| 3 | Excessive Queues (>50) | Case Config | Medium |
+| 4 | Case Assignment Rules — legacy routing | Case Config | Medium |
+| 5 | Escalation Rules — recommend Flow-based escalation | Case Config | Low |
+| 6 | Unverified Organization-Wide Email Addresses ⚠️ Spring '26 — fail to send | Case Config | High |
+| 7 | No Omni-Channel Service Channels configured despite queues existing | Omni-Channel | Medium |
+| 8 | Routing Configurations use legacy Tab-based capacity | Omni-Channel | Critical |
+| 9 | Routing Configurations have no Push Timeout — stalled work never re-routed | Omni-Channel | High |
+| 10 | All Routing Configurations use availability-only routing — no skills-based routing | Omni-Channel | Medium |
+| 11 | Presence Configurations have no capacity limit — agents receive unlimited work | Omni-Channel | High |
+| 12 | No Presence Configurations despite Service Channels existing | Omni-Channel | Medium |
+| 13 | Knowledge enabled but no published articles | Knowledge | Medium |
+| 14 | Draft articles stalled for 180+ days — broken authoring workflow | Knowledge | Medium |
+| 15 | Published articles not updated in 12+ months — stale content actively served | Knowledge | High |
+| 16 | No Data Category Groups — Knowledge cannot be filtered by audience | Knowledge | High |
+| 17 | Published articles with no Data Category assignment — not surfaceable in filtered search | Knowledge | High |
+| 18 | Published articles with no Validation Status — no editorial review enforced | Knowledge | Medium |
+| 19 | Active Entitlement Processes with no Business Hours — SLA runs 24/7 | Entitlements | Critical |
+| 20 | Active Entitlement Processes with no Milestone Actions — passive SLA tracking only | Entitlements | Critical |
+| 21 | Open Cases with Entitlement assigned but no SLA start date | Entitlements | High |
+| 22 | Service Contracts with no linked Entitlements — SLA not enforced | Entitlements | High |
+| 23 | Email-to-Case routing addresses without TLS — customer data in plaintext | Email-to-Case | Critical |
+| 24 | Email-to-Case routing addresses with no default owner — cases created orphaned | Email-to-Case | High |
+| 25 | Inbound emails creating new cases instead of threading — case count inflated | Email-to-Case | High |
+| 26 | Email Service Addresses accepting emails from any sender — spam/limit risk | Email-to-Case | Medium |
+| 27 | Live Chat Buttons not routed through Omni-Channel — bypasses capacity management | Live Chat | Critical |
+| 28 | Active Legacy Live Agent deployments with no Embedded Service Config | Live Chat | Critical |
+| 29 | Legacy Live Chat active but Messaging for In-App & Web (MIAW) not adopted | Live Chat | High |
+| 30 | Live Chat Buttons pointing to empty or missing queues | Live Chat | High |
+| 31 | No Lightning Service Console App configured | Service Console | Critical |
+| 32 | No active Macros configured — agent actions fully manual | Service Console | High |
+| 33 | No active Einstein Next Best Action Recommendation Strategies | Service Console | High |
+| 34 | Call Center configured but no default Softphone Layout assigned | Service Console | Medium |
 
 ### LWC & Aura Components — All 34 Checks
 
