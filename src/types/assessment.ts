@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -184,4 +184,12 @@ export interface ConnectedAppSecurityData {
   activeOutboundMessages: any[];
   certificates: any[];
   externalClientApps: any[];
+}
+
+export interface LwcData {
+  lwcBundles: any[];
+  auraBundles: any[];
+  auraDefinitions: any[];
+  flexiPages: any[];
+  lwcResources: any[];
 }

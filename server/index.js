@@ -878,6 +878,46 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Lightning Web Components ─────────────────────────────────────────────────
+app.get('/api/assess/lwc', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources] = await Promise.all([
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName, ApiVersion, Description, IsExposed, ManageableState, LastModifiedDate " +
+        "FROM LightningComponentBundle WHERE NamespacePrefix = null LIMIT 500"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName, ApiVersion, Description, ManageableState, LastModifiedDate " +
+        "FROM AuraDefinitionBundle WHERE NamespacePrefix = null LIMIT 500"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, DefType, AuraDefinitionBundleId, AuraDefinitionBundle.DeveloperName " +
+        "FROM AuraDefinition WHERE DefType IN ('RENDERER','EVENT') LIMIT 500"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName, Type, EntityDefinitionId, LastModifiedDate " +
+        "FROM FlexiPage WHERE NamespacePrefix = null AND Type = 'RecordPage' LIMIT 500"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, LightningComponentBundleId, FilePath, Format " +
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.test.js' LIMIT 1000"
+      )
+    ]);
+
+    res.json({
+      lwcBundles: lwcBundles.records || [],
+      auraBundles: auraBundles.records || [],
+      auraDefinitions: auraDefinitions.records || [],
+      flexiPages: flexiPages.records || [],
+      lwcResources: lwcResources.records || []
+    });
+  } catch (err) {
+    console.error('LWC assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Territory Management ─────────────────────────────────────────────────────
 app.get('/api/assess/territory', requireAuth, async (req, res) => {
   const conn = getConnection(req);

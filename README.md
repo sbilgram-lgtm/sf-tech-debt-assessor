@@ -1,7 +1,7 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram*
 
-A web app that connects to any Salesforce org and produces a scored technical debt report across 19 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
+A web app that connects to any Salesforce org and produces a scored technical debt report across 20 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
 
 ## Data & Privacy
 
@@ -137,6 +137,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Territory Management** | Draft models, multiple active models, inactive assignment rules |
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
 | **Connected App Security** | Session timeouts, stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
+| **Lightning Web Components** | LWC bundles without descriptions; LWC on outdated API versions (<v57); LWC on retired API versions (≤v30) ⚠️ retired Summer '25; Aura-to-LWC migration debt; Aura RENDERER complexity; Aura EVENT coupling; LWC bundles without Jest test files; stale LWC/Aura components; modified managed package components; FlexiPage sprawl per object |
 
 ### Spring '26 / Summer '26 Breaking Changes Summary
 

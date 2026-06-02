@@ -21,7 +21,8 @@ import {
   EinsteinAIData,
   TerritoryData,
   ExperienceCloudData,
-  ConnectedAppSecurityData
+  ConnectedAppSecurityData,
+  LwcData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -1628,6 +1629,172 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Connected App Security', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+export function assessLwc(data: LwcData): CategoryScore {
+  const items: DebtItem[] = [];
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+
+  const lwcBundles: any[] = data.lwcBundles || [];
+  const auraBundles: any[] = data.auraBundles || [];
+  const auraDefinitions: any[] = data.auraDefinitions || [];
+  const flexiPages: any[] = data.flexiPages || [];
+  const lwcResources: any[] = data.lwcResources || [];
+
+  // 1. LWC bundles missing descriptions
+  const lwcNoDesc = lwcBundles.filter((b: any) => !b.Description || b.Description.trim() === '');
+  if (lwcNoDesc.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${lwcNoDesc.length} LWC Bundle${lwcNoDesc.length !== 1 ? 's' : ''} Without Descriptions`,
+      'Undocumented LWC components make it hard for teams to understand component purpose, inputs, and intended use.',
+      'Add a description to each LWC bundle in the component\'s metadata. Document the component\'s purpose, exposed properties, and events.',
+      { records: lwcNoDesc.slice(0, 50).map((b: any) => ({ name: b.DeveloperName, detail: `API v${b.ApiVersion}` })) }
+    ));
+  }
+
+  // 2. LWC on outdated API versions (<v57)
+  const lwcOutdated = lwcBundles.filter((b: any) => b.ApiVersion && b.ApiVersion < 57 && b.ApiVersion > 30);
+  if (lwcOutdated.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${lwcOutdated.length} LWC Bundle${lwcOutdated.length !== 1 ? 's' : ''} on Outdated API Versions (< v57)`,
+      'LWC components on API versions below v57 miss important platform updates, security patches, and new Wire adapters introduced in recent releases.',
+      'Update LWC bundles to the current API version (v62+). Test incrementally and verify no deprecated features are in use.',
+      { records: lwcOutdated.slice(0, 50).map((b: any) => ({ name: b.DeveloperName, detail: `API v${b.ApiVersion}` })) }
+    ));
+  }
+
+  // 3. LWC on retired API versions (≤v30) — same retirement as Apex
+  const lwcRetired = lwcBundles.filter((b: any) => b.ApiVersion && b.ApiVersion <= 30);
+  if (lwcRetired.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'critical',
+      `${lwcRetired.length} LWC Bundle${lwcRetired.length !== 1 ? 's' : ''} on Retired API Versions (≤ v30)`,
+      `API versions 21–30 were retired in Summer '25. LWC bundles on these versions are non-functional.`,
+      'Immediately update all LWC bundles on API v30 or below to a supported version (minimum v31, recommended v62+).',
+      { records: lwcRetired.slice(0, 50).map((b: any) => ({ name: b.DeveloperName, detail: `API v${b.ApiVersion} — retired Summer '25` })) }
+    ));
+  }
+
+  // 4. Aura component count vs LWC — migration debt
+  if (auraBundles.length > 0 && lwcBundles.length > 0) {
+    const auraRatio = auraBundles.length / (auraBundles.length + lwcBundles.length);
+    if (auraRatio > 0.4) {
+      items.push(createDebtItem(
+        'lwc', 'medium',
+        `${auraBundles.length} Aura Components vs ${lwcBundles.length} LWC Bundles — Migration Debt`,
+        `Aura (Lightning Component Framework) is legacy. ${Math.round(auraRatio * 100)}% of front-end components are still Aura. LWC is Salesforce's strategic direction with better performance, tooling, and support.`,
+        'Prioritize migrating Aura components to LWC. Start with high-traffic components in service console and Experience Cloud. Use the LWC migration guide and lwc-recipes as reference.',
+        { aura: auraBundles.length, lwc: lwcBundles.length, auraPercent: Math.round(auraRatio * 100) }
+      ));
+    }
+  } else if (auraBundles.length > 10 && lwcBundles.length === 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${auraBundles.length} Aura Components — No LWC Migration Started`,
+      'No LWC components found. The org is entirely on the legacy Aura framework.',
+      'Begin LWC adoption. Migrate new development to LWC and plan a phased migration of existing Aura components.',
+      { aura: auraBundles.length }
+    ));
+  }
+
+  // 5. Aura RENDERER definitions — high complexity flag
+  const auraRenderers = auraDefinitions.filter((d: any) => d.DefType === 'RENDERER');
+  if (auraRenderers.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${auraRenderers.length} Aura Component${auraRenderers.length !== 1 ? 's' : ''} with Custom RENDERER`,
+      'Aura RENDERER overrides manipulate the DOM directly, bypassing the framework lifecycle. These are high-complexity, high-risk, and have no equivalent migration path to LWC.',
+      'Audit each Aura RENDERER. Refactor to use LWC reactive data binding and event-driven patterns. These are the hardest Aura components to migrate.',
+      { records: auraRenderers.slice(0, 30).map((d: any) => ({ name: d.AuraDefinitionBundle?.DeveloperName || d.AuraDefinitionBundleId, detail: 'RENDERER — direct DOM manipulation' })) }
+    ));
+  }
+
+  // 6. Aura EVENT definitions — cross-component coupling
+  const auraEvents = auraDefinitions.filter((d: any) => d.DefType === 'EVENT');
+  if (auraEvents.length > 5) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${auraEvents.length} Aura Application/Component Events Defined`,
+      'Aura events create tight coupling between components and have no direct equivalent in LWC. High event counts indicate architectural patterns that must be redesigned during migration.',
+      'Document all Aura events and their consumers before migrating. Replace with LWC CustomEvents and Lightning Message Service for cross-component communication.',
+      { count: auraEvents.length }
+    ));
+  }
+
+  // 7. LWC bundles with no test files
+  const bundleIdsWithTest = new Set(
+    lwcResources
+      .filter((r: any) => r.FilePath && r.FilePath.endsWith('.test.js'))
+      .map((r: any) => r.LightningComponentBundleId)
+  );
+  const lwcNoTest = lwcBundles.filter((b: any) => !bundleIdsWithTest.has(b.Id));
+  if (lwcNoTest.length > 0) {
+    const noTestPct = Math.round((lwcNoTest.length / lwcBundles.length) * 100);
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${lwcNoTest.length} LWC Bundle${lwcNoTest.length !== 1 ? 's' : ''} Without Jest Test Files (${noTestPct}%)`,
+      'LWC components without Jest test files have no automated testing. UI regressions go undetected until they reach production.',
+      'Add a __tests__ directory with at least one Jest spec per LWC bundle. Use @salesforce/sfdx-lwc-jest for component testing. Aim for >80% LWC test coverage.',
+      { records: lwcNoTest.slice(0, 50).map((b: any) => ({ name: b.DeveloperName, detail: 'No .test.js file found' })) }
+    ));
+  }
+
+  // 8. Stale LWC/Aura — not modified in 2+ years
+  const staleLwc = lwcBundles.filter((b: any) => b.LastModifiedDate && new Date(b.LastModifiedDate) < twoYearsAgo);
+  const staleAura = auraBundles.filter((b: any) => b.LastModifiedDate && new Date(b.LastModifiedDate) < twoYearsAgo);
+  const totalStale = staleLwc.length + staleAura.length;
+  if (totalStale > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${totalStale} Components Not Modified in 2+ Years`,
+      `${staleLwc.length} LWC and ${staleAura.length} Aura components have not been updated in over 2 years. These may be abandoned, on old API versions, or contain deprecated patterns.`,
+      'Audit stale components. Delete unused ones, update API versions on active ones, and flag as migration candidates.',
+      { records: [...staleLwc, ...staleAura].slice(0, 50).map((b: any) => ({ name: b.DeveloperName, detail: `Last modified: ${new Date(b.LastModifiedDate).toLocaleDateString()}` })) }
+    ));
+  }
+
+  // 9. Modified managed package components (installedEditable)
+  const modifiedManaged = lwcBundles.filter((b: any) => b.ManageableState === 'installedEditable');
+  if (modifiedManaged.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${modifiedManaged.length} Managed Package LWC Component${modifiedManaged.length !== 1 ? 's' : ''} Modified`,
+      'LWC components from managed packages that have been locally modified will be overwritten on the next package upgrade, losing the changes silently.',
+      'Document why each managed component was modified. Where possible, use extension points or override patterns instead of direct modification. Plan to re-apply changes after each package upgrade.',
+      { records: modifiedManaged.slice(0, 30).map((b: any) => ({ name: b.DeveloperName, detail: 'Managed package component — local modifications will be overwritten on upgrade' })) }
+    ));
+  }
+
+  // 10. FlexiPage sprawl — multiple record pages per object
+  const pagesByObject: Record<string, number> = {};
+  flexiPages
+    .filter((p: any) => p.Type === 'RecordPage' && p.EntityDefinitionId)
+    .forEach((p: any) => {
+      pagesByObject[p.EntityDefinitionId] = (pagesByObject[p.EntityDefinitionId] || 0) + 1;
+    });
+  const bloatedObjects = Object.entries(pagesByObject).filter(([_, count]) => count > 3);
+  if (bloatedObjects.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'low',
+      `${bloatedObjects.length} Objects with 4+ Lightning Record Pages`,
+      'Multiple record pages per object indicates layout proliferation. Each page must be individually maintained and assigned via page assignments or record types.',
+      'Consolidate record pages per object. Use Dynamic Forms and Dynamic Actions to replace page proliferation with a single adaptive page.',
+      { records: bloatedObjects.map(([obj, count]) => ({ name: obj, detail: `${count} record pages` })) }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return {
+    category: 'Lightning Web Components',
+    score: Math.max(0, maxScore - deductions),
+    maxScore,
+    percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),
+    items
+  };
 }
 
 export function calculateOverallScore(categories: CategoryScore[]): AssessmentResult {

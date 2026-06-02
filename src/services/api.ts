@@ -100,3 +100,7 @@ export async function getExperienceCloudData() {
 export async function getConnectedAppSecurityData() {
   return fetchApi('/api/assess/connected-app-security');
 }
+
+export async function getLwcData() {
+  return fetchApi('/api/assess/lwc');
+}
