@@ -197,11 +197,18 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       f.ProcessType === 'AutoLaunchedFlow' || f.ProcessType === 'Flow'
     );
 
+    const [approvalProcesses, einsteinFlowActions] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 50"),
+      safeQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20")
+    ]);
+
     res.json({
       workflowRules: workflowRules.records || [],
       processBuilders,
       flows: actualFlows,
-      allFlows: flows.records
+      allFlows: flows.records,
+      approvalProcesses: approvalProcesses.records || [],
+      einsteinFlowActions: einsteinFlowActions.records || []
     });
   } catch (err) {
     console.error('Automation assessment error:', err);
@@ -244,10 +251,15 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       "FROM ApexCodeCoverageAggregate"
     );
 
+    const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') LIMIT 30");
+    const hardcodedLoginUrls = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND (Name LIKE '%loginUrl%' OR Name LIKE '%LoginUrl%') LIMIT 20");
+
     res.json({
       classes: classes.records || [],
       triggers: triggers.records || [],
-      coverage: testCoverage.records || []
+      coverage: testCoverage.records || [],
+      soapLoginApex: soapLoginApex.records || [],
+      hardcodedLoginUrls: hardcodedLoginUrls.records || []
     });
   } catch (err) {
     console.error('Apex assessment error:', err);
@@ -305,12 +317,15 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       );
     } catch (e) { /* not available in all orgs */ }
 
+    const unverifiedOWAs = await safeQuery(conn, "SELECT Id, Address, IsVerified FROM OrgWideEmailAddress WHERE IsVerified = false LIMIT 20");
+
     res.json({
       caseRecordTypes: caseRecordTypes.records || [],
       emailToCase: [],
       queues: queues.records || [],
       assignmentRules: assignmentRules.records || [],
-      escalationRules: escalationRules.records || []
+      escalationRules: escalationRules.records || [],
+      unverifiedOWAs: unverifiedOWAs.records || []
     });
   } catch (err) {
     console.error('Service Cloud assessment error:', err);
@@ -470,6 +485,12 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       );
     } catch (e) { /* optional */ }
 
+    const [privilegedUsersRes, asyncSharingUpdateRes, outboundMsgRes] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name FROM PermissionSet WHERE (PermissionsModifyAllData = true OR PermissionsViewAllData = true OR PermissionsAuthorApex = true OR PermissionsCustomizeApplication = true) AND IsCustom = true LIMIT 20"),
+      safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName = 'AsyncSharingRecalculation' LIMIT 1"),
+      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20")
+    ]);
+
     res.json({
       owdSettings: owdSettings.records || [],
       sharingRules,
@@ -489,7 +510,10 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       activeOauthTokens: activeOauthTokens.records || [],
       lowSecuritySessions: lowSecuritySessions.records || [],
       usersPasswordNeverExpires: usersPasswordNeverExpires.records || [],
-      guestAccessObjects: guestAccessObjects.records || []
+      guestAccessObjects: guestAccessObjects.records || [],
+      privilegedPermSets: privilegedUsersRes.records || [],
+      asyncSharingUpdateActive: (asyncSharingUpdateRes.records || []).length > 0,
+      activeOutboundMessages: outboundMsgRes.records || []
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -536,11 +560,17 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       );
     } catch (e) { /* optional */ }
 
+    const [retiredApiApex, deprecatedGraphQLComponents] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Active' AND ApiVersion <= 30 LIMIT 50"),
+      safeQuery(conn, "SELECT Id, DeveloperName FROM LightningComponentBundle WHERE IsExposed = true LIMIT 200")
+    ]);
+
     res.json({
       connectedApps: connectedApps.records || [],
       namedCredentials: namedCredentials.records || [],
       remoteSiteSettings: remoteSites.records || [],
-      apexCallouts: apexCallouts.records || []
+      apexCallouts: apexCallouts.records || [],
+      retiredApiApexClasses: retiredApiApex.records || []
     });
   } catch (err) {
     console.error('Integrations assessment error:', err);
@@ -783,11 +813,15 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       );
     } catch (e) { /* optional */ }
 
+    const wcagUpdateRes = await safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName LIKE '%Accessibility%' OR ApiName LIKE '%WCAG%' LIMIT 5");
+
     res.json({
       sites: sites.records || [],
       networks: networks.records || [],
       networkMembers: networkMembers.records || [],
-      customDomains: customDomains.records || []
+      customDomains: customDomains.records || [],
+      wcagUpdatesActive: (wcagUpdateRes.records || []).length > 0,
+      wcagUpdates: wcagUpdateRes.records || []
     });
   } catch (err) {
     console.error('Experience Cloud assessment error:', err);
@@ -823,11 +857,20 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
       "SELECT Id, Name, Label FROM PermissionSet WHERE IsCustom = true LIMIT 200"
     );
 
+    const [activeOutboundMsgs, expiredCerts, externalClientApps] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, ValidFrom, ExpirationDate FROM Certificate WHERE ExpirationDate != null LIMIT 50"),
+      safeQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM ExternalClientApplication LIMIT 50")
+    ]);
+
     res.json({
       connectedApps: connectedApps.records || [],
       oauthTokens: oauthTokens.records || [],
       setupAccess: setupAccess.records || [],
-      permSets: permSetAccess.records || []
+      permSets: permSetAccess.records || [],
+      activeOutboundMessages: activeOutboundMsgs.records || [],
+      certificates: expiredCerts.records || [],
+      externalClientApps: externalClientApps.records || []
     });
   } catch (err) {
     console.error('Connected App Security assessment error:', err);

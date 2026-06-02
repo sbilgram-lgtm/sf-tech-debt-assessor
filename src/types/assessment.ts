@@ -34,12 +34,16 @@ export interface AutomationData {
   processBuilders: any[];
   flows: any[];
   allFlows: any[];
+  approvalProcesses: any[];
+  einsteinFlowActions: any[];
 }
 
 export interface ApexData {
   classes: any[];
   triggers: any[];
   coverage: any[];
+  soapLoginApex: any[];
+  hardcodedLoginUrls: any[];
 }
 
 export interface DataModelData {
@@ -54,6 +58,7 @@ export interface ServiceCloudData {
   queues: any[];
   assignmentRules: any[];
   escalationRules: any[];
+  unverifiedOWAs: any[];
 }
 
 export interface ValidationRuleData {
@@ -80,6 +85,9 @@ export interface SharingSecurityData {
   lowSecuritySessions: any[];
   usersPasswordNeverExpires: any[];
   guestAccessObjects: any[];
+  privilegedPermSets: any[];
+  asyncSharingUpdateActive: boolean;
+  activeOutboundMessages: any[];
 }
 
 export interface IntegrationData {
@@ -87,6 +95,7 @@ export interface IntegrationData {
   namedCredentials: any[];
   remoteSiteSettings: any[];
   apexCallouts: any[];
+  retiredApiApexClasses: any[];
 }
 
 export interface TestCoverageData {
@@ -163,6 +172,8 @@ export interface ExperienceCloudData {
   networks: any[];
   networkMembers: any[];
   customDomains: any[];
+  wcagUpdatesActive: boolean;
+  wcagUpdates: any[];
 }
 
 export interface ConnectedAppSecurityData {
@@ -170,4 +181,7 @@ export interface ConnectedAppSecurityData {
   oauthTokens: any[];
   setupAccess: any[];
   permSets: any[];
+  activeOutboundMessages: any[];
+  certificates: any[];
+  externalClientApps: any[];
 }

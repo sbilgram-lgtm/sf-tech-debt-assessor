@@ -132,6 +132,32 @@ export function assessConfiguration(
     ));
   }
 
+  // Classic Approval Processes — superseded by Flow Approval Processes (Spring '26)
+  const activeApprovals = (automation.approvalProcesses || []).filter((a: any) => a.IsActive);
+  if (activeApprovals.length > 0) {
+    items.push(createDebtItem(
+      'configuration',
+      'medium',
+      `${activeApprovals.length} Classic Approval Process${activeApprovals.length !== 1 ? 'es' : ''} Still Active`,
+      `Classic Approval Processes are superseded by Flow Approval Processes as of Spring '26. ${activeApprovals.length} active process${activeApprovals.length !== 1 ? 'es' : ''} found.`,
+      'Migrate Classic Approval Processes to Flow Approval Processes using the Approval Process migration tool or by rebuilding in Flow.',
+      { records: activeApprovals.slice(0, 50).map((a: any) => ({ name: a.Name, detail: 'Classic Approval Process — superseded in Spring \'26' })) }
+    ));
+  }
+
+  // Einstein for Flow actions — superseded by Agentforce for Flow (Spring '26)
+  const einsteinFlowActions = automation.einsteinFlowActions || [];
+  if (einsteinFlowActions.length > 0) {
+    items.push(createDebtItem(
+      'configuration',
+      'low',
+      `${einsteinFlowActions.length} Flow${einsteinFlowActions.length !== 1 ? 's' : ''} Using Legacy Einstein for Flow Actions`,
+      `Einstein for Flow has been superseded by Agentforce for Flow in Spring '26. ${einsteinFlowActions.length} active flow${einsteinFlowActions.length !== 1 ? 's' : ''} appear to reference legacy Einstein actions.`,
+      'Review and migrate flows using Einstein for Flow to Agentforce for Flow actions in the Flow Builder.',
+      { records: einsteinFlowActions.slice(0, 50).map((f: any) => ({ name: f.DeveloperName, detail: 'Uses legacy Einstein for Flow — superseded by Agentforce for Flow (Spring \'26)' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -234,6 +260,32 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       'Hardcoded Salesforce IDs break when deploying between environments.',
       'Use Custom Metadata Types, Custom Settings, or Custom Labels instead of hardcoded IDs.',
       { records: hardcodedIds.map((c:any) => ({ name: c.Name })) }
+    ));
+  }
+
+  // SOAP login() usage — retired Spring '26 default, hard retirement Summer '27
+  const soapLoginClasses = (apex.soapLoginApex || []);
+  if (soapLoginClasses.length > 0) {
+    items.push(createDebtItem(
+      'code',
+      'medium',
+      `${soapLoginClasses.length} Apex Class${soapLoginClasses.length !== 1 ? 'es' : ''} May Use Legacy SOAP login()`,
+      `The SOAP API login() method is disabled by default for new orgs in Spring '26 and fully retired in Summer '27. ${soapLoginClasses.length} Apex class${soapLoginClasses.length !== 1 ? 'es' : ''} with login/SOAP-related names found.`,
+      'Replace SOAP login() authentication with OAuth 2.0 flows using Named Credentials and Connected Apps or External Client Apps.',
+      { records: soapLoginClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'SOAP login() retired Spring \'26 (default); hard retirement Summer \'27' })) }
+    ));
+  }
+
+  // My Domain enforcement — login.salesforce.com hardcoded in class names (Spring '26)
+  const hardcodedLoginClasses = (apex.hardcodedLoginUrls || []);
+  if (hardcodedLoginClasses.length > 0) {
+    items.push(createDebtItem(
+      'code',
+      'high',
+      `${hardcodedLoginClasses.length} Apex Class${hardcodedLoginClasses.length !== 1 ? 'es' : ''} May Reference Hardcoded Login URLs`,
+      `My Domain login URL enforcement was applied to production orgs in Spring '26. Classes referencing login.salesforce.com or test.salesforce.com directly are non-compliant.`,
+      'Update all Apex, integrations, and configurations to use the org\'s My Domain URL instead of login.salesforce.com or test.salesforce.com.',
+      { records: hardcodedLoginClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'Possible hardcoded login URL — My Domain enforcement active since Spring \'26' })) }
     ));
   }
 
@@ -390,6 +442,19 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       'Escalation Rules are functional but limited compared to Flow-based escalation.',
       'Consider migrating to time-based flows for more flexible escalation logic.',
       { count: data.escalationRules.length }
+    ));
+  }
+
+  // Unverified Organization-Wide Email Addresses — fail silently no longer, fail hard (Spring '26)
+  const unverifiedOWAs = (data.unverifiedOWAs || []);
+  if (unverifiedOWAs.length > 0) {
+    items.push(createDebtItem(
+      'serviceCloud',
+      'high',
+      `${unverifiedOWAs.length} Unverified Organization-Wide Email Address${unverifiedOWAs.length !== 1 ? 'es' : ''}`,
+      `As of Spring '26, unverified Organization-Wide Email Addresses fail to send entirely — they no longer fall back to noreply@salesforce.com. ${unverifiedOWAs.length} unverified address${unverifiedOWAs.length !== 1 ? 'es' : ''} found.`,
+      'Verify all Organization-Wide Email Addresses in Setup → Organization-Wide Addresses. Each address must be verified by the mailbox owner before Spring \'26 enforcement.',
+      { records: unverifiedOWAs.slice(0, 50).map((o: any) => ({ name: o.Address || o.Id, detail: 'Unverified OWA — emails from this address fail to send (Spring \'26)' })) }
     ));
   }
 
@@ -637,6 +702,44 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
+  // Phishing-resistant MFA for privileged users (active enforcement May 2026)
+  const privilegedPermSets = (data.privilegedPermSets || []);
+  if (privilegedPermSets.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'high',
+      `${privilegedPermSets.length} Permission Set${privilegedPermSets.length !== 1 ? 's' : ''} Grant Privileged Access — Phishing-Resistant MFA Required`,
+      `Salesforce now requires phishing-resistant MFA (hardware keys or passkeys) for users with System Administrator, Modify All Data, View All Data, Customize Application, or Author Apex permissions. ${privilegedPermSets.length} custom permission set${privilegedPermSets.length !== 1 ? 's' : ''} grant these elevated privileges.`,
+      'Enforce phishing-resistant MFA (FIDO2 hardware keys or passkeys) for all users assigned these permission sets. Standard MFA (authenticator app) is no longer sufficient for privileged users.',
+      { records: privilegedPermSets.slice(0, 50).map((p: any) => ({ name: p.Name, detail: 'Grants privileged permissions — phishing-resistant MFA required (enforced May 2026)' })) }
+    ));
+  }
+
+  // Async Sharing Recalculation Release Update — enforced Spring '27
+  if (!data.asyncSharingUpdateActive) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'medium',
+      'Async Sharing Recalculation Release Update Not Activated',
+      'The Asynchronous Sharing Recalculation Release Update is available in Spring \'26 and enforced in Spring \'27. Apex and Flows relying on synchronous sharing recalculation after role/group changes will break when enforced.',
+      'Enable the Asynchronous Sharing Recalculation Release Update in Setup → Release Updates and test Apex classes and Flows that modify role hierarchy, group membership, or sharing rules.',
+      {}
+    ));
+  }
+
+  // Active Outbound Messages using Session IDs — retired February 2026
+  const activeOutboundMessages = (data.activeOutboundMessages || []);
+  if (activeOutboundMessages.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'high',
+      `${activeOutboundMessages.length} Active Outbound Message${activeOutboundMessages.length !== 1 ? 's' : ''} — Session IDs Retired February 2026`,
+      `Session IDs in Outbound Messages were retired in February 2026. ${activeOutboundMessages.length} active outbound message${activeOutboundMessages.length !== 1 ? 's' : ''} found — these are non-functional if they rely on Session ID authentication.`,
+      'Migrate Outbound Message authentication from Session IDs to OAuth. Review each active Outbound Message in Setup → Workflow → Outbound Messages and update the receiving endpoint to use OAuth tokens.',
+      { records: activeOutboundMessages.slice(0, 50).map((m: any) => ({ name: m.Name, detail: 'Active Outbound Message — Session ID auth retired Feb 2026' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -726,6 +829,19 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       'Per-user named credentials require every user to authenticate, which breaks automated processes.',
       'Use Named Principal credentials for system integrations. Reserve Per-User only for user-delegated flows.',
       { records: perUserCreds.map((nc:any) => ({ name: nc.DeveloperName })) }
+    ));
+  }
+
+  // API versions ≤30 — retired Summer '25, completely broken
+  const retiredApiClasses = (data.retiredApiApexClasses || []);
+  if (retiredApiClasses.length > 0) {
+    items.push(createDebtItem(
+      'integrations',
+      'critical',
+      `${retiredApiClasses.length} Apex Class${retiredApiClasses.length !== 1 ? 'es' : ''} on Retired API Versions (≤v30)`,
+      `API versions 21.0–30.0 were retired in Summer '25. ${retiredApiClasses.length} Apex class${retiredApiClasses.length !== 1 ? 'es' : ''} are still on API versions ≤30 and are non-functional in production.`,
+      'Immediately update all Apex classes on API versions ≤30 to a supported version (minimum v31, recommended v62+). These classes are broken in production.',
+      { records: retiredApiClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: `API v${c.ApiVersion} — retired Summer '25, broken in production` })) }
     ));
   }
 
@@ -1353,6 +1469,18 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       { records: insecureDomains.map((d:any) => ({ name: d.Domain, detail: `HTTPS: ${d.HttpsOption || 'Not Required'}` })) }));
   }
 
+  // WCAG 2.2 Accessibility Release Updates — enforced Summer '26
+  if (!data.wcagUpdatesActive) {
+    items.push(createDebtItem(
+      'experienceCloud',
+      'medium',
+      'WCAG 2.2 Accessibility Release Updates Not Enabled',
+      'Salesforce WCAG 2.2 accessibility Release Updates (Page Headers, Modal Windows, Date Pickers, Popovers, Utility Bars, Record Headers) are enforced in Summer \'26. Orgs that have not enabled them will have them force-applied, which may alter page layouts.',
+      'Enable the chained WCAG 2.2 accessibility Release Updates in Setup → Release Updates in order: Update 1 first (Page Headers & Modals), then Update 2 (Date Pickers, Popovers, etc.). Test Experience Cloud pages and Lightning pages for layout changes before Summer \'26 enforcement.',
+      {}
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Experience Cloud', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -1446,6 +1574,54 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
       'A high number of connected apps is difficult to govern and audit. Each app is a potential OAuth entry point.',
       'Establish a connected app governance process. Assign an owner to each app and remove any that are unused.',
       { records: apps.map((a: any) => ({ name: a.Name, detail: a.Description ? undefined : 'No description' })) }
+    ));
+  }
+
+  // Active Outbound Messages — Session IDs retired February 2026
+  const activeOutboundMessages = (data.activeOutboundMessages || []);
+  if (activeOutboundMessages.length > 0) {
+    items.push(createDebtItem(
+      'connectedAppSecurity',
+      'high',
+      `${activeOutboundMessages.length} Active Outbound Message${activeOutboundMessages.length !== 1 ? 's' : ''} — Session ID Auth Retired Feb 2026`,
+      `Session IDs in Outbound Messages were retired in February 2026 (Spring '26). ${activeOutboundMessages.length} active outbound message${activeOutboundMessages.length !== 1 ? 'es' : ''} found — any that use Session ID authentication are broken.`,
+      'Migrate Outbound Message receiving endpoints to OAuth authentication. Audit each active Outbound Message in Setup → Workflow → Outbound Messages.',
+      { records: activeOutboundMessages.slice(0, 50).map((m: any) => ({ name: m.Name, detail: 'Session ID auth retired Feb 2026 — verify OAuth migration complete' })) }
+    ));
+  }
+
+  // CA-signed certificates with lifespan >200 days — non-compliant since March 2026
+  const longLivedCerts = (data.certificates || []).filter((c: any) => {
+    if (!c.ValidFrom || !c.ExpirationDate) return false;
+    const validFrom = new Date(c.ValidFrom);
+    const expiration = new Date(c.ExpirationDate);
+    const lifespanDays = Math.round((expiration.getTime() - validFrom.getTime()) / (1000 * 60 * 60 * 24));
+    return lifespanDays > 200;
+  });
+  if (longLivedCerts.length > 0) {
+    items.push(createDebtItem(
+      'connectedAppSecurity',
+      'medium',
+      `${longLivedCerts.length} Certificate${longLivedCerts.length !== 1 ? 's' : ''} Exceed 200-Day Maximum Lifespan`,
+      `As of March 2026 (Spring '26), CA-signed certificate lifespans are capped at 200 days (reducing to 100 days March 2027, 47 days March 2029). ${longLivedCerts.length} certificate${longLivedCerts.length !== 1 ? 's' : ''} exceed this limit.`,
+      'Stop certificate pinning and implement automated certificate rotation using the Certificate Metadata API. Assign the Expired Certificate Notification permission to operations staff.',
+      { records: longLivedCerts.slice(0, 50).map((c: any) => {
+        const lifespanDays = Math.round((new Date(c.ExpirationDate).getTime() - new Date(c.ValidFrom).getTime()) / (1000 * 60 * 60 * 24));
+        return { name: c.DeveloperName || c.Id, detail: `${lifespanDays}-day lifespan — max is 200 days (March 2026), 100 days (March 2027)` };
+      }) }
+    ));
+  }
+
+  // Traditional Connected Apps without External Client App equivalents (Spring '26)
+  const externalClientApps = (data.externalClientApps || []);
+  if (apps.length > 0 && externalClientApps.length === 0) {
+    items.push(createDebtItem(
+      'connectedAppSecurity',
+      'medium',
+      `${apps.length} Traditional Connected App${apps.length !== 1 ? 's' : ''} — External Client Apps Are the Spring '26 Standard`,
+      `Connected App creation is disabled by default in Spring '26; External Client Apps (ECAs) are the new standard. ${apps.length} traditional Connected App${apps.length !== 1 ? 's' : ''} found with no External Client Apps configured.`,
+      'Plan migration of Connected Apps to External Client Apps (ECAs) in Setup → External Client Apps. ECAs are metadata-compliant, support modern OAuth flows, and are required for new Spring \'26+ features.',
+      { records: apps.slice(0, 50).map((a: any) => ({ name: a.Name || a.MasterLabel || a.Id, detail: 'Traditional Connected App — ECA is the Spring \'26 standard' })) }
     ));
   }
 
