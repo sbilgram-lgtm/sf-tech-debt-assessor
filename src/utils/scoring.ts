@@ -159,6 +159,32 @@ export function assessConfiguration(
     ));
   }
 
+  // Web-to-Case enabled without CAPTCHA — spam risk
+  const webToCaseSettings = (automation as any).webToCaseSettings;
+  if (webToCaseSettings && webToCaseSettings.EnableWebToCase && !webToCaseSettings.CaseCaptchaEnabledFlag) {
+    items.push(createDebtItem(
+      'configuration',
+      'high',
+      'Web-to-Case Enabled Without CAPTCHA — Spam Risk',
+      'Web-to-Case is active but CAPTCHA is not enabled. Unprotected web forms are open to spam bots that inflate case volume, consume org limits, and pollute reporting.',
+      'Enable CAPTCHA on Web-to-Case in Setup → Feature Settings → Service → Web-to-Case. Use reCAPTCHA v3 (invisible) to avoid friction for legitimate customers.',
+      {}
+    ));
+  }
+
+  // Active Case Auto-Response Rules (legacy)
+  const caseAutoResponseRules = (automation as any).caseAutoResponseRules || [];
+  if (caseAutoResponseRules.length > 0) {
+    items.push(createDebtItem(
+      'configuration',
+      'low',
+      `${caseAutoResponseRules.length} Active Case Auto-Response Rule${caseAutoResponseRules.length !== 1 ? 's' : ''} — Legacy`,
+      'Auto-Response Rules are a legacy mechanism. They cannot be triggered by flows, lack dynamic content, and are superseded by Flow-based email responses that support personalization and conditional logic.',
+      'Migrate Auto-Response Rules to Flow-triggered email actions using Email Alerts or Messaging components for richer, conditional responses.',
+      { records: caseAutoResponseRules.slice(0, 50).map((r: any) => ({ name: r.Name, detail: 'Active Auto-Response Rule' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -848,6 +874,64 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       { count: data.callCenters }));
   }
 
+  // ── Field Service Lightning ───────────────────────────────────────────────────
+
+  if (data.fslEnabled) {
+    // FSL-1: FSL enabled but no active Service Territories
+    const serviceTerritories = data.serviceTerritories || [];
+    if (serviceTerritories.length === 0) {
+      items.push(createDebtItem('serviceCloud', 'critical',
+        'Field Service Lightning Enabled — No Active Service Territories Configured',
+        'FSL is enabled but no Service Territories exist. The scheduling engine cannot dispatch or optimize work without territory boundaries — all appointment booking and Gantt scheduling will fail.',
+        'Create Service Territories in Setup → Field Service → Service Territories. Define at least one territory and assign operating hours before enabling scheduling.',
+        {}));
+    }
+
+    // FSL-2: Service Resources without skills
+    const serviceResources = data.serviceResources || [];
+    if (serviceResources.length > 0 && (data.workTypes || []).length > 0) {
+      items.push(createDebtItem('serviceCloud', 'high',
+        `${serviceResources.length} Service Resource${serviceResources.length !== 1 ? 's' : ''} May Lack Skills — Skills-Based Scheduling Unusable`,
+        'FSL is active with Work Types defined, but Service Resources may have no skills assigned. Skills-based scheduling will fall back to availability-only routing, ignoring technician competencies.',
+        'Assign skills to each Service Resource in Setup → Field Service → Service Resources. Create Skill records and map them to Work Types for accurate scheduling.',
+        { records: serviceResources.slice(0, 30).map((r: any) => ({ name: r.Name, detail: 'Verify skills are assigned' })) }));
+    }
+
+    // FSL-3: Work Types without default duration
+    const workTypesNoDuration = (data.workTypes || []).filter((wt: any) =>
+      !wt.EstimatedDuration || wt.EstimatedDuration === 0
+    );
+    if (workTypesNoDuration.length > 0) {
+      items.push(createDebtItem('serviceCloud', 'high',
+        `${workTypesNoDuration.length} Work Type${workTypesNoDuration.length !== 1 ? 's' : ''} Without Default Duration`,
+        'Work Types with no estimated duration cause the scheduler to create zero-length appointments. This makes the Gantt unusable and produces invalid travel time calculations.',
+        'Set a default EstimatedDuration on each Work Type in Setup → Field Service → Work Types. Use realistic average durations to improve schedule quality.',
+        { records: workTypesNoDuration.slice(0, 30).map((wt: any) => ({ name: wt.Name, detail: 'EstimatedDuration = 0 or null' })) }));
+    }
+
+    // FSL-4: No Scheduling Policies (using Operating Hours as proxy)
+    const schedulingPolicies = data.schedulingPolicies || [];
+    if (schedulingPolicies.length === 0 && serviceTerritories.length > 0) {
+      items.push(createDebtItem('serviceCloud', 'medium',
+        'No Operating Hours Configured for FSL Territories',
+        'Service Territories exist but no Operating Hours are defined. The FSL scheduler will book appointments outside business hours, causing SLA violations and agent dissatisfaction.',
+        'Create Operating Hours records in Setup → Field Service → Operating Hours and assign them to each Service Territory and Service Resource.',
+        {}));
+    }
+  }
+
+  // ── Messaging Compliance ──────────────────────────────────────────────────────
+
+  // MSG-5: Messaging Channels without OPTOUT keyword — TCPA/GDPR risk
+  const messagingChannelsNoOptOut = data.messagingChannelsNoOptOut || [];
+  if (messagingChannelsNoOptOut.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${messagingChannelsNoOptOut.length} Messaging Channel${messagingChannelsNoOptOut.length !== 1 ? 's' : ''} Without OPTOUT Keyword — TCPA/GDPR Risk`,
+      `${messagingChannelsNoOptOut.length} active Messaging Channel${messagingChannelsNoOptOut.length !== 1 ? 's' : ''} have no OPTOUT keyword configured. Customers cannot opt out of messages, violating TCPA (US), GDPR (EU), and CASL (Canada). This is a compliance and legal liability.`,
+      'Configure an OPTOUT keyword on each Messaging Channel in Setup → Messaging → Messaging Settings. Map the keyword to a Flow that immediately stops outbound messages and updates the contact record.',
+      { records: messagingChannelsNoOptOut.slice(0, 30).map((ch: any) => ({ name: ch.DeveloperName, detail: `${ch.MessagingPlatformType} — no OPTOUT keyword` })) }));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1114,6 +1198,19 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       'The Asynchronous Sharing Recalculation Release Update is available in Spring \'26 and enforced in Spring \'27. Apex and Flows relying on synchronous sharing recalculation after role/group changes will break when enforced.',
       'Enable the Asynchronous Sharing Recalculation Release Update in Setup → Release Updates and test Apex classes and Flows that modify role hierarchy, group membership, or sharing rules.',
       {}
+    ));
+  }
+
+  // Guest user profiles with Case read access — Service Cloud data exposure risk
+  const caseGuestProfiles = (data.caseGuestProfiles || []);
+  if (caseGuestProfiles.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'critical',
+      `${caseGuestProfiles.length} Guest Profile${caseGuestProfiles.length !== 1 ? 's' : ''} with Case Read Access — Unauthenticated Data Exposure`,
+      `${caseGuestProfiles.length} guest user profile${caseGuestProfiles.length !== 1 ? 's' : ''} have Read access to the Case object. Unauthenticated site visitors can query and view case records — including customer support history, account details, and email threads — without logging in.`,
+      'Remove Case Read access from all guest user profiles in Setup → Sites → Guest User Profile. Ensure Case OWD is set to Private. Use authenticated Experience Cloud portals if customers need case visibility.',
+      { records: caseGuestProfiles.slice(0, 20).map((p: any) => ({ name: p.Name || p.Id, detail: `Guest profile with Case Read${p.PermissionsEditCases ? ' + Edit' : ''} access` })) }
     ));
   }
 
@@ -2052,6 +2149,18 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
         const lifespanDays = Math.round((new Date(c.ExpirationDate).getTime() - new Date(c.ValidFrom).getTime()) / (1000 * 60 * 60 * 24));
         return { name: c.DeveloperName || c.Id, detail: `${lifespanDays}-day lifespan — max is 200 days (March 2026), 100 days (March 2027)` };
       }) }
+    ));
+  }
+
+  // CTI adapter connected apps without session timeout
+  const ctiApps = (data.ctiConnectedApps || []);
+  const ctiNoTimeout = ctiApps.filter((a: any) => !a.MobileSessionTimeout || a.MobileSessionTimeout === 'None');
+  if (ctiNoTimeout.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'medium',
+      `${ctiNoTimeout.length} CTI / Telephony Connected App${ctiNoTimeout.length !== 1 ? 's' : ''} Without Session Timeout`,
+      'CTI adapter connected apps with no session timeout allow agent telephony sessions to remain authenticated indefinitely after the browser is closed. A shared workstation or unattended session creates an open channel for calls.',
+      'Set a session timeout on CTI connected apps in Setup → App Manager → Manage → Edit Policies. 8-hour maximum is recommended for agent workstations.',
+      { records: ctiNoTimeout.map((a: any) => ({ name: a.Name, detail: 'CTI/Telephony app — no session timeout' })) }
     ));
   }
 

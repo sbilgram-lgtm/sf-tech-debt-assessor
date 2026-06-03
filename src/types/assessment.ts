@@ -36,6 +36,8 @@ export interface AutomationData {
   allFlows: any[];
   approvalProcesses: any[];
   einsteinFlowActions: any[];
+  webToCaseSettings: any;
+  caseAutoResponseRules: any[];
 }
 
 export interface ApexData {
@@ -92,6 +94,14 @@ export interface ServiceCloudData {
   activeRecommendationStrategyCount: number;
   callCenters: number;
   softphoneLayouts: number;
+  // Field Service Lightning
+  fslEnabled: boolean;
+  serviceTerritories: any[];
+  serviceResources: any[];
+  workTypes: any[];
+  schedulingPolicies: any[];
+  // Messaging compliance
+  messagingChannelsNoOptOut: any[];
 }
 
 export interface ValidationRuleData {
@@ -121,6 +131,7 @@ export interface SharingSecurityData {
   privilegedPermSets: any[];
   asyncSharingUpdateActive: boolean;
   activeOutboundMessages: any[];
+  caseGuestProfiles: any[];
 }
 
 export interface IntegrationData {
@@ -222,6 +233,7 @@ export interface ConnectedAppSecurityData {
   activeOutboundMessages: any[];
   certificates: any[];
   externalClientApps: any[];
+  ctiConnectedApps: any[];
 }
 
 export interface LwcData {

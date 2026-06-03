@@ -118,11 +118,11 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 
 | Category | What it checks |
 |---|---|
-| **Configuration** | Workflow Rules, Process Builders, automation overlap, validation rules; Classic Approval Processes ⚠️ Spring '26; legacy Einstein for Flow actions ⚠️ Spring '26 |
+| **Configuration** | Workflow Rules, Process Builders, automation overlap, validation rules; Classic Approval Processes ⚠️ Spring '26; legacy Einstein for Flow actions ⚠️ Spring '26; Web-to-Case without CAPTCHA; legacy Case Auto-Response Rules |
 | **Apex Code Quality** | 14 checks across triggers, classes, API versions, security patterns, and FLS enforcement — see detail table below |
 | **Data Model** | Object/field descriptions, field sprawl, object count |
-| **Service Cloud** | 34 checks across case configuration, Omni-Channel routing/capacity, Knowledge governance, Entitlement SLAs, Email-to-Case, Live Chat/MIAW migration, and Service Console — see detail table below |
-| **Sharing & Security** | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens; privileged users without phishing-resistant MFA ⚠️ enforced May 2026; active Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; Async Sharing Recalculation Release Update ⚠️ enforced Spring '27 |
+| **Service Cloud** | 39 checks across case configuration, Omni-Channel routing/capacity, Knowledge governance, Entitlement SLAs, Email-to-Case, Live Chat/MIAW migration, Service Console, Field Service Lightning, and Messaging compliance — see detail table below |
+| **Sharing & Security** | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access; privileged users without phishing-resistant MFA ⚠️ enforced May 2026; active Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; Async Sharing Recalculation Release Update ⚠️ enforced Spring '27 |
 | **Integrations** | Named Credentials usage, hardcoded endpoints, remote site SSL, connected apps; Apex classes on API versions ≤30 ⚠️ retired Summer '25 — broken in production |
 | **Test Coverage** | Zero-coverage classes, below-75% components, test class ratio |
 | **Org Limits** | All org limits — flags anything ≥50% consumed |
@@ -136,7 +136,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Einstein & AI Usage** | Einstein/Agentforce enablement, prompt templates, inactive bot definitions, inactive AI Applications, Case Classification training data gap |
 | **Territory Management** | Draft models, multiple active models, inactive assignment rules |
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement, clickjack protection ⚠️ critical, XSS protection, content sniffing protection; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
-| **Connected App Security** | Session timeouts, stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
+| **Connected App Security** | Session timeouts (including CTI/Telephony adapters), stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
 | **LWC & Aura Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
 
 ### Apex Code Quality — All 14 Checks
@@ -158,7 +158,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 13 | SOAP `login()` usage ⚠️ disabled by default Spring '26; hard retirement Summer '27 | Medium |
 | 14 | Hardcoded `login.salesforce.com` URLs ⚠️ My Domain enforced Spring '26 | High |
 
-### Service Cloud — All 34 Checks
+### Service Cloud — All 39 Checks
 
 | # | Check | Area | Severity |
 |---|---|---|---|
@@ -196,6 +196,11 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 32 | No active Macros configured — agent actions fully manual | Service Console | High |
 | 33 | No active Einstein Next Best Action Recommendation Strategies | Service Console | High |
 | 34 | Call Center configured but no default Softphone Layout assigned | Service Console | Medium |
+| 35 | FSL enabled but no active Service Territories — scheduling engine cannot dispatch | Field Service | Critical |
+| 36 | Service Resources may lack skills — skills-based scheduling unusable | Field Service | High |
+| 37 | Work Types without default duration — zero-length appointments | Field Service | High |
+| 38 | No Operating Hours on FSL territories — scheduler books outside business hours | Field Service | Medium |
+| 39 | Messaging Channels without OPTOUT keyword — TCPA/GDPR compliance risk | Messaging | High |
 
 ### LWC & Aura Components — All 34 Checks
 

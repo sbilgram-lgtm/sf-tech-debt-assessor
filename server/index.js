@@ -197,9 +197,11 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       f.ProcessType === 'AutoLaunchedFlow' || f.ProcessType === 'Flow'
     );
 
-    const [approvalProcesses, einsteinFlowActions] = await Promise.all([
+    const [approvalProcesses, einsteinFlowActions, webToCaseSettingsRes, caseAutoResponseRulesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 50"),
-      safeQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20")
+      safeQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
+      safeQuery(conn, "SELECT EnableWebToCase, CaseCaptchaEnabledFlag FROM WebToCaseSettings LIMIT 1").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, Name, Active FROM AutoResponseRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
     res.json({
@@ -208,7 +210,9 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       flows: actualFlows,
       allFlows: flows.records,
       approvalProcesses: approvalProcesses.records || [],
-      einsteinFlowActions: einsteinFlowActions.records || []
+      einsteinFlowActions: einsteinFlowActions.records || [],
+      webToCaseSettings: (webToCaseSettingsRes.records || [])[0] || null,
+      caseAutoResponseRules: caseAutoResponseRulesRes.records || []
     });
   } catch (err) {
     console.error('Automation assessment error:', err);
@@ -390,6 +394,31 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       uncategorizedArticleCount = Math.max(0, total - cat);
     } catch(e) {}
 
+    // Field Service Lightning
+    let fslEnabled = false;
+    let serviceTerritories = { records: [] };
+    let serviceResources = { records: [] };
+    let workTypes = { records: [] };
+    let schedulingPolicies = { records: [] };
+    try {
+      const fslSettings = await safeQuery(conn, "SELECT FieldServiceEnabled FROM FieldServiceSettings LIMIT 1");
+      if ((fslSettings.records[0] || {}).FieldServiceEnabled) {
+        fslEnabled = true;
+        [serviceTerritories, serviceResources, workTypes, schedulingPolicies] = await Promise.all([
+          safeQuery(conn, "SELECT Id, Name, IsActive FROM ServiceTerritory WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
+          safeQuery(conn, "SELECT Id, Name, IsActive FROM ServiceResource WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
+          safeQuery(conn, "SELECT Id, Name, DurationType, EstimatedDuration FROM WorkType LIMIT 50").catch(() => ({ records: [] })),
+          safeQuery(conn, "SELECT Id, Name FROM OperatingHours LIMIT 50").catch(() => ({ records: [] }))
+        ]);
+      }
+    } catch(e) {}
+
+    // Messaging compliance — channels without OPTOUT keyword
+    let messagingChannelsNoOptOut = { records: [] };
+    try {
+      messagingChannelsNoOptOut = await safeQuery(conn, "SELECT Id, DeveloperName, MessagingPlatformType FROM MessagingChannel WHERE IsActive = true AND OptOutKeyword = null LIMIT 50");
+    } catch(e) {}
+
     res.json({
       caseRecordTypes: caseRecordTypes.records || [],
       emailToCase: [],
@@ -423,7 +452,13 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       activeMacroCount: (macros.records[0] || {}).cnt || 0,
       activeRecommendationStrategyCount: (recommendationStrategies.records[0] || {}).cnt || 0,
       callCenters: (callCenters.records[0] || {}).cnt || 0,
-      softphoneLayouts: (softphoneLayouts.records[0] || {}).cnt || 0
+      softphoneLayouts: (softphoneLayouts.records[0] || {}).cnt || 0,
+      fslEnabled,
+      serviceTerritories: serviceTerritories.records || [],
+      serviceResources: serviceResources.records || [],
+      workTypes: workTypes.records || [],
+      schedulingPolicies: schedulingPolicies.records || [],
+      messagingChannelsNoOptOut: messagingChannelsNoOptOut.records || []
     });
   } catch (err) {
     console.error('Service Cloud assessment error:', err);
@@ -583,10 +618,11 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       );
     } catch (e) { /* optional */ }
 
-    const [privilegedUsersRes, asyncSharingUpdateRes, outboundMsgRes] = await Promise.all([
+    const [privilegedUsersRes, asyncSharingUpdateRes, outboundMsgRes, caseGuestProfilesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name FROM PermissionSet WHERE (PermissionsModifyAllData = true OR PermissionsViewAllData = true OR PermissionsAuthorApex = true OR PermissionsCustomizeApplication = true) AND IsCustom = true LIMIT 20"),
       safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName = 'AsyncSharingRecalculation' LIMIT 1"),
-      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20")
+      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20"),
+      safeQuery(conn, "SELECT Id, Name, PermissionsReadCases, PermissionsEditCases FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.UserType = 'Guest' AND PermissionsReadCases = true LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
     res.json({
@@ -611,7 +647,8 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       guestAccessObjects: guestAccessObjects.records || [],
       privilegedPermSets: privilegedUsersRes.records || [],
       asyncSharingUpdateActive: (asyncSharingUpdateRes.records || []).length > 0,
-      activeOutboundMessages: outboundMsgRes.records || []
+      activeOutboundMessages: outboundMsgRes.records || [],
+      caseGuestProfiles: caseGuestProfilesRes.records || []
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -977,10 +1014,11 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
       "SELECT Id, Name, Label FROM PermissionSet WHERE IsCustom = true LIMIT 200"
     );
 
-    const [activeOutboundMsgs, expiredCerts, externalClientApps] = await Promise.all([
+    const [activeOutboundMsgs, expiredCerts, externalClientApps, ctiConnectedAppsRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20"),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, ValidFrom, ExpirationDate FROM Certificate WHERE ExpirationDate != null LIMIT 50"),
-      safeQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM ExternalClientApplication LIMIT 50")
+      safeQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM ExternalClientApplication LIMIT 50"),
+      safeQuery(conn, "SELECT Id, Name, MobileSessionTimeout FROM ConnectedApplication WHERE Name LIKE '%CTI%' OR Name LIKE '%Telephony%' OR Name LIKE '%OpenCTI%' OR Name LIKE '%Voice%' LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
     res.json({
@@ -990,7 +1028,8 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
       permSets: permSetAccess.records || [],
       activeOutboundMessages: activeOutboundMsgs.records || [],
       certificates: expiredCerts.records || [],
-      externalClientApps: externalClientApps.records || []
+      externalClientApps: externalClientApps.records || [],
+      ctiConnectedApps: ctiConnectedAppsRes.records || []
     });
   } catch (err) {
     console.error('Connected App Security assessment error:', err);
