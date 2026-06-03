@@ -1002,7 +1002,7 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
 app.get('/api/assess/lwc', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources, jsResources, htmlResources] = await Promise.all([
+    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources, jsResources, htmlResources, cssResources] = await Promise.all([
       safeToolingQuery(conn,
         "SELECT Id, DeveloperName, ApiVersion, Description, IsExposed, ManageableState, LastModifiedDate " +
         "FROM LightningComponentBundle WHERE NamespacePrefix = null LIMIT 500"
