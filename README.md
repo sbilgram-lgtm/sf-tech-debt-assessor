@@ -138,6 +138,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement, clickjack protection ⚠️ critical, XSS protection, content sniffing protection; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
 | **Connected App Security** | Session timeouts (including CTI/Telephony adapters), stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
 | **LWC & Aura Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
+| **OmniStudio** | Detects native OmniStudio and managed package (Vlocity) installs. Checks inactive OmniScripts, Integration Procedures, DataRaptors/Data Transforms, and FlexCards; missing descriptions; stale components (2+ years); multiple active versions of the same OmniScript; high DataRaptor volume |
 
 ### Apex Code Quality — All 14 Checks
 
@@ -240,6 +241,26 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 32 | High total Lightning page count (>50) — governance flag | Low |
 | 33 | `CustomEvent` with `bubbles:true` AND `composed:true` — Shadow DOM boundary breach | High |
 | 34 | SLDS class overrides with hardcoded hex/RGB colors — breaks theme tokens | Medium |
+
+### OmniStudio — All Checks
+
+Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or managed package Vlocity (any namespace variant: `vlocity_cmt__`, `vlocity_ins__`, `vlocity_ps__`). Skips gracefully if OmniStudio is not installed.
+
+| # | Check | Component | Severity |
+|---|---|---|---|
+| 1 | Multiple active versions of the same OmniScript type | OmniScripts | High |
+| 2 | Inactive OmniScripts | OmniScripts | Medium |
+| 3 | Inactive Integration Procedures | Integration Procedures | Medium |
+| 4 | Inactive DataRaptors / Data Transforms | DataRaptors | Medium |
+| 5 | High DataRaptor / Data Transform volume (>100) | DataRaptors | Medium |
+| 6 | OmniScripts without descriptions | OmniScripts | Low |
+| 7 | Integration Procedures without descriptions | Integration Procedures | Low |
+| 8 | DataRaptors / Data Transforms without descriptions | DataRaptors | Low |
+| 9 | OmniScripts not modified in 2+ years | OmniScripts | Low |
+| 10 | Integration Procedures not modified in 2+ years | Integration Procedures | Low |
+| 11 | DataRaptors / Data Transforms not modified in 2+ years | DataRaptors | Low |
+| 12 | Inactive FlexCards | FlexCards | Low |
+| 13 | FlexCards not modified in 2+ years | FlexCards | Low |
 
 ### Spring '26 / Summer '26 Breaking Changes Summary
 
