@@ -2778,6 +2778,38 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
     ));
   }
 
+  // Test Mode scripts — should never be active in production
+  const testModeScripts = data.omniScripts.filter((s: any) => s.IsActive && s.IsTestMode);
+  if (testModeScripts.length > 0) {
+    items.push(createDebtItem('omniStudio', 'critical',
+      `${testModeScripts.length} Active OmniScripts in Test Mode`,
+      'OmniScripts with Test Mode enabled expose debugging information to end users and bypass production validation logic. This should never be active in production.',
+      'Disable Test Mode on all active OmniScripts immediately. Test Mode is only for developer sandboxes.',
+      { records: testModeScripts.map((s: any) => ({ name: s.Name, detail: `${s.Type}/${s.SubType || ''}` })) }
+    ));
+  }
+
+  const testModeIPs = data.integrationProcedures.filter((ip: any) => ip.IsActive && ip.IsTestMode);
+  if (testModeIPs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'critical',
+      `${testModeIPs.length} Active Integration Procedures in Test Mode`,
+      'Active Integration Procedures in Test Mode expose debugging output and bypass production logic. This is a critical configuration error in production.',
+      'Disable Test Mode on all active Integration Procedures immediately.',
+      { records: testModeIPs.map((ip: any) => ({ name: ip.Name })) }
+    ));
+  }
+
+  // LWC compilation not enabled (native only — IsLvtEnabled = false)
+  const notLwcCompiled = data.omniScripts.filter((s: any) => s.IsActive && s.IsLvtEnabled === false);
+  if (notLwcCompiled.length > 0) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${notLwcCompiled.length} Active OmniScripts Without LWC Compilation`,
+      'OmniScripts without LWC (Lightning Web Runtime) compilation enabled run in the slower interpreted mode. This is a significant performance and scalability best practice violation.',
+      'Enable LWC compilation on all active OmniScripts. Go to each OmniScript and toggle "LWR Enabled" to active.',
+      { records: notLwcCompiled.map((s: any) => ({ name: s.Name, detail: `${s.Type}/${s.SubType || ''}` })) }
+    ));
+  }
+
   // ── Integration Procedures ───────────────────────────────────────────────────
 
   const inactiveIPs = data.integrationProcedures.filter((ip: any) => !ip.IsActive);
@@ -2842,6 +2874,18 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
     ));
   }
 
+  // Turbo Extract not enabled on Extract DataRaptors
+  const extractDTs = data.dataTransforms.filter((dt: any) => dt.IsActive && (dt.Type === 'Extract' || dt.Type === 'Retrieve'));
+  const noTurboExtract = extractDTs.filter((dt: any) => !dt.IsTurboExtract);
+  if (noTurboExtract.length > 0) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${noTurboExtract.length} Extract DataRaptors Without Turbo Extract`,
+      'Turbo Extract is a Salesforce-recommended best practice for Extract-type DataRaptors. Without it, queries run in standard mode which is significantly slower on large data volumes.',
+      'Enable Turbo Extract on all Extract-type DataRaptors. Open each DataRaptor and check the Turbo Extract option.',
+      { records: noTurboExtract.map((dt: any) => ({ name: dt.Name })) }
+    ));
+  }
+
   // ── FlexCards ────────────────────────────────────────────────────────────────
 
   const inactiveCards = data.flexCards.filter((c: any) => !c.IsActive);
@@ -2862,6 +2906,31 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
       'Review stale FlexCards with stakeholders. Deactivate or delete those that are no longer in use.',
       { records: staleCards.map((c: any) => ({ name: c.Name, detail: new Date(c.LastModifiedDate).toLocaleDateString() })) }
     ));
+  }
+
+  const noDescCards = data.flexCards.filter((c: any) => !c.Description || c.Description.trim() === '');
+  if (noDescCards.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${noDescCards.length} FlexCards Without Descriptions`,
+      'FlexCards without descriptions make it difficult to understand their purpose, owning team, or the OmniScript they support.',
+      'Add descriptions to all FlexCards documenting their business purpose and related components.',
+      { records: noDescCards.map((c: any) => ({ name: c.Name })) }
+    ));
+  }
+
+  // ── Managed package version ───────────────────────────────────────────────────
+  // Current Vlocity/OmniStudio managed package major version is 940+
+  // Flag if below 930 (significantly outdated)
+  if (data.flavor === 'managed' && data.managedPackageVersion) {
+    const major = parseInt(data.managedPackageVersion.split('.')[0], 10);
+    if (!isNaN(major) && major < 930) {
+      items.push(createDebtItem('omniStudio', 'medium',
+        `OmniStudio Managed Package Version ${data.managedPackageVersion} — Outdated`,
+        'The installed Vlocity/OmniStudio managed package is significantly out of date. Older versions miss critical bug fixes, security patches, and compatibility updates for newer Salesforce API versions.',
+        'Upgrade the OmniStudio managed package to the latest available version via the Salesforce AppExchange or your Vlocity/Salesforce representative.',
+        { version: data.managedPackageVersion }
+      ));
+    }
   }
 
   // ── Volume flags ─────────────────────────────────────────────────────────────

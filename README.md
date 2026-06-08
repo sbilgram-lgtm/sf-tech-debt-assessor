@@ -138,7 +138,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement, clickjack protection ⚠️ critical, XSS protection, content sniffing protection; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
 | **Connected App Security** | Session timeouts (including CTI/Telephony adapters), stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
 | **LWC & Aura Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
-| **OmniStudio** | Detects native OmniStudio and managed package (Vlocity) installs. Checks inactive OmniScripts, Integration Procedures, DataRaptors/Data Transforms, and FlexCards; missing descriptions; stale components (2+ years); multiple active versions of the same OmniScript; high DataRaptor volume |
+| **OmniStudio** | 19 checks across OmniScripts, Integration Procedures, DataRaptors/Data Transforms, and FlexCards. Detects native OmniStudio and all Vlocity managed package namespace variants. Checks Test Mode active in production, LWC compilation, Turbo Extract, version sprawl, managed package currency, missing descriptions, inactive and stale components |
 
 ### Apex Code Quality — All 14 Checks
 
@@ -248,19 +248,25 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 | # | Check | Component | Severity |
 |---|---|---|---|
-| 1 | Multiple active versions of the same OmniScript type | OmniScripts | High |
-| 2 | Inactive OmniScripts | OmniScripts | Medium |
-| 3 | Inactive Integration Procedures | Integration Procedures | Medium |
-| 4 | Inactive DataRaptors / Data Transforms | DataRaptors | Medium |
-| 5 | High DataRaptor / Data Transform volume (>100) | DataRaptors | Medium |
-| 6 | OmniScripts without descriptions | OmniScripts | Low |
-| 7 | Integration Procedures without descriptions | Integration Procedures | Low |
-| 8 | DataRaptors / Data Transforms without descriptions | DataRaptors | Low |
-| 9 | OmniScripts not modified in 2+ years | OmniScripts | Low |
-| 10 | Integration Procedures not modified in 2+ years | Integration Procedures | Low |
-| 11 | DataRaptors / Data Transforms not modified in 2+ years | DataRaptors | Low |
-| 12 | Inactive FlexCards | FlexCards | Low |
-| 13 | FlexCards not modified in 2+ years | FlexCards | Low |
+| 1 | Active OmniScripts in Test Mode — exposes debug output to end users | OmniScripts | Critical |
+| 2 | Active Integration Procedures in Test Mode | Integration Procedures | Critical |
+| 3 | Multiple active versions of the same OmniScript type (version sprawl) | OmniScripts | High |
+| 4 | Inactive OmniScripts | OmniScripts | Medium |
+| 5 | Inactive Integration Procedures | Integration Procedures | Medium |
+| 6 | Inactive DataRaptors / Data Transforms | DataRaptors | Medium |
+| 7 | Active OmniScripts without LWC compilation enabled (native orgs) | OmniScripts | Medium |
+| 8 | Extract DataRaptors without Turbo Extract enabled | DataRaptors | Medium |
+| 9 | High DataRaptor / Data Transform volume (>100) | DataRaptors | Medium |
+| 10 | Outdated OmniStudio managed package version (managed package orgs) | Package | Medium |
+| 11 | OmniScripts without descriptions | OmniScripts | Low |
+| 12 | Integration Procedures without descriptions | Integration Procedures | Low |
+| 13 | DataRaptors / Data Transforms without descriptions | DataRaptors | Low |
+| 14 | FlexCards without descriptions | FlexCards | Low |
+| 15 | OmniScripts not modified in 2+ years | OmniScripts | Low |
+| 16 | Integration Procedures not modified in 2+ years | Integration Procedures | Low |
+| 17 | DataRaptors / Data Transforms not modified in 2+ years | DataRaptors | Low |
+| 18 | Inactive FlexCards | FlexCards | Low |
+| 19 | FlexCards not modified in 2+ years | FlexCards | Low |
 
 ### Spring '26 / Summer '26 Breaking Changes Summary
 

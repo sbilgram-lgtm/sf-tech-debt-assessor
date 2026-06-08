@@ -243,6 +243,7 @@ export interface OmniStudioData {
   integrationProcedures: any[];
   dataTransforms: any[];
   flexCards: any[];
+  managedPackageVersion: string | null;
 }
 
 export interface LwcData {
