@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -234,6 +234,15 @@ export interface ConnectedAppSecurityData {
   certificates: any[];
   externalClientApps: any[];
   ctiConnectedApps: any[];
+}
+
+export interface OmniStudioData {
+  installed: boolean;
+  flavor: 'native' | 'managed' | null;
+  omniScripts: any[];
+  integrationProcedures: any[];
+  dataTransforms: any[];
+  flexCards: any[];
 }
 
 export interface LwcData {

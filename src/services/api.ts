@@ -104,3 +104,7 @@ export async function getConnectedAppSecurityData() {
 export async function getLwcData() {
   return fetchApi('/api/assess/lwc');
 }
+
+export async function getOmniStudioData() {
+  return fetchApi('/api/assess/omnistudio');
+}

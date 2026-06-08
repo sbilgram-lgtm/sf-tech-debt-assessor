@@ -1107,6 +1107,84 @@ app.get('/api/assess/territory', requireAuth, async (req, res) => {
   }
 });
 
+// ─── OmniStudio ───────────────────────────────────────────────────────────────
+app.get('/api/assess/omnistudio', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    // Detect whether org uses native OmniStudio or managed package (Vlocity)
+    const describeUrl = `${req.session.instanceUrl}/services/data/v59.0/sobjects`;
+    const describeResp = await fetch(describeUrl, { headers: { Authorization: `Bearer ${req.session.accessToken}` } });
+    const describeJson = await describeResp.json();
+    const objectNames = (describeJson.sobjects || []).map((o) => o.name);
+
+    const isNative  = objectNames.includes('OmniProcess');
+    const isManaged = objectNames.includes('vlocity_cmt__OmniScript__c') ||
+                      objectNames.includes('vlocity_ins__OmniScript__c') ||
+                      objectNames.includes('vlocity_ps__OmniScript__c');
+
+    if (!isNative && !isManaged) {
+      return res.json({ installed: false, flavor: null, omniScripts: [], integrationProcedures: [], dataTransforms: [], flexCards: [] });
+    }
+
+    const flavor = isNative ? 'native' : 'managed';
+    const ns = isManaged
+      ? (objectNames.includes('vlocity_cmt__OmniScript__c') ? 'vlocity_cmt__'
+        : objectNames.includes('vlocity_ins__OmniScript__c') ? 'vlocity_ins__'
+        : 'vlocity_ps__')
+      : '';
+
+    let omniScripts = [], integrationProcedures = [], dataTransforms = [], flexCards = [];
+
+    if (isNative) {
+      const [scripts, ips, dts, cards] = await Promise.all([
+        safeQuery(conn, "SELECT Id, Name, Type, SubType, IsActive, LastModifiedDate, Description FROM OmniProcess WHERE Type = 'OmniScript' LIMIT 200"),
+        safeQuery(conn, "SELECT Id, Name, Type, SubType, IsActive, LastModifiedDate, Description FROM OmniProcess WHERE Type = 'IntegrationProcedure' LIMIT 200"),
+        safeQuery(conn, "SELECT Id, Name, Type, IsActive, LastModifiedDate, Description FROM OmniDataTransform LIMIT 200"),
+        safeQuery(conn, "SELECT Id, Name, IsActive, LastModifiedDate, Description FROM OmniUiCard LIMIT 200"),
+      ]);
+      omniScripts          = scripts.records || [];
+      integrationProcedures = ips.records    || [];
+      dataTransforms       = dts.records     || [];
+      flexCards            = cards.records   || [];
+    } else {
+      const [scripts, ips, dts, cards] = await Promise.all([
+        safeQuery(conn, `SELECT Id, Name, ${ns}Type__c, ${ns}SubType__c, ${ns}IsActive__c, LastModifiedDate, ${ns}Description__c FROM ${ns}OmniScript__c WHERE ${ns}Type__c != 'IntegrationProcedure' LIMIT 200`),
+        safeQuery(conn, `SELECT Id, Name, ${ns}Type__c, ${ns}SubType__c, ${ns}IsActive__c, LastModifiedDate, ${ns}Description__c FROM ${ns}OmniScript__c WHERE ${ns}Type__c = 'IntegrationProcedure' LIMIT 200`),
+        safeQuery(conn, `SELECT Id, Name, ${ns}MapType__c, ${ns}IsActive__c, LastModifiedDate, ${ns}Description__c FROM ${ns}DRBundle__c LIMIT 200`),
+        safeQuery(conn, `SELECT Id, Name, ${ns}Active__c, LastModifiedDate FROM ${ns}VlocityCard__c LIMIT 200`),
+      ]);
+      // Normalize managed package fields to match native shape
+      omniScripts = (scripts.records || []).map(r => ({
+        Id: r.Id, Name: r.Name,
+        Type: r[`${ns}Type__c`], SubType: r[`${ns}SubType__c`],
+        IsActive: r[`${ns}IsActive__c`], LastModifiedDate: r.LastModifiedDate,
+        Description: r[`${ns}Description__c`]
+      }));
+      integrationProcedures = (ips.records || []).map(r => ({
+        Id: r.Id, Name: r.Name,
+        Type: r[`${ns}Type__c`], SubType: r[`${ns}SubType__c`],
+        IsActive: r[`${ns}IsActive__c`], LastModifiedDate: r.LastModifiedDate,
+        Description: r[`${ns}Description__c`]
+      }));
+      dataTransforms = (dts.records || []).map(r => ({
+        Id: r.Id, Name: r.Name,
+        Type: r[`${ns}MapType__c`],
+        IsActive: r[`${ns}IsActive__c`], LastModifiedDate: r.LastModifiedDate,
+        Description: r[`${ns}Description__c`]
+      }));
+      flexCards = (cards.records || []).map(r => ({
+        Id: r.Id, Name: r.Name,
+        IsActive: r[`${ns}Active__c`], LastModifiedDate: r.LastModifiedDate
+      }));
+    }
+
+    res.json({ installed: true, flavor, omniScripts, integrationProcedures, dataTransforms, flexCards });
+  } catch (err) {
+    console.error('OmniStudio assess error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // In production, serve the React build
 if (isProduction) {
   app.use(express.static(path.resolve(__dirname, '../build')));

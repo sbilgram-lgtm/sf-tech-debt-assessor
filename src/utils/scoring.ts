@@ -22,7 +22,8 @@ import {
   TerritoryData,
   ExperienceCloudData,
   ConnectedAppSecurityData,
-  LwcData
+  LwcData,
+  OmniStudioData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -2712,6 +2713,173 @@ export function assessLwc(data: LwcData): CategoryScore {
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return {
     category: 'Lightning Web Components',
+    score: Math.max(0, maxScore - deductions),
+    maxScore,
+    percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),
+    items
+  };
+}
+
+export function assessOmniStudio(data: OmniStudioData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  if (!data.installed) {
+    return { category: 'OmniStudio', score: 100, maxScore: 100, percentage: 100, items: [] };
+  }
+
+  const twoYearsAgo = new Date();
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+
+  // ── OmniScripts ──────────────────────────────────────────────────────────────
+
+  const inactiveScripts = data.omniScripts.filter((s: any) => !s.IsActive);
+  if (inactiveScripts.length > 0) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${inactiveScripts.length} Inactive OmniScripts`,
+      'OmniScripts that are not active are not deployed to end users but still exist as metadata debt.',
+      'Review inactive OmniScripts. Activate scripts that are ready, or delete unused ones to reduce maintenance overhead.',
+      { records: inactiveScripts.map((s: any) => ({ name: s.Name, detail: `${s.Type}/${s.SubType || ''}` })) }
+    ));
+  }
+
+  const noDescScripts = data.omniScripts.filter((s: any) => !s.Description || s.Description.trim() === '');
+  if (noDescScripts.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${noDescScripts.length} OmniScripts Without Descriptions`,
+      'OmniScripts without descriptions make it difficult to understand purpose and ownership.',
+      'Add descriptions to all OmniScripts documenting their purpose, owning team, and related business process.',
+      { records: noDescScripts.map((s: any) => ({ name: s.Name })) }
+    ));
+  }
+
+  const staleScripts = data.omniScripts.filter((s: any) => s.LastModifiedDate && new Date(s.LastModifiedDate) < twoYearsAgo);
+  if (staleScripts.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${staleScripts.length} OmniScripts Not Modified in 2+ Years`,
+      'Long-unchanged OmniScripts may be outdated, use deprecated elements, or no longer serve active business processes.',
+      'Review stale OmniScripts with business stakeholders. Deactivate or archive scripts that are no longer needed.',
+      { records: staleScripts.map((s: any) => ({ name: s.Name, detail: new Date(s.LastModifiedDate).toLocaleDateString() })) }
+    ));
+  }
+
+  // Version sprawl — multiple active versions of same script
+  const scriptVersionGroups: Record<string, number> = {};
+  data.omniScripts.filter((s: any) => s.IsActive).forEach((s: any) => {
+    const key = `${s.Type}/${s.SubType || s.Name}`;
+    scriptVersionGroups[key] = (scriptVersionGroups[key] || 0) + 1;
+  });
+  const versionSprawl = Object.entries(scriptVersionGroups).filter(([, count]) => count > 1);
+  if (versionSprawl.length > 0) {
+    items.push(createDebtItem('omniStudio', 'high',
+      `${versionSprawl.length} OmniScript Types with Multiple Active Versions`,
+      'Multiple active versions of the same OmniScript type creates ambiguity about which version is authoritative and increases maintenance burden.',
+      'Deactivate older versions and ensure only one version per OmniScript type is active at any time.',
+      { records: versionSprawl.map(([name, count]) => ({ name, detail: `${count} active versions` })) }
+    ));
+  }
+
+  // ── Integration Procedures ───────────────────────────────────────────────────
+
+  const inactiveIPs = data.integrationProcedures.filter((ip: any) => !ip.IsActive);
+  if (inactiveIPs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${inactiveIPs.length} Inactive Integration Procedures`,
+      'Inactive Integration Procedures represent undeployed or orphaned automation logic.',
+      'Review inactive Integration Procedures. Activate those that are ready for use or delete unused ones.',
+      { records: inactiveIPs.map((ip: any) => ({ name: ip.Name })) }
+    ));
+  }
+
+  const noDescIPs = data.integrationProcedures.filter((ip: any) => !ip.Description || ip.Description.trim() === '');
+  if (noDescIPs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${noDescIPs.length} Integration Procedures Without Descriptions`,
+      'Integration Procedures without descriptions make it difficult to understand data flow and dependencies.',
+      'Add descriptions documenting input/output schema, calling OmniScripts, and owning team.',
+      { records: noDescIPs.map((ip: any) => ({ name: ip.Name })) }
+    ));
+  }
+
+  const staleIPs = data.integrationProcedures.filter((ip: any) => ip.LastModifiedDate && new Date(ip.LastModifiedDate) < twoYearsAgo);
+  if (staleIPs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${staleIPs.length} Integration Procedures Not Modified in 2+ Years`,
+      'Stale Integration Procedures may have outdated logic or call deprecated APIs.',
+      'Review stale Integration Procedures. Deactivate or delete those that are no longer called.',
+      { records: staleIPs.map((ip: any) => ({ name: ip.Name, detail: new Date(ip.LastModifiedDate).toLocaleDateString() })) }
+    ));
+  }
+
+  // ── DataRaptors / Data Transforms ────────────────────────────────────────────
+
+  const inactiveDTs = data.dataTransforms.filter((dt: any) => !dt.IsActive);
+  if (inactiveDTs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${inactiveDTs.length} Inactive DataRaptors / Data Transforms`,
+      'Inactive DataRaptors represent unused data mapping logic that adds clutter and maintenance overhead.',
+      'Delete DataRaptors that are no longer referenced by any OmniScript or Integration Procedure.',
+      { records: inactiveDTs.map((dt: any) => ({ name: dt.Name, detail: dt.Type || '' })) }
+    ));
+  }
+
+  const noDescDTs = data.dataTransforms.filter((dt: any) => !dt.Description || dt.Description.trim() === '');
+  if (noDescDTs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${noDescDTs.length} DataRaptors / Data Transforms Without Descriptions`,
+      'DataRaptors without descriptions make it impossible to understand what objects and fields they map without opening each one.',
+      'Add descriptions to all DataRaptors documenting source/target objects, owning OmniScript or IP, and data direction.',
+      { records: noDescDTs.map((dt: any) => ({ name: dt.Name })) }
+    ));
+  }
+
+  const staleDTs = data.dataTransforms.filter((dt: any) => dt.LastModifiedDate && new Date(dt.LastModifiedDate) < twoYearsAgo);
+  if (staleDTs.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${staleDTs.length} DataRaptors / Data Transforms Not Modified in 2+ Years`,
+      'Stale DataRaptors may reference deleted fields, outdated objects, or be completely orphaned.',
+      'Review stale DataRaptors with the team. Delete those no longer referenced by active components.',
+      { records: staleDTs.map((dt: any) => ({ name: dt.Name, detail: new Date(dt.LastModifiedDate).toLocaleDateString() })) }
+    ));
+  }
+
+  // ── FlexCards ────────────────────────────────────────────────────────────────
+
+  const inactiveCards = data.flexCards.filter((c: any) => !c.IsActive);
+  if (inactiveCards.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${inactiveCards.length} Inactive FlexCards`,
+      'Inactive FlexCards are not visible to users but remain as maintenance overhead.',
+      'Review inactive FlexCards. Activate those that are ready or delete unused ones.',
+      { records: inactiveCards.map((c: any) => ({ name: c.Name })) }
+    ));
+  }
+
+  const staleCards = data.flexCards.filter((c: any) => c.LastModifiedDate && new Date(c.LastModifiedDate) < twoYearsAgo);
+  if (staleCards.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${staleCards.length} FlexCards Not Modified in 2+ Years`,
+      'Stale FlexCards may display outdated data or reference deprecated components.',
+      'Review stale FlexCards with stakeholders. Deactivate or delete those that are no longer in use.',
+      { records: staleCards.map((c: any) => ({ name: c.Name, detail: new Date(c.LastModifiedDate).toLocaleDateString() })) }
+    ));
+  }
+
+  // ── Volume flags ─────────────────────────────────────────────────────────────
+
+  const totalDTs = data.dataTransforms.length;
+  if (totalDTs > 100) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${totalDTs} DataRaptors / Data Transforms — High Volume`,
+      'A large number of DataRaptors increases deployment complexity and the risk of conflicts during upgrades.',
+      'Audit for duplicate or near-duplicate DataRaptors. Consolidate where possible and enforce a naming and ownership convention.',
+      { count: totalDTs }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return {
+    category: 'OmniStudio',
     score: Math.max(0, maxScore - deductions),
     maxScore,
     percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),
