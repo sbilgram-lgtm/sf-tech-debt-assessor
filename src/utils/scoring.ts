@@ -162,7 +162,7 @@ export function assessConfiguration(
   }
 
   // Web-to-Case enabled without CAPTCHA — spam risk
-  const webToCaseSettings = (automation as any).webToCaseSettings;
+  const webToCaseSettings = automation.webToCaseSettings;
   if (webToCaseSettings && webToCaseSettings.EnableWebToCase && !webToCaseSettings.CaseCaptchaEnabledFlag) {
     items.push(createDebtItem(
       'configuration',
@@ -175,7 +175,7 @@ export function assessConfiguration(
   }
 
   // Active Case Auto-Response Rules (legacy)
-  const caseAutoResponseRules = (automation as any).caseAutoResponseRules || [];
+  const caseAutoResponseRules = automation.caseAutoResponseRules || [];
   if (caseAutoResponseRules.length > 0) {
     items.push(createDebtItem(
       'configuration',
@@ -1712,7 +1712,7 @@ export function assessCustomMetadata(data: CustomMetadataData): CategoryScore {
       `${data.customSettings.length} Custom Settings in Use`,
       'Custom Settings are a legacy configuration pattern. Custom Metadata Types are the modern replacement — they support deployment via change sets and packages.',
       'Migrate Custom Settings to Custom Metadata Types wherever they store org-wide or profile-level configuration.',
-      { records: data.customSettings.map((s:any) => ({ name: s.DeveloperName, detail: s.SettingType || 'Custom Setting' })) }));
+      { records: data.customSettings.map((s:any) => ({ name: s.DeveloperName, detail: s.CustomSettingsType || 'Custom Setting' })) }));
   }
 
   const undocumentedSettings = data.customSettings.filter((s: any) => !s.Description || s.Description.trim() === '');
@@ -1897,16 +1897,17 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
   const allNetworks = data.networks || [];
   const customDomains = data.customDomains || [];
 
-  // 1. Aura/Visualforce templates still in use (legacy)
-  const legacyTemplateSites = activeSites.filter((s: any) =>
-    s.Template && (s.Template.toLowerCase().includes('aura') || s.Template.toLowerCase().includes('visualforce') || s.Template.toLowerCase().includes('aloha'))
+  // 1. Aura/Visualforce templates still in use (legacy) — Template field is on Network, not Site
+  const liveNetworks = allNetworks.filter((n: any) => n.Status === 'Live' || n.Status === 'Active');
+  const legacyTemplateSites = liveNetworks.filter((n: any) =>
+    n.Template && (n.Template.toLowerCase().includes('aura') || n.Template.toLowerCase().includes('visualforce') || n.Template.toLowerCase().includes('aloha'))
   );
   if (legacyTemplateSites.length > 0) {
     items.push(createDebtItem('experienceCloud', 'high',
-      `${legacyTemplateSites.length} Sites Using Legacy Template (Aura/Visualforce)`,
+      `${legacyTemplateSites.length} Experience Sites Using Legacy Template (Aura/Visualforce)`,
       'Aura and Visualforce-based Experience Cloud templates are legacy. LWR (Lightning Web Runtime) delivers significantly better performance and is Salesforce\'s strategic direction.',
       'Plan migration to LWR-based templates. LWR sites support headless and composable architecture and receive Salesforce investment first.',
-      { records: legacyTemplateSites.map((s:any) => ({ name: s.Name, detail: s.Template || 'Legacy Template' })) }));
+      { records: legacyTemplateSites.map((n:any) => ({ name: n.Name, detail: n.Template || 'Legacy Template' })) }));
   }
 
   // 2. Inactive / draft sites never published (stale config)
@@ -3091,7 +3092,7 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
       `${data.wideObjects.length} Custom Objects with 300+ Fields`,
       'Objects with an extremely high field count slow SOQL queries on that object (even when selecting a subset of fields), increase page load time for record layouts, and hit field-level security evaluation overhead.',
       'Audit field usage for these objects. Archive or delete unused fields. Consider child objects or external objects for rarely-used field groups.',
-      { records: data.wideObjects.map((o: any) => ({ name: o.EntityDefinitionId, detail: `${o.fieldCount} fields` })) }
+      { records: data.wideObjects.map((o: any) => ({ name: o.EntityDefinitionId, detail: `${o.expr0} fields` })) }
     ));
   }
 

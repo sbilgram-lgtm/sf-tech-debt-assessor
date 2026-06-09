@@ -200,7 +200,6 @@ export interface RecordTypesLayoutsData {
 
 export interface EinsteinAIData {
   einsteinSettings: any[];
-  aiFeatures: any[];
   promptTemplates: any[];
   bots: any[];
   aiApplications: any[];

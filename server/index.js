@@ -336,9 +336,9 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // Entitlement processes without milestone actions — check EntitlementProcessMilestone
     let epMilestones = { records: [] };
     try {
-      epMilestones = await safeQuery(conn, "SELECT Id, EntitlementProcessId, Name FROM EntitlementProcessMilestone LIMIT 200");
+      epMilestones = await safeQuery(conn, "SELECT Id, SlaProcessId, Name FROM EntitlementProcessMilestone LIMIT 200");
     } catch(e) {}
-    const epIdsWithMilestones = new Set((epMilestones.records || []).map(m => m.EntitlementProcessId));
+    const epIdsWithMilestones = new Set((epMilestones.records || []).map(m => m.SlaProcessId));
     const entitlementProcessesWithoutMilestoneActions = (entitlementProcesses.records || []).filter(ep => !epIdsWithMilestones.has(ep.Id));
 
     // Open cases with entitlement but no SLA start date
@@ -480,13 +480,13 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     } catch (e) { /* may not be available in all orgs */ }
 
     // Profiles (count)
-    const profiles = await conn.query(
-      "SELECT Id, Name, UserType, Description FROM Profile"
+    const profiles = await safeQuery(conn,
+      "SELECT Id, Name, UserType, Description FROM Profile LIMIT 500"
     );
 
     // Permission Sets
-    const permSets = await conn.query(
-      "SELECT Id, Name, Label, Description, IsCustom FROM PermissionSet WHERE IsCustom = true"
+    const permSets = await safeQuery(conn,
+      "SELECT Id, Name, Label, Description, IsCustom FROM PermissionSet WHERE IsCustom = true LIMIT 500"
     );
 
     // Connected App OAuth policies (proxy for session security)
@@ -513,7 +513,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     } catch (e) { /* optional */ }
 
     // API-enabled users: IsActive, profile, last login, MFA
-    const apiUsers = await conn.query(
+    const apiUsers = await safeQuery(conn,
       "SELECT Id, Name, Username, Email, IsActive, LastLoginDate, " +
       "Profile.Name, Profile.UserType, " +
       "UserType, CreatedDate " +
@@ -522,7 +522,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     );
 
     // Integration/API service account users (likely have API-only profiles)
-    const integrationUsers = await conn.query(
+    const integrationUsers = await safeQuery(conn,
       "SELECT Id, Name, Username, Email, IsActive, LastLoginDate, " +
       "Profile.Name, Profile.UserType, CreatedDate " +
       "FROM User WHERE IsActive = true AND " +
@@ -534,7 +534,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // Users with no login in 90+ days (stale accounts)
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    const staleUsers = await conn.query(
+    const staleUsers = await safeQuery(conn,
       `SELECT Id, Name, Username, Email, LastLoginDate, Profile.Name ` +
       `FROM User WHERE IsActive = true AND UserType = 'Standard' AND ` +
       `(LastLoginDate < ${ninetyDaysAgo.toISOString()} OR LastLoginDate = null) ` +
@@ -542,14 +542,11 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     );
 
     // Users with Modify All Data or View All Data permission via profile
-    let broadPermUsers = { records: [] };
-    try {
-      broadPermUsers = await conn.query(
-        "SELECT Id, Name, Username, Email, Profile.Name FROM User " +
-        "WHERE IsActive = true AND Profile.PermissionsModifyAllData = true " +
-        "AND UserType = 'Standard' LIMIT 100"
-      );
-    } catch (e) { /* not queryable in all orgs */ }
+    const broadPermUsers = await safeQuery(conn,
+      "SELECT Id, Name, Username, Email, Profile.Name FROM User " +
+      "WHERE IsActive = true AND Profile.PermissionsModifyAllData = true " +
+      "AND UserType = 'Standard' LIMIT 100"
+    );
 
     // Login IP ranges — profiles with no IP restrictions
     let loginIpRanges = { records: [] };
@@ -560,17 +557,14 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     } catch (e) { /* optional */ }
 
     // MFA: users who have registered a TOTP/authenticator (TwoFactorInfo)
-    let mfaEnrolledUsers = { records: [] };
-    try {
-      mfaEnrolledUsers = await conn.query(
-        "SELECT UserId FROM TwoFactorInfo WHERE Type IN ('TOTP', 'SalesforceAuthenticator', 'U2F', 'WebAuthn') LIMIT 2000"
-      );
-    } catch (e) { /* not available in all API versions */ }
+    const mfaEnrolledUsers = await safeQuery(conn,
+      "SELECT UserId FROM TwoFactorInfo WHERE Type IN ('TOTP', 'SalesforceAuthenticator', 'U2F', 'WebAuthn') LIMIT 2000"
+    );
 
     // Security Health Check score and risk groups
     let securityHealthCheck = null;
     try {
-      const shc = await conn.query(
+      const shc = await safeQuery(conn,
         "SELECT Score, LastModifiedDate FROM SecurityHealthCheck LIMIT 1"
       );
       if (shc.records && shc.records.length > 0) {
@@ -579,50 +573,38 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     } catch (e) { /* requires specific permissions */ }
 
     // Active OAuth access tokens (Connected App sessions)
-    let activeOauthTokens = { records: [] };
-    try {
-      activeOauthTokens = await conn.query(
-        "SELECT Id, UserId, User.Name, User.Username, AppName, LastUsedDate, UseCount " +
-        "FROM AuthSession WHERE SessionType = 'OAuth2' " +
-        "ORDER BY LastUsedDate DESC NULLS LAST LIMIT 200"
-      );
-    } catch (e) { /* optional */ }
+    const activeOauthTokens = await safeQuery(conn,
+      "SELECT Id, UserId, User.Name, User.Username, AppName, LastUsedDate, UseCount " +
+      "FROM AuthSession WHERE SessionType = 'OAuth2' " +
+      "ORDER BY LastUsedDate DESC NULLS LAST LIMIT 200"
+    );
 
     // Sessions with low assurance level (no MFA step-up)
-    let lowSecuritySessions = { records: [] };
-    try {
-      lowSecuritySessions = await conn.query(
-        "SELECT Id, UserId, User.Name, User.Username, LoginType, SessionSecurityLevel, CreatedDate " +
-        "FROM AuthSession WHERE SessionSecurityLevel = 'STANDARD' " +
-        "ORDER BY CreatedDate DESC NULLS LAST LIMIT 200"
-      );
-    } catch (e) { /* optional */ }
+    const lowSecuritySessions = await safeQuery(conn,
+      "SELECT Id, UserId, User.Name, User.Username, LoginType, SessionSecurityLevel, CreatedDate " +
+      "FROM AuthSession WHERE SessionSecurityLevel = 'STANDARD' " +
+      "ORDER BY CreatedDate DESC NULLS LAST LIMIT 200"
+    );
 
     // Users with password that never expires (Profile-level setting)
-    let usersPasswordNeverExpires = { records: [] };
-    try {
-      usersPasswordNeverExpires = await conn.query(
-        "SELECT Id, Name, Username, Profile.Name FROM User " +
-        "WHERE IsActive = true AND Profile.PermissionsPasswordNeverExpires = true " +
-        "AND UserType = 'Standard' LIMIT 200"
-      );
-    } catch (e) { /* not available in all orgs */ }
+    const usersPasswordNeverExpires = await safeQuery(conn,
+      "SELECT Id, Name, Username, Profile.Name FROM User " +
+      "WHERE IsActive = true AND Profile.PermissionsPasswordNeverExpires = true " +
+      "AND UserType = 'Standard' LIMIT 200"
+    );
 
     // Guest user access — sites/portals with guest profiles
-    let guestAccessObjects = { records: [] };
-    try {
-      guestAccessObjects = await conn.query(
-        "SELECT Id, Name, GuestUserId, GuestUser.Name, GuestUser.IsActive, " +
-        "GuestUser.Profile.Name, Status " +
-        "FROM Site WHERE Status = 'Active' LIMIT 100"
-      );
-    } catch (e) { /* optional */ }
+    const guestAccessObjects = await safeQuery(conn,
+      "SELECT Id, Name, GuestUserId, GuestUser.Name, GuestUser.IsActive, " +
+      "GuestUser.Profile.Name, Status " +
+      "FROM Site WHERE Status = 'Active' LIMIT 100"
+    );
 
     const [privilegedUsersRes, asyncSharingUpdateRes, outboundMsgRes, caseGuestProfilesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name FROM PermissionSet WHERE (PermissionsModifyAllData = true OR PermissionsViewAllData = true OR PermissionsAuthorApex = true OR PermissionsCustomizeApplication = true) AND IsCustom = true LIMIT 20"),
       safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName = 'AsyncSharingRecalculation' LIMIT 1"),
       safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20"),
-      safeQuery(conn, "SELECT Id, Name, PermissionsReadCases, PermissionsEditCases FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.UserType = 'Guest' AND PermissionsReadCases = true LIMIT 20").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name, PermissionsReadCases, PermissionsEditCases, Parent.Name, Parent.IsOwnedByProfile FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.IsOwnedByProfile = true AND PermissionsReadCases = true LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
     res.json({
@@ -860,13 +842,10 @@ app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [customSettings, customMetadataTypes] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, SettingType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE CustomSettingsType = null AND IsCustomSetting = false AND DeveloperName LIKE '%mdt%' LIMIT 100")
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, CustomSettingsType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE NamespacePrefix = null AND DeveloperName LIKE '%__mdt' LIMIT 100")
     ]);
-    const mdtTypes = await safeToolingQuery(conn,
-      "SELECT Id, DeveloperName, Description FROM CustomObject WHERE IsMDT = true LIMIT 100"
-    );
-    res.json({ customSettings: customSettings.records || [], customMetadataTypes: (customMetadataTypes.records || []).concat(mdtTypes.records || []) });
+    res.json({ customSettings: customSettings.records || [], customMetadataTypes: customMetadataTypes.records || [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -913,44 +892,32 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
 app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    // All sites with template, status, and self-registration info
-    let sites = { records: [] };
-    try {
-      sites = await conn.query(
-        "SELECT Id, Name, Status, SiteType, UrlPathPrefix, GuestUserId, " +
-        "GuestUser.IsActive, OptionsAllowGuestSupportApi, Template " +
-        "FROM Site LIMIT 200"
-      );
-    } catch (e) { /* not available in all orgs */ }
+    // All sites with status and self-registration info
+    const sites = await safeQuery(conn,
+      "SELECT Id, Name, Status, SiteType, UrlPathPrefix, GuestUserId, " +
+      "GuestUser.IsActive, OptionsAllowGuestSupportApi " +
+      "FROM Site LIMIT 200"
+    );
 
     // Network (Experience Cloud site) settings including self-reg and CDN
-    let networks = { records: [] };
-    try {
-      networks = await conn.query(
-        "SELECT Id, Name, Status, UrlPathPrefix, SelfRegistrationEnabled, " +
-        "AllowMembersToFlag, BrowserNotificationsEnabled, " +
-        "CdnBasedOnLocation, NavigationType " +
-        "FROM Network LIMIT 200"
-      );
-    } catch (e) { /* optional */ }
+    const networks = await safeQuery(conn,
+      "SELECT Id, Name, Status, UrlPathPrefix, SelfRegistrationEnabled, " +
+      "AllowMembersToFlag, BrowserNotificationsEnabled, " +
+      "CdnBasedOnLocation, NavigationType, Template " +
+      "FROM Network LIMIT 200"
+    );
 
     // Network member configurations (guest access settings)
-    let networkMembers = { records: [] };
-    try {
-      networkMembers = await conn.query(
-        "SELECT Id, NetworkId, ProfileId, Profile.Name, Profile.UserType " +
-        "FROM NetworkMember LIMIT 500"
-      );
-    } catch (e) { /* optional */ }
+    const networkMembers = await safeQuery(conn,
+      "SELECT Id, NetworkId, ProfileId, Profile.Name, Profile.UserType " +
+      "FROM NetworkMember LIMIT 500"
+    );
 
     // Custom domains configured for Experience Cloud sites
-    let customDomains = { records: [] };
-    try {
-      customDomains = await conn.query(
-        "SELECT Id, Domain, SiteId, HttpsOption " +
-        "FROM Domain LIMIT 100"
-      );
-    } catch (e) { /* optional */ }
+    const customDomains = await safeQuery(conn,
+      "SELECT Id, Domain " +
+      "FROM Domain LIMIT 100"
+    );
 
     const wcagUpdateRes = await safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName LIKE '%Accessibility%' OR ApiName LIKE '%WCAG%' LIMIT 5");
 
@@ -1152,7 +1119,7 @@ app.get('/api/assess/omnistudio', requireAuth, async (req, res) => {
       // Check installed package version
       try {
         const nsPrefix = ns.replace('__', '');
-        const pkgResult = await safeQuery(conn,
+        const pkgResult = await safeToolingQuery(conn,
           `SELECT SubscriberPackageVersion.MajorVersion, SubscriberPackageVersion.MinorVersion, SubscriberPackageVersion.PatchVersion FROM InstalledSubscriberPackage WHERE SubscriberPackage.NamespacePrefix = '${nsPrefix}' LIMIT 1`
         );
         if (pkgResult.records && pkgResult.records.length > 0) {
@@ -1228,7 +1195,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 LIMIT 200"
       ),
       safeQuery(conn,
-        "SELECT TableEnumOrId, COUNT(Id) triggerCount FROM ApexTrigger WHERE Status = 'Active' GROUP BY TableEnumOrId LIMIT 200"
+        "SELECT TableEnumOrId, COUNT(Id) FROM ApexTrigger WHERE Status = 'Active' GROUP BY TableEnumOrId LIMIT 200"
       ),
       safeQuery(conn,
         "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('BatchApex','Queueable','Future') LIMIT 500"
@@ -1246,16 +1213,16 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, TracedEntityId, LogType, ExpirationDate FROM TraceFlag WHERE ExpirationDate > TODAY LIMIT 100"
       ),
       safeToolingQuery(conn,
-        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM FlowDefinition WHERE TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave' LIMIT 500"
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND (TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave') LIMIT 500"
       ),
       safeToolingQuery(conn,
-        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM FlowDefinition WHERE TriggerType = 'Scheduled' AND ProcessType = 'AutoLaunchedFlow' LIMIT 200"
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND TriggerType = 'Scheduled' AND ProcessType = 'AutoLaunchedFlow' LIMIT 200"
       ),
       safeQuery(conn,
         "SELECT Id, DeveloperName FROM PlatformCachePartition LIMIT 10"
       ),
       safeQuery(conn,
-        "SELECT EntityDefinitionId, COUNT(QualifiedApiName) fieldCount FROM FieldDefinition WHERE EntityDefinition.IsCustomizable = true GROUP BY EntityDefinitionId HAVING COUNT(QualifiedApiName) > 300 LIMIT 100"
+        "SELECT EntityDefinitionId, COUNT(QualifiedApiName) FROM FieldDefinition WHERE EntityDefinition.IsCustomizable = true GROUP BY EntityDefinitionId HAVING COUNT(QualifiedApiName) > 300 LIMIT 100"
       ),
       safeToolingQuery(conn,
         "SELECT Id, DeveloperName, ApiVersion, LastModifiedDate FROM AuraDefinitionBundle WHERE NamespacePrefix = null LIMIT 500"
@@ -1271,10 +1238,10 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       )
     ]);
 
-    // Calculate trigger counts per object
+    // Calculate trigger counts per object (aggregate alias not supported in REST API — use expr0)
     const triggersByObject = {};
     for (const row of (apexTriggersPerObject.records || [])) {
-      triggersByObject[row.TableEnumOrId] = row.triggerCount;
+      triggersByObject[row.TableEnumOrId] = row.expr0;
     }
     const multiTriggerObjects = Object.entries(triggersByObject)
       .filter(([_, count]) => count > 1)
