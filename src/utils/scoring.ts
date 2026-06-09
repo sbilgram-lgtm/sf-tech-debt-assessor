@@ -23,7 +23,8 @@ import {
   ExperienceCloudData,
   ConnectedAppSecurityData,
   LwcData,
-  OmniStudioData
+  OmniStudioData,
+  PerformanceData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -2949,6 +2950,186 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return {
     category: 'OmniStudio',
+    score: Math.max(0, maxScore - deductions),
+    maxScore,
+    percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),
+    items
+  };
+}
+
+export function assessPerformance(data: PerformanceData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  // ── Apex Runtime ─────────────────────────────────────────────────────────────
+
+  if (data.largeApexClasses.length > 0) {
+    items.push(createDebtItem('performance', 'medium',
+      `${data.largeApexClasses.length} Apex Classes Over 1,000 Lines`,
+      'Oversized Apex classes are harder to test, maintain, and debug. Large classes often violate the Single Responsibility Principle and slow compile times.',
+      'Refactor large Apex classes into smaller, focused classes. Break out utility methods into separate helper classes.',
+      { records: data.largeApexClasses.map((c: any) => ({ name: c.Name, detail: `${c.LengthWithoutComments} lines` })) }
+    ));
+  }
+
+  if (data.multiTriggerObjects.length > 0) {
+    items.push(createDebtItem('performance', 'high',
+      `${data.multiTriggerObjects.length} Objects with Multiple Active Triggers`,
+      'Multiple triggers on the same object execute in an unpredictable order and can cause recursive firing, governor limit exhaustion, and hard-to-diagnose bugs.',
+      'Consolidate all triggers per object into a single trigger using a trigger handler framework (e.g., FFLIB, TriggerHandler).',
+      { records: data.multiTriggerObjects.map((t: any) => ({ name: t.obj, detail: `${t.count} triggers` })) }
+    ));
+  }
+
+  if (data.batchConcurrent.length > 3) {
+    items.push(createDebtItem('performance', 'high',
+      `${data.batchConcurrent.length} Batch Apex Jobs Running Concurrently`,
+      'Salesforce allows a maximum of 5 concurrent batch jobs. High concurrency consumes shared resources and can cause new batch submissions to fail or queue indefinitely.',
+      'Review batch scheduling. Stagger batch start times and consider replacing short batch jobs with Queueable chains or Platform Events.',
+      { records: data.batchConcurrent.map((j: any) => ({ name: j.ApexClass?.Name || j.Id, detail: j.Status })) }
+    ));
+  }
+
+  if (data.traceFlagsActive.length > 0) {
+    items.push(createDebtItem('performance', 'high',
+      `${data.traceFlagsActive.length} Active Debug Trace Flags`,
+      'Active trace flags force Salesforce to capture and store debug logs for every transaction on the traced entity. This adds measurable overhead to every DML operation, SOQL query, and Apex execution for that user or class.',
+      'Remove all debug trace flags that are no longer needed. Use Developer Console or VS Code Developer Log sparingly during active debugging only.',
+      { records: data.traceFlagsActive.map((f: any) => ({ name: f.TracedEntityId, detail: `Expires: ${f.ExpirationDate ? new Date(f.ExpirationDate).toLocaleDateString() : 'unknown'}` })) }
+    ));
+  }
+
+  // ── Async Queue Depth ─────────────────────────────────────────────────────────
+
+  if (data.asyncQueuedJobs.length > 50) {
+    items.push(createDebtItem('performance', 'high',
+      `${data.asyncQueuedJobs.length} Async Apex Jobs Queued (Batch/Queueable/Future)`,
+      'A large backlog of queued async jobs indicates processing delays. Jobs waiting in queue are not executing, which can delay time-sensitive automation.',
+      'Investigate the root cause of the queue backlog. Check for runaway recursion, batch chains, or a high-volume process flooding the queue.',
+      { count: data.asyncQueuedJobs.length }
+    ));
+  }
+
+  if (data.futureQueueable.length > 20) {
+    items.push(createDebtItem('performance', 'medium',
+      `${data.futureQueueable.length} Future/Queueable Jobs Pending`,
+      'A large backlog of Future and Queueable jobs creates delays in asynchronous processing. Future methods are limited to 50 per Apex transaction and compete with batch jobs for the async queue.',
+      'Review what is generating this volume of async jobs. Consider replacing @future methods with Queueable chains that offer more control over concurrency.',
+      { count: data.futureQueueable.length }
+    ));
+  }
+
+  const recentFailRate = data.recentFailedJobs.length;
+  if (recentFailRate > 10) {
+    items.push(createDebtItem('performance', 'high',
+      `${recentFailRate} Async Apex Failures in the Last 30 Days`,
+      'A high async job failure rate indicates recurring errors in batch, queueable, or future methods that are silently swallowed. Failed jobs may leave data in an inconsistent state.',
+      'Review failed job error messages in Setup → Apex Jobs. Add robust error handling, retry logic, and alerting to async Apex jobs.',
+      { records: data.recentFailedJobs.slice(0, 50).map((j: any) => ({ name: j.ApexClass?.Name || j.Id, detail: j.JobType })) }
+    ));
+  } else if (recentFailRate > 0) {
+    items.push(createDebtItem('performance', 'medium',
+      `${recentFailRate} Async Apex Failures in the Last 30 Days`,
+      'Async Apex failures indicate errors in batch, queueable, or future methods that may leave data in an inconsistent state.',
+      'Review failed job error messages in Setup → Apex Jobs. Add error handling and alerting to async Apex jobs.',
+      { records: data.recentFailedJobs.slice(0, 50).map((j: any) => ({ name: j.ApexClass?.Name || j.Id, detail: j.JobType })) }
+    ));
+  }
+
+  // ── Scheduled Jobs ─────────────────────────────────────────────────────────────
+
+  if (data.scheduledApex.length > 20) {
+    items.push(createDebtItem('performance', 'medium',
+      `${data.scheduledApex.length} Scheduled Apex Jobs Waiting`,
+      'A large number of scheduled jobs creates queue pressure, delays execution windows, and can cause jobs to be skipped if the org is busy. Salesforce enforces a maximum of 100 scheduled Apex jobs.',
+      'Audit scheduled jobs. Consolidate similar jobs into a single scheduler, use a dispatcher pattern, and remove any stale or redundant schedules.',
+      { records: data.scheduledApex.map((j: any) => ({ name: j.CronJobDetail?.Name || j.Id, detail: j.NextFireTime ? new Date(j.NextFireTime).toLocaleDateString() : '' })) }
+    ));
+  }
+
+  if (data.scheduledFlows.length > 10) {
+    items.push(createDebtItem('performance', 'medium',
+      `${data.scheduledFlows.length} Active Scheduled Flows`,
+      'Each scheduled flow creates background jobs that run at defined intervals. A high number of scheduled flows can flood the async queue and slow overall org performance.',
+      'Review scheduled flows. Combine flows that run on the same schedule. Consider replacing with a single scheduled Apex job that handles multiple use cases.',
+      { records: data.scheduledFlows.map((f: any) => ({ name: f.Label || f.ApiName })) }
+    ));
+  }
+
+  // ── Flows ─────────────────────────────────────────────────────────────────────
+
+  const flowsByObject: Record<string, string[]> = {};
+  for (const f of data.recordTriggeredFlows) {
+    const obj = f.ApiName?.split('_')[0] || 'Unknown';
+    if (!flowsByObject[obj]) flowsByObject[obj] = [];
+    flowsByObject[obj].push(f.Label || f.ApiName);
+  }
+  const heavyFlowObjects = Object.entries(flowsByObject).filter(([_, flows]) => flows.length > 3);
+  if (heavyFlowObjects.length > 0) {
+    items.push(createDebtItem('performance', 'medium',
+      `${heavyFlowObjects.length} Objects with 4+ Record-Triggered Flows`,
+      'Multiple record-triggered flows on the same object each execute synchronously on every save. Each additional flow increases DML transaction time and governor limit consumption.',
+      'Consolidate record-triggered flows per object into a single flow using Decision elements to branch logic. This reduces transaction overhead and makes execution order predictable.',
+      { records: heavyFlowObjects.map(([obj, flows]) => ({ name: obj, detail: `${flows.length} flows` })) }
+    ));
+  }
+
+  // ── Platform Cache ────────────────────────────────────────────────────────────
+
+  if (data.platformCachePartitions.length === 0) {
+    items.push(createDebtItem('performance', 'low',
+      'Platform Cache Not Configured',
+      'Platform Cache is not enabled in this org. Without Platform Cache, repeated SOQL queries for static or rarely-changing data (org settings, picklist values, custom metadata) run on every transaction.',
+      'Enable Platform Cache in Setup → Platform Cache. Allocate session cache for user-specific data and org cache for shared reference data. Update Apex to use Cache.Session or Cache.Org.',
+      {}
+    ));
+  }
+
+  // ── Data Model ────────────────────────────────────────────────────────────────
+
+  if (data.wideObjects.length > 0) {
+    items.push(createDebtItem('performance', 'medium',
+      `${data.wideObjects.length} Custom Objects with 300+ Fields`,
+      'Objects with an extremely high field count slow SOQL queries on that object (even when selecting a subset of fields), increase page load time for record layouts, and hit field-level security evaluation overhead.',
+      'Audit field usage for these objects. Archive or delete unused fields. Consider child objects or external objects for rarely-used field groups.',
+      { records: data.wideObjects.map((o: any) => ({ name: o.EntityDefinitionId, detail: `${o.fieldCount} fields` })) }
+    ));
+  }
+
+  // ── UI & Lightning ────────────────────────────────────────────────────────────
+
+  if (data.auraBundles.length > 50) {
+    items.push(createDebtItem('performance', 'low',
+      `${data.auraBundles.length} Aura Component Bundles Still Deployed`,
+      'Aura components render slower than LWC equivalents. A large Aura footprint increases page load time and represents a migration gap to the more performant LWC framework.',
+      'Prioritize migrating Aura components to LWC. Focus on components embedded in high-traffic record pages and service console layouts.',
+      { records: data.auraBundles.map((b: any) => ({ name: b.DeveloperName })) }
+    ));
+  }
+
+  if (data.heavyEntities.length > 0) {
+    items.push(createDebtItem('performance', 'low',
+      `${data.heavyEntities.length} Objects with 6+ Lightning Pages`,
+      'Objects with many Lightning record pages indicate layout proliferation. Each page must be individually maintained, and having many pages assigned to the same object can slow page assignment resolution.',
+      'Consolidate record pages per object. Use Dynamic Forms and Dynamic Actions to create a single adaptive page instead of multiple object-level page variants.',
+      { records: data.heavyEntities.map((e: any) => ({ name: e.eid, detail: `${e.count} pages` })) }
+    ));
+  }
+
+  // ── Observability ─────────────────────────────────────────────────────────────
+
+  if (data.eventLogFiles.length === 0) {
+    items.push(createDebtItem('performance', 'low',
+      'Event Monitoring Not Producing Logs (Last 7 Days)',
+      'No Event Log Files found for the past 7 days. Event Monitoring provides performance data on SOQL consumption, Apex CPU usage, and login patterns. Without it, performance regressions are difficult to detect.',
+      'Verify Event Monitoring is enabled for this org (requires Event Monitoring add-on). If enabled, review Setup → Event Log Files to confirm log generation.',
+      {}
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return {
+    category: 'Performance',
     score: Math.max(0, maxScore - deductions),
     maxScore,
     percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),

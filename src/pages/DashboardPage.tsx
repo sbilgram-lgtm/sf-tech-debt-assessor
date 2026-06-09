@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
-import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, calculateOverallScore } from '../utils/scoring';
+import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData, getPerformanceData } from '../services/api';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, assessPerformance, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 import { RemediationRoadmap } from '../components/RemediationRoadmap';
@@ -98,6 +98,9 @@ export const DashboardPage: React.FC = () => {
       setProgress('Assessing OmniStudio components...');
       const omniStudioData = await getOmniStudioData();
 
+      setProgress('Analyzing performance indicators...');
+      const performanceData = await getPerformanceData();
+
       setProgress('Calculating scores...');
       const configScore = assessConfiguration(automationData, validationData);
       const codeScore = assessCodeQuality(apexData);
@@ -120,13 +123,14 @@ export const DashboardPage: React.FC = () => {
       const connectedAppSecurityScore = assessConnectedAppSecurity(connectedAppSecurityData);
       const lwcScore = assessLwc(lwcData);
       const omniStudioScore = assessOmniStudio(omniStudioData);
+      const performanceScore = assessPerformance(performanceData);
 
       const result = calculateOverallScore([
         configScore, codeScore, dataScore, serviceScore, sharingScore,
         integrationScore, testScore, limitsScore, duplicateScore, reportsScore,
         emailScore, platformEventsScore, packagesScore, customMetadataScore,
         recordTypesScore, einsteinScore, territoryScore, experienceCloudScore,
-        connectedAppSecurityScore, lwcScore, omniStudioScore
+        connectedAppSecurityScore, lwcScore, omniStudioScore, performanceScore
       ]);
 
       const authStatus = await getAuthStatus();

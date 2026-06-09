@@ -1200,6 +1200,118 @@ app.get('/api/assess/omnistudio', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/assess/performance', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString();
+
+    const [
+      largeApexClasses,
+      apexTriggersPerObject,
+      asyncQueuedJobs,
+      recentFailedJobs,
+      scheduledApex,
+      batchConcurrent,
+      traceFlagsActive,
+      recordTriggeredFlows,
+      scheduledFlows,
+      platformCachePartitions,
+      wideObjects,
+      auraBundles,
+      heavyFlexiPages,
+      eventLogFiles,
+      futureQueueable
+    ] = await Promise.all([
+      safeToolingQuery(conn,
+        "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 LIMIT 200"
+      ),
+      safeQuery(conn,
+        "SELECT TableEnumOrId, COUNT(Id) triggerCount FROM ApexTrigger WHERE Status = 'Active' GROUP BY TableEnumOrId LIMIT 200"
+      ),
+      safeQuery(conn,
+        "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('BatchApex','Queueable','Future') LIMIT 500"
+      ),
+      safeQuery(conn,
+        `SELECT Id, ApexClass.Name, JobType, Status, CompletedDate FROM AsyncApexJob WHERE Status = 'Failed' AND CompletedDate >= ${thirtyDaysAgoStr} LIMIT 500`
+      ),
+      safeQuery(conn,
+        "SELECT Id, CronJobDetail.Name, State, NextFireTime FROM CronTrigger WHERE State = 'WAITING' LIMIT 100"
+      ),
+      safeQuery(conn,
+        "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE JobType = 'BatchApex' AND Status IN ('Processing','Holding') LIMIT 100"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, TracedEntityId, LogType, ExpirationDate FROM TraceFlag WHERE ExpirationDate > TODAY LIMIT 100"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM FlowDefinition WHERE TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave' LIMIT 500"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM FlowDefinition WHERE TriggerType = 'Scheduled' AND ProcessType = 'AutoLaunchedFlow' LIMIT 200"
+      ),
+      safeQuery(conn,
+        "SELECT Id, DeveloperName FROM PlatformCachePartition LIMIT 10"
+      ),
+      safeQuery(conn,
+        "SELECT EntityDefinitionId, COUNT(QualifiedApiName) fieldCount FROM FieldDefinition WHERE EntityDefinition.IsCustomizable = true GROUP BY EntityDefinitionId HAVING COUNT(QualifiedApiName) > 300 LIMIT 100"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName, ApiVersion, LastModifiedDate FROM AuraDefinitionBundle WHERE NamespacePrefix = null LIMIT 500"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName, Type, EntityDefinitionId FROM FlexiPage WHERE NamespacePrefix = null LIMIT 500"
+      ),
+      safeQuery(conn,
+        "SELECT Id, EventType, LogDate, LogFileLength FROM EventLogFile WHERE LogDate = LAST_N_DAYS:7 LIMIT 10"
+      ),
+      safeQuery(conn,
+        "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('Future','Queueable') LIMIT 500"
+      )
+    ]);
+
+    // Calculate trigger counts per object
+    const triggersByObject = {};
+    for (const row of (apexTriggersPerObject.records || [])) {
+      triggersByObject[row.TableEnumOrId] = row.triggerCount;
+    }
+    const multiTriggerObjects = Object.entries(triggersByObject)
+      .filter(([_, count]) => count > 1)
+      .map(([obj, count]) => ({ obj, count }));
+
+    // FlexiPage component count — approximate from component count per page via metadata
+    // We query FlexiPage separately and flag those on the same object with high counts (proxy via total page count per EntityDefinitionId)
+    const pagesByEntity = {};
+    for (const fp of (heavyFlexiPages.records || [])) {
+      const eid = fp.EntityDefinitionId || 'Unknown';
+      pagesByEntity[eid] = (pagesByEntity[eid] || 0) + 1;
+    }
+    const heavyEntities = Object.entries(pagesByEntity).filter(([_, count]) => count > 5).map(([eid, count]) => ({ eid, count }));
+
+    res.json({
+      largeApexClasses: largeApexClasses.records || [],
+      multiTriggerObjects,
+      asyncQueuedJobs: asyncQueuedJobs.records || [],
+      recentFailedJobs: recentFailedJobs.records || [],
+      scheduledApex: scheduledApex.records || [],
+      batchConcurrent: batchConcurrent.records || [],
+      traceFlagsActive: traceFlagsActive.records || [],
+      recordTriggeredFlows: recordTriggeredFlows.records || [],
+      scheduledFlows: scheduledFlows.records || [],
+      platformCachePartitions: platformCachePartitions.records || [],
+      wideObjects: wideObjects.records || [],
+      auraBundles: auraBundles.records || [],
+      heavyEntities,
+      eventLogFiles: eventLogFiles.records || [],
+      futureQueueable: futureQueueable.records || []
+    });
+  } catch (err) {
+    console.error('Performance assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // In production, serve the React build
 if (isProduction) {
   app.use(express.static(path.resolve(__dirname, '../build')));

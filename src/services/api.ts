@@ -108,3 +108,7 @@ export async function getLwcData() {
 export async function getOmniStudioData() {
   return fetchApi('/api/assess/omnistudio');
 }
+
+export async function getPerformanceData() {
+  return fetchApi('/api/assess/performance');
+}

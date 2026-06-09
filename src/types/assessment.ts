@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -244,6 +244,24 @@ export interface OmniStudioData {
   dataTransforms: any[];
   flexCards: any[];
   managedPackageVersion: string | null;
+}
+
+export interface PerformanceData {
+  largeApexClasses: any[];
+  multiTriggerObjects: { obj: string; count: number }[];
+  asyncQueuedJobs: any[];
+  recentFailedJobs: any[];
+  scheduledApex: any[];
+  batchConcurrent: any[];
+  traceFlagsActive: any[];
+  recordTriggeredFlows: any[];
+  scheduledFlows: any[];
+  platformCachePartitions: any[];
+  wideObjects: any[];
+  auraBundles: any[];
+  heavyEntities: { eid: string; count: number }[];
+  eventLogFiles: any[];
+  futureQueueable: any[];
 }
 
 export interface LwcData {
