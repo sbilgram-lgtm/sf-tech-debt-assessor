@@ -1,7 +1,7 @@
 # Salesforce Tech Debt Assessor
-*By Steven Bilgram*
+*By Steven Bilgram, Success Architect*
 
-A web app that connects to any Salesforce org and produces a scored technical debt report across 20 categories. Each issue includes an expandable list of the specific records, rules, users, or components causing the score reduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **293 checks in 21 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Data & Privacy
 
@@ -96,19 +96,20 @@ The user who authenticates must have:
 ## Running an assessment
 
 1. Open **https://sf-tech-debt-assessor.onrender.com**
-2. Enter your org credentials (auto-filled on return visits if you checked "Remember credentials"):
-   - **Sandbox / Org URL** — your org's My Domain URL, e.g. `https://mycompany--uat.sandbox.my.salesforce.com`
+2. Enter your org credentials on the landing page (auto-filled on return visits if you checked "Remember credentials"):
+   - **Org / Sandbox URL** — your org's My Domain URL, e.g. `https://mycompany--uat.sandbox.my.salesforce.com`
    - **Client ID** — Consumer Key from the app setup above
    - **Client Secret** — Consumer Secret from the app setup above
-3. Click **Connect to Salesforce**, log in, and click **Allow**
-4. Click **Run Assessment**
-5. Click any category to expand its findings
+3. Click **Connect to Salesforce**, log in to Salesforce, and click **Allow**
+4. The assessment starts automatically — a progress indicator shows each category as it scans
+5. Click any category panel to expand its findings
 6. Click **Show affected records** on any issue to see the specific records, rules, or users causing the deduction
 7. Export results (all exports include Org Name, Org ID, Type, Instance, and URL):
    - **Export PDF** — full report with category scores, findings, recommendations, and affected records per issue. Ideal for customer presentations.
    - **Export Excel** — one tab per category plus a Summary tab. Each tab lists findings with affected records. Opens directly in Excel.
    - **Export CSV** — flat file with one row per affected record across all categories. Ideal for importing into a project tracker or remediation backlog.
    - **Remediation Roadmap** — opens a full-screen display grouped into four phases (Critical → High → Medium → Low), then by category within each phase. Each item shows the title, description, recommended action, and affected record count. Use the **Print / Save as PDF** button in the toolbar to export the roadmap as a PDF.
+8. Use **Re-run** in the top toolbar to run a fresh assessment at any time.
 
 ---
 
@@ -116,31 +117,33 @@ The user who authenticates must have:
 
 Checks are validated against Salesforce Spring '26 and Summer '26 release notes. Items marked with ⚠️ reflect confirmed breaking changes or enforced deprecations in those releases.
 
-| Category | What it checks |
-|---|---|
-| **Configuration** | Workflow Rules, Process Builders, automation overlap, validation rules; Classic Approval Processes ⚠️ Spring '26; legacy Einstein for Flow actions ⚠️ Spring '26; Web-to-Case without CAPTCHA; legacy Case Auto-Response Rules |
-| **Apex Code Quality** | 14 checks across triggers, classes, API versions, security patterns, and FLS enforcement — see detail table below |
-| **Data Model** | Object/field descriptions, field sprawl, object count |
-| **Service Cloud** | 39 checks across case configuration, Omni-Channel routing/capacity, Knowledge governance, Entitlement SLAs, Email-to-Case, Live Chat/MIAW migration, Service Console, Field Service Lightning, and Messaging compliance — see detail table below |
-| **Sharing & Security** | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access; privileged users without phishing-resistant MFA ⚠️ enforced May 2026; active Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; Async Sharing Recalculation Release Update ⚠️ enforced Spring '27 |
-| **Integrations** | Named Credentials usage, hardcoded endpoints, remote site SSL, connected apps; Apex classes on API versions ≤30 ⚠️ retired Summer '25 — broken in production |
-| **Test Coverage** | Zero-coverage classes, below-75% components, test class ratio |
-| **Org Limits** | All org limits — flags anything ≥50% consumed |
-| **Duplicate & Matching Rules** | Missing rules, inactive rules, undocumented rules |
-| **Reports & Dashboards** | Stale reports/dashboards, report proliferation |
-| **Email Templates** | Classic (legacy) templates, templates not updated in 2+ years |
-| **Platform Events & CDC** | Unsubscribed event channels, excessive CDC entities |
-| **Managed Packages** | Beta packages, package count, version currency |
-| **Custom Metadata & Settings** | Custom Settings vs Custom Metadata Types, undocumented settings |
-| **Record Types & Page Layouts** | Inactive record types, excessive layouts, undocumented types |
-| **Einstein & AI Usage** | Einstein/Agentforce enablement, prompt templates, inactive bot definitions, inactive AI Applications, Case Classification training data gap |
-| **Territory Management** | Draft models, multiple active models, inactive assignment rules |
-| **Experience Cloud** | Legacy templates, guest access, self-registration, custom domains, CDN, HTTPS enforcement, clickjack protection ⚠️ critical, XSS protection, content sniffing protection; WCAG 2.2 accessibility Release Updates ⚠️ enforced Summer '26 |
-| **Connected App Security** | Session timeouts (including CTI/Telephony adapters), stale OAuth tokens, token volume, undocumented apps; Outbound Messages with retired Session ID auth ⚠️ retired Feb 2026; CA-signed certificates >200-day lifespan ⚠️ enforced March 2026; Traditional Connected Apps without External Client App equivalents ⚠️ Spring '26 standard |
-| **LWC & Aura Components** | 34 checks across metadata, source code, HTML templates, and Lightning page governance — see detail table below |
-| **OmniStudio** | 19 checks across OmniScripts, Integration Procedures, DataRaptors/Data Transforms, and FlexCards. Detects native OmniStudio and all Vlocity managed package namespace variants. Checks Test Mode active in production, LWC compilation, Turbo Extract, version sprawl, managed package currency, missing descriptions, inactive and stale components |
+| Category | Checks | What it checks |
+|---|---|---|
+| **Configuration** | 13 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules |
+| **Code Quality** | 21 | See detail table below |
+| **Data Model** | 4 | Object/field descriptions, field sprawl, object count |
+| **Service Cloud** | 69 | See detail table below |
+| **Sharing & Security** | 24 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, Outbound Messages with retired Session ID auth ⚠️ Feb 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets |
+| **Integrations** | 9 | Named vs External Credentials, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
+| **Test Coverage** | 4 | Zero-coverage classes, below-75% components, test class ratio |
+| **Org Limits** | 3 | All org limits — flags anything ≥50% consumed |
+| **Duplicate & Matching Rules** | 4 | Missing rules, inactive rules, undocumented rules |
+| **Reports & Dashboards** | 3 | Stale reports/dashboards, report proliferation |
+| **Email Templates** | 3 | Classic (legacy) templates, templates not updated in 2+ years |
+| **Platform Events & CDC** | 3 | Unsubscribed event channels, excessive CDC entities |
+| **Managed Packages** | 3 | Beta packages, package count, version currency |
+| **Custom Metadata & Settings** | 3 | Custom Settings vs Custom Metadata Types, undocumented settings |
+| **Record Types & Page Layouts** | 4 | Inactive record types, excessive layouts, undocumented types |
+| **Einstein & AI** | 9 | Einstein/Agentforce enablement, prompt templates, inactive bots, inactive AI Applications, Case Classification training data, Agent Topics, Agent Actions, Data Cloud connection |
+| **Experience Cloud** | 12 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing, self-registration, CDN, custom domains, guest access |
+| **Connected App Security** | 10 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026 |
+| **LWC & Components** | 39 | See detail table below |
+| **OmniStudio** | 26 | See detail table below |
+| **Performance** | 16 | Large Apex classes, multi-trigger objects, async job queue depth, failed jobs, scheduled Apex, active trace flags, record-triggered flows, Platform Cache, wide objects, event log files |
 
-### Apex Code Quality — All 14 Checks
+---
+
+### Code Quality — All 21 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -152,58 +155,45 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 6 | Empty catch blocks — exceptions silently swallowed | High |
 | 7 | DML operations inside loops — governor limit risk | Critical |
 | 8 | `Schema.getGlobalDescribe()` — expensive mass schema lookup | Medium |
-| 9 | Classes without a sharing declaration (`with sharing` / `inherited sharing` / `without sharing`) | High |
+| 9 | Classes without a sharing declaration | High |
 | 10 | `System.setPassword()` — AppExchange security violation | Critical |
 | 11 | `UserInfo.getSessionId()` — session ID exposure risk | High |
 | 12 | SOQL without FLS enforcement (`WITH SECURITY_ENFORCED` / `WITH USER_MODE`) | Medium |
 | 13 | SOAP `login()` usage ⚠️ disabled by default Spring '26; hard retirement Summer '27 | Medium |
 | 14 | Hardcoded `login.salesforce.com` URLs ⚠️ My Domain enforced Spring '26 | High |
+| 15 | Dynamic SOQL with string concatenation — SOQL injection risk | Critical |
+| 16 | `@future(callout=true)` methods that also perform DML | Medium |
+| 17 | Weak cryptographic algorithms — MD5 / SHA-1 usage | High |
+| 18 | `@IsTest(SeeAllData=true)` — tests access real org data | High |
+| 19 | Test classes with no assert statements | High |
+| 20 | Test classes missing `Test.startTest()` / `Test.stopTest()` | Medium |
+| 21 | Test classes inserting data without `@TestSetup` | Low |
 
-### Service Cloud — All 39 Checks
+---
 
-| # | Check | Area | Severity |
-|---|---|---|---|
-| 1 | Excessive Case Record Types (>10) | Case Config | Medium |
-| 2 | Inactive Case Record Types | Case Config | Low |
-| 3 | Excessive Queues (>50) | Case Config | Medium |
-| 4 | Case Assignment Rules — legacy routing | Case Config | Medium |
-| 5 | Escalation Rules — recommend Flow-based escalation | Case Config | Low |
-| 6 | Unverified Organization-Wide Email Addresses ⚠️ Spring '26 — fail to send | Case Config | High |
-| 7 | No Omni-Channel Service Channels configured despite queues existing | Omni-Channel | Medium |
-| 8 | Routing Configurations use legacy Tab-based capacity | Omni-Channel | Critical |
-| 9 | Routing Configurations have no Push Timeout — stalled work never re-routed | Omni-Channel | High |
-| 10 | All Routing Configurations use availability-only routing — no skills-based routing | Omni-Channel | Medium |
-| 11 | Presence Configurations have no capacity limit — agents receive unlimited work | Omni-Channel | High |
-| 12 | No Presence Configurations despite Service Channels existing | Omni-Channel | Medium |
-| 13 | Knowledge enabled but no published articles | Knowledge | Medium |
-| 14 | Draft articles stalled for 180+ days — broken authoring workflow | Knowledge | Medium |
-| 15 | Published articles not updated in 12+ months — stale content actively served | Knowledge | High |
-| 16 | No Data Category Groups — Knowledge cannot be filtered by audience | Knowledge | High |
-| 17 | Published articles with no Data Category assignment — not surfaceable in filtered search | Knowledge | High |
-| 18 | Published articles with no Validation Status — no editorial review enforced | Knowledge | Medium |
-| 19 | Active Entitlement Processes with no Business Hours — SLA runs 24/7 | Entitlements | Critical |
-| 20 | Active Entitlement Processes with no Milestone Actions — passive SLA tracking only | Entitlements | Critical |
-| 21 | Open Cases with Entitlement assigned but no SLA start date | Entitlements | High |
-| 22 | Service Contracts with no linked Entitlements — SLA not enforced | Entitlements | High |
-| 23 | Email-to-Case routing addresses without TLS — customer data in plaintext | Email-to-Case | Critical |
-| 24 | Email-to-Case routing addresses with no default owner — cases created orphaned | Email-to-Case | High |
-| 25 | Inbound emails creating new cases instead of threading — case count inflated | Email-to-Case | High |
-| 26 | Email Service Addresses accepting emails from any sender — spam/limit risk | Email-to-Case | Medium |
-| 27 | Live Chat Buttons not routed through Omni-Channel — bypasses capacity management | Live Chat | Critical |
-| 28 | Active Legacy Live Agent deployments with no Embedded Service Config | Live Chat | Critical |
-| 29 | Legacy Live Chat active but Messaging for In-App & Web (MIAW) not adopted | Live Chat | High |
-| 30 | Live Chat Buttons pointing to empty or missing queues | Live Chat | High |
-| 31 | No Lightning Service Console App configured | Service Console | Critical |
-| 32 | No active Macros configured — agent actions fully manual | Service Console | High |
-| 33 | No active Einstein Next Best Action Recommendation Strategies | Service Console | High |
-| 34 | Call Center configured but no default Softphone Layout assigned | Service Console | Medium |
-| 35 | FSL enabled but no active Service Territories — scheduling engine cannot dispatch | Field Service | Critical |
-| 36 | Service Resources may lack skills — skills-based scheduling unusable | Field Service | High |
-| 37 | Work Types without default duration — zero-length appointments | Field Service | High |
-| 38 | No Operating Hours on FSL territories — scheduler books outside business hours | Field Service | Medium |
-| 39 | Messaging Channels without OPTOUT keyword — TCPA/GDPR compliance risk | Messaging | High |
+### Service Cloud — All 69 Checks
 
-### LWC & Aura Components — All 34 Checks
+| Area | Checks | Examples |
+|---|---|---|
+| **Case Configuration** | 6 | Excessive record types, inactive record types, excessive queues, legacy assignment/escalation rules, unverified OWAs ⚠️ Spring '26 |
+| **Omni-Channel** | 6 | No service channels, tab-based capacity, no push timeout, availability-only routing, no presence capacity limit, no presence configs |
+| **Knowledge** | 6 | No published articles, stalled drafts, stale published articles, no data categories, uncategorised articles, no validation status |
+| **Entitlements** | 4 | No business hours on processes, no milestone actions, open cases with no SLA start date, service contracts without entitlements |
+| **Email-to-Case** | 4 | Routing addresses without TLS, no default owner, email threading gaps, unrestricted email service addresses |
+| **Live Chat & Messaging** | 4 | Non-Omni-Channel chat buttons, legacy Live Agent deployments, MIAW not adopted, chat buttons pointing to empty queues |
+| **Service Console** | 4 | No console app, no active macros, no Einstein NBA strategies, call centre without softphone layout |
+| **Messaging Compliance** | 1 | Messaging channels without OPTOUT keyword — TCPA/GDPR risk |
+| **SLA & Case Health** | 6 | Active milestone violations, stale escalated cases, stuck open cases, high zero-touch close rate, expired entitlements still active, open cases on expired entitlements |
+| **Agent Efficiency** | 2 | No Quick Texts configured, unresolved callback requests >24 hours |
+| **Channel Coverage** | 4 | Messaging sessions with zero agent response, unlinked chat transcripts, unlinked social posts, no case team templates |
+| **Entitlement Deep Checks** | 6 | Orphaned entitlements, multi-entitlement cases, business hours without holiday exceptions, suspect milestone triggers (≤5 min), duplicate milestone trigger times |
+| **Knowledge Deep Checks** | 6 | Legacy CSP channel articles, no promoted search terms or synonyms, duplicate article titles, articles without Summary, no Knowledge deflection evidence |
+| **Case Deep Checks** | 6 | Cases with no contact/account, no priority set, no origin, very old open cases (90+ days), no description, user-owned cases (not queues) |
+| **Other Capabilities** | 4 | Open incidents with no related items, stale swarms, unlinked work orders, active surveys with no responses, voice calls with no linked case |
+
+---
+
+### LWC & Components — All 39 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -241,8 +231,15 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 32 | High total Lightning page count (>50) — governance flag | Low |
 | 33 | `CustomEvent` with `bubbles:true` AND `composed:true` — Shadow DOM boundary breach | High |
 | 34 | SLDS class overrides with hardcoded hex/RGB colors — breaks theme tokens | Medium |
+| 35 | Visualforce pages present — legacy UI technology | Medium |
+| 36 | Visualforce pages on API versions < v50 | High |
+| 37 | Visualforce pages without descriptions | Low |
+| 38 | Visualforce pages enabled for mobile (IsAvailableInTouch) | Medium |
+| 39 | High Visualforce page count (>20) | Medium |
 
-### OmniStudio — All Checks
+---
+
+### OmniStudio — All 26 Checks
 
 Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or managed package Vlocity (any namespace variant: `vlocity_cmt__`, `vlocity_ins__`, `vlocity_ps__`). Skips gracefully if OmniStudio is not installed.
 
@@ -267,6 +264,15 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 | 17 | DataRaptors / Data Transforms not modified in 2+ years | DataRaptors | Low |
 | 18 | Inactive FlexCards | FlexCards | Low |
 | 19 | FlexCards not modified in 2+ years | FlexCards | Low |
+| 20 | Active IPs with no error-handling elements (SetErrors/Throw) | Integration Procedures | High |
+| 21 | OmniScript naming convention violations (spaces in Type/SubType) | OmniScripts | Medium |
+| 22 | Active OmniScripts using deprecated Remote Action elements | OmniScripts | High |
+| 23 | Legacy article types in schema (pre-Spring '20 Knowledge migration) | Knowledge | Medium |
+| 24 | Over-reliance on standard Extract vs Turbo Extract DataTransforms | DataRaptors | Medium |
+| 25 | Active OmniScripts still on Aura runtime (LWC not enabled) | OmniScripts | High |
+| 26 | Active Integration Procedures with no active OmniScripts referencing them | Integration Procedures | Low |
+
+---
 
 ### Spring '26 / Summer '26 Breaking Changes Summary
 
@@ -274,14 +280,16 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 |---|---|---|
 | Session IDs in Outbound Messages retired | February 2026 | Sharing & Security, Connected App Security |
 | CA-signed certificate max lifespan 200 days | March 2026 | Connected App Security |
-| My Domain login URL enforced for production | Spring '26 | Apex Code Quality |
-| Connected App creation disabled by default (ECAs are standard) | Spring '26 | Connected App Security |
+| My Domain login URL enforced for production | Spring '26 | Code Quality |
 | Unverified OWAs fail to send (no more noreply fallback) | Spring '26 | Service Cloud |
 | Classic Approval Processes superseded by Flow Approvals | Spring '26 | Configuration |
 | Phishing-resistant MFA required for privileged users | Active May 2026 | Sharing & Security |
-| API versions 21–30 retired — broken in production | Summer '25 | Integrations, LWC & Aura Components |
+| SOAP login() disabled by default for new orgs | Spring '26 | Code Quality |
+| API versions 21–30 retired — broken in production | Summer '25 | Integrations, LWC & Components |
 | WCAG 2.2 accessibility Release Updates force-applied | Summer '26 | Experience Cloud |
+| PushTopics (Streaming API) deprecated | Summer '26 | Configuration, Integrations |
 | Async Sharing Recalculation enforced | Spring '27 | Sharing & Security |
+| SOAP login() hard retirement | Summer '27 | Code Quality |
 
 ---
 

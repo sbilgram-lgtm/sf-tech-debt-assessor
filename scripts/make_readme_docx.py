@@ -5,7 +5,7 @@ from docx.oxml import OxmlElement
 import re
 
 README = "/Users/sbilgram/sf-tech-debt-assessor/README.md"
-OUTPUT = "/Users/sbilgram/Desktop/SF_Tech_Debt_Assessor_README.docx"
+OUTPUT = "/Users/sbilgram/Desktop/SF_Tech_Debt_Assessor_README_2026-06-10.docx"
 
 doc = Document()
 
