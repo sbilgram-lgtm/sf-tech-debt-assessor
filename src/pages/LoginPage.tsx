@@ -112,15 +112,8 @@ export const LoginPage: React.FC = () => {
       }}>
         {/* Header */}
         <div style={{ marginBottom: '40px' }}>
-          {/* Salesforce logo + wordmark */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            {/* Official Salesforce cloud logo SVG */}
-            <svg width="48" height="34" viewBox="0 0 437 311" xmlns="http://www.w3.org/2000/svg">
-              <path d="M181 30c20-22 48-36 79-36 42 0 79 23 98 57 17-8 36-12 56-12 71 0
-                       128 58 128 129 0 71-57 129-128 129H114C51 297 0 246 0 183c0-55 37-101
-                       87-117C83 55 81 43 81 30 81 13 94 0 111 0c28 0 52 12 70 30z"
-                fill="white"/>
-            </svg>
+          {/* Wordmark */}
+          <div style={{ marginBottom: '24px' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 500, opacity: 0.85, letterSpacing: '0.05em' }}>
               SALESFORCE TECH DEBT ASSESSOR
             </span>
