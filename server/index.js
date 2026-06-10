@@ -394,25 +394,6 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       uncategorizedArticleCount = Math.max(0, total - cat);
     } catch(e) {}
 
-    // Field Service Lightning
-    let fslEnabled = false;
-    let serviceTerritories = { records: [] };
-    let serviceResources = { records: [] };
-    let workTypes = { records: [] };
-    let schedulingPolicies = { records: [] };
-    try {
-      const fslSettings = await safeQuery(conn, "SELECT FieldServiceEnabled FROM FieldServiceSettings LIMIT 1");
-      if ((fslSettings.records[0] || {}).FieldServiceEnabled) {
-        fslEnabled = true;
-        [serviceTerritories, serviceResources, workTypes, schedulingPolicies] = await Promise.all([
-          safeQuery(conn, "SELECT Id, Name, IsActive FROM ServiceTerritory WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
-          safeQuery(conn, "SELECT Id, Name, IsActive FROM ServiceResource WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
-          safeQuery(conn, "SELECT Id, Name, DurationType, EstimatedDuration FROM WorkType LIMIT 50").catch(() => ({ records: [] })),
-          safeQuery(conn, "SELECT Id, Name FROM OperatingHours LIMIT 50").catch(() => ({ records: [] }))
-        ]);
-      }
-    } catch(e) {}
-
     // Messaging compliance — channels without OPTOUT keyword
     let messagingChannelsNoOptOut = { records: [] };
     try {
@@ -689,11 +670,6 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       activeRecommendationStrategyCount: (recommendationStrategies.records[0] || {}).cnt || 0,
       callCenters: (callCenters.records[0] || {}).cnt || 0,
       softphoneLayouts: (softphoneLayouts.records[0] || {}).cnt || 0,
-      fslEnabled,
-      serviceTerritories: serviceTerritories.records || [],
-      serviceResources: serviceResources.records || [],
-      workTypes: workTypes.records || [],
-      schedulingPolicies: schedulingPolicies.records || [],
       messagingChannelsNoOptOut: messagingChannelsNoOptOut.records || [],
       violatedMilestones: violatedMilestones.records || [],
       staleEscalatedCases: staleEscalatedCases.records || [],

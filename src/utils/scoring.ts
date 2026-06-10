@@ -875,52 +875,6 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       { count: data.callCenters }));
   }
 
-  // ── Field Service Lightning ───────────────────────────────────────────────────
-
-  if (data.fslEnabled) {
-    // FSL-1: FSL enabled but no active Service Territories
-    const serviceTerritories = data.serviceTerritories || [];
-    if (serviceTerritories.length === 0) {
-      items.push(createDebtItem('serviceCloud', 'critical',
-        'Field Service Lightning Enabled — No Active Service Territories Configured',
-        'FSL is enabled but no Service Territories exist. The scheduling engine cannot dispatch or optimize work without territory boundaries — all appointment booking and Gantt scheduling will fail.',
-        'Create Service Territories in Setup → Field Service → Service Territories. Define at least one territory and assign operating hours before enabling scheduling.',
-        {}));
-    }
-
-    // FSL-2: Service Resources without skills
-    const serviceResources = data.serviceResources || [];
-    if (serviceResources.length > 0 && (data.workTypes || []).length > 0) {
-      items.push(createDebtItem('serviceCloud', 'high',
-        `${serviceResources.length} Service Resource${serviceResources.length !== 1 ? 's' : ''} May Lack Skills — Skills-Based Scheduling Unusable`,
-        'FSL is active with Work Types defined, but Service Resources may have no skills assigned. Skills-based scheduling will fall back to availability-only routing, ignoring technician competencies.',
-        'Assign skills to each Service Resource in Setup → Field Service → Service Resources. Create Skill records and map them to Work Types for accurate scheduling.',
-        { records: serviceResources.slice(0, 30).map((r: any) => ({ name: r.Name, detail: 'Verify skills are assigned' })) }));
-    }
-
-    // FSL-3: Work Types without default duration
-    const workTypesNoDuration = (data.workTypes || []).filter((wt: any) =>
-      !wt.EstimatedDuration || wt.EstimatedDuration === 0
-    );
-    if (workTypesNoDuration.length > 0) {
-      items.push(createDebtItem('serviceCloud', 'high',
-        `${workTypesNoDuration.length} Work Type${workTypesNoDuration.length !== 1 ? 's' : ''} Without Default Duration`,
-        'Work Types with no estimated duration cause the scheduler to create zero-length appointments. This makes the Gantt unusable and produces invalid travel time calculations.',
-        'Set a default EstimatedDuration on each Work Type in Setup → Field Service → Work Types. Use realistic average durations to improve schedule quality.',
-        { records: workTypesNoDuration.slice(0, 30).map((wt: any) => ({ name: wt.Name, detail: 'EstimatedDuration = 0 or null' })) }));
-    }
-
-    // FSL-4: No Scheduling Policies (using Operating Hours as proxy)
-    const schedulingPolicies = data.schedulingPolicies || [];
-    if (schedulingPolicies.length === 0 && serviceTerritories.length > 0) {
-      items.push(createDebtItem('serviceCloud', 'medium',
-        'No Operating Hours Configured for FSL Territories',
-        'Service Territories exist but no Operating Hours are defined. The FSL scheduler will book appointments outside business hours, causing SLA violations and agent dissatisfaction.',
-        'Create Operating Hours records in Setup → Field Service → Operating Hours and assign them to each Service Territory and Service Resource.',
-        {}));
-    }
-  }
-
   // ── Messaging Compliance ──────────────────────────────────────────────────────
 
   // MSG-5: Messaging Channels without OPTOUT keyword — TCPA/GDPR risk

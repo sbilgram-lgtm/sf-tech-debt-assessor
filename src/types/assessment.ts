@@ -94,12 +94,6 @@ export interface ServiceCloudData {
   activeRecommendationStrategyCount: number;
   callCenters: number;
   softphoneLayouts: number;
-  // Field Service Lightning
-  fslEnabled: boolean;
-  serviceTerritories: any[];
-  serviceResources: any[];
-  workTypes: any[];
-  schedulingPolicies: any[];
   // Messaging compliance
   messagingChannelsNoOptOut: any[];
   // New Service Cloud checks
