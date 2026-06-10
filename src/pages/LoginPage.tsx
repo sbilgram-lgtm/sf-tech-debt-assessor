@@ -371,7 +371,7 @@ const GROUP_COLORS: Record<string, string> = {
   'Security & Access':          '#e74c3c', // red
   'Code & Development':         '#8e44ad', // purple
   'Performance & Limits':       '#d35400', // orange
-  'Configuration & Architecture':'#2980b9', // blue
+  'Configuration & Architecture':'#00bcd4', // teal
   'CRM & Service':              '#27ae60', // green
   'Governance & Hygiene':       '#7f8c8d', // grey
 };
