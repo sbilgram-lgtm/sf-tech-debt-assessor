@@ -1,7 +1,7 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **301 checks in 22 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **311 checks in 22 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Data & Privacy
 
@@ -120,13 +120,13 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | Category | Checks | What it checks |
 |---|---|---|
 | **Configuration** | 13 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules |
-| **Code Quality** | 21 | See detail table below |
+| **Code Quality** | 29 | See detail table below |
 | **Data Model** | 4 | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | 69 | See detail table below |
 | **Sharing & Security** | 24 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, Outbound Messages with retired Session ID auth ⚠️ Feb 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets |
 | **Integrations** | 9 | Named vs External Credentials, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
 | **Test Coverage** | 4 | Zero-coverage classes, below-75% components, test class ratio |
-| **Org Limits** | 3 | All org limits — flags anything ≥50% consumed |
+| **Org Limits** | 5 | All org limits — flags anything ≥50% consumed; Apex class count approaching ~5,000 limit; custom object count approaching ~900 limit |
 | **Duplicate & Matching Rules** | 4 | Missing rules, inactive rules, undocumented rules |
 | **Reports & Dashboards** | 3 | Stale reports/dashboards, report proliferation |
 | **Email Templates** | 3 | Classic (legacy) templates, templates not updated in 2+ years |
@@ -136,15 +136,15 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Record Types & Page Layouts** | 4 | Inactive record types, excessive layouts, undocumented types |
 | **Einstein & AI** | 9 | Einstein/Agentforce enablement, prompt templates, inactive bots, inactive AI Applications, Case Classification training data, Agent Topics, Agent Actions, Data Cloud connection |
 | **Experience Cloud** | 12 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing, self-registration, CDN, custom domains, guest access |
-| **Connected App Security** | 10 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026 |
+| **Connected App Security** | 12 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026, OAuth tokens for deactivated users, Connected Apps bypassing IP restrictions |
 | **LWC & Components** | 39 | See detail table below |
 | **OmniStudio** | 26 | See detail table below |
-| **Performance** | 16 | Large Apex classes, multi-trigger objects, async job queue depth, failed jobs, scheduled Apex, active trace flags, record-triggered flows, Platform Cache, wide objects, event log files |
-| **Notes & Attachments** | 8 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files (ContentDistribution), Content Libraries |
+| **Performance** | 21 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, flows with DML in loops, total active flows (>300), obsolete flow versions (>200), Platform Cache, wide objects, event log files |
+| **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
 
 ---
 
-### Code Quality — All 21 Checks
+### Code Quality — All 29 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -169,6 +169,14 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 19 | Test classes with no assert statements | High |
 | 20 | Test classes missing `Test.startTest()` / `Test.stopTest()` | Medium |
 | 21 | Test classes inserting data without `@TestSetup` | Low |
+| 22 | Classes using the `global` access modifier — permanent API surface (PMD: AvoidGlobalModifier) | High |
+| 23 | Queueable classes without a `Finalizer` — async failures are silent (PMD: QueueableWithoutFinalizer) | Medium |
+| 24 | `@future` annotation still in use — use Queueable instead (PMD: AvoidFutureAnnotation) | Medium |
+| 25 | DML operations in Apex constructors — CSRF-class vulnerability (PMD: ApexCSRF) | High |
+| 26 | `addError(msg, false)` — HTML escaping disabled, XSS risk (PMD: ApexXSSFromEscapeFalse) | High |
+| 27 | HTTP (not HTTPS) callout endpoints — unencrypted transmission (PMD: ApexInsecureEndpoint) | High |
+| 28 | `System.debug` statements in production code — CPU overhead (PMD: AvoidDebugStatements) | Medium |
+| 29 | SOQL queries without `WHERE` or `LIMIT` — full table scan risk (PMD: AvoidNonRestrictiveQueries) | High |
 
 ---
 
