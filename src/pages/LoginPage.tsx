@@ -509,45 +509,45 @@ export const LoginPage: React.FC = () => {
         flex: '0 0 60%',
         background: 'linear-gradient(145deg, #032D60 0%, #0070D2 60%, #1589EE 100%)',
         color: 'white',
-        padding: '52px 56px',
+        padding: '28px 48px',
         display: 'flex',
         flexDirection: 'column',
         overflowY: 'auto',
       }}>
         {/* Header */}
-        <div style={{ marginBottom: '40px' }}>
+        <div style={{ marginBottom: '18px' }}>
           {/* Wordmark */}
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: '10px' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 500, opacity: 0.85, letterSpacing: '0.05em' }}>
               SALESFORCE TECH DEBT ASSESSOR
             </span>
           </div>
 
           <h1 style={{
-            fontSize: '2.4rem',
+            fontSize: '2rem',
             fontWeight: 700,
-            margin: '0 0 8px',
+            margin: '0 0 4px',
             lineHeight: 1.15,
             letterSpacing: '-0.02em',
           }}>
-            Know your org's<br />health in minutes.
+            Know your org's health in minutes.
           </h1>
 
-          <p style={{ fontSize: '0.9rem', opacity: 0.75, margin: '0 0 6px', fontWeight: 400 }}>
+          <p style={{ fontSize: '0.85rem', opacity: 0.75, margin: '0 0 6px', fontWeight: 400 }}>
             by <strong style={{ opacity: 1 }}>Steven Bilgram</strong>, Success Architect
           </p>
 
           <p style={{
-            fontSize: '0.95rem',
-            lineHeight: 1.65,
+            fontSize: '0.88rem',
+            lineHeight: 1.55,
             opacity: 0.88,
             maxWidth: '520px',
-            marginTop: '20px',
+            marginTop: '10px',
           }}>
             Connects securely to your Salesforce org via OAuth and runs a comprehensive
             read-only scan across <strong>{TOTAL_CHECKS} checks</strong> in {CATEGORIES.length} categories —
             surfacing technical debt, security gaps, and configuration anti-patterns with
-            prioritised recommendations.
+            actionable recommendations.
           </p>
         </div>
 
@@ -555,8 +555,8 @@ export const LoginPage: React.FC = () => {
         <div style={{
           display: 'flex',
           gap: '32px',
-          marginBottom: '36px',
-          paddingBottom: '28px',
+          marginBottom: '16px',
+          paddingBottom: '14px',
           borderBottom: '1px solid rgba(255,255,255,0.2)',
         }}>
           {[
@@ -565,21 +565,21 @@ export const LoginPage: React.FC = () => {
             { value: '100%', label: 'Read-Only' },
           ].map(stat => (
             <div key={stat.label}>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1 }}>{stat.value}</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '4px', letterSpacing: '0.03em' }}>{stat.label}</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, lineHeight: 1 }}>{stat.value}</div>
+              <div style={{ fontSize: '0.72rem', opacity: 0.7, marginTop: '3px', letterSpacing: '0.03em' }}>{stat.label}</div>
             </div>
           ))}
         </div>
 
         {/* Category grid */}
         <div style={{ marginBottom: '10px' }}>
-          <p style={{ fontSize: '0.75rem', opacity: 0.6, margin: '0 0 12px', letterSpacing: '0.03em' }}>
+          <p style={{ fontSize: '0.72rem', opacity: 0.6, margin: '0 0 8px', letterSpacing: '0.03em' }}>
             Click any category to see all checks
           </p>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '10px',
+            gap: '7px',
           }}>
             {CATEGORIES.map(cat => {
               const accentColor = GROUP_COLORS[cat.group] || 'rgba(255,255,255,0.4)';
@@ -595,7 +595,7 @@ export const LoginPage: React.FC = () => {
                       ? 'rgba(255,255,255,0.2)'
                       : 'rgba(255,255,255,0.1)',
                     borderRadius: '8px',
-                    padding: '12px 14px 12px 12px',
+                    padding: '8px 10px 8px 10px',
                     backdropFilter: 'blur(4px)',
                     border: isHovered
                       ? '1px solid rgba(255,255,255,0.35)'
@@ -636,10 +636,10 @@ export const LoginPage: React.FC = () => {
 
         {/* Group legend */}
         <div style={{
-          marginTop: '14px',
+          marginTop: '8px',
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '10px 18px',
+          gap: '7px 16px',
         }}>
           {Object.entries(GROUP_COLORS).map(([group, color]) => (
             <div key={group} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -659,8 +659,8 @@ export const LoginPage: React.FC = () => {
 
         {/* Footer note */}
         <p style={{
-          marginTop: '16px',
-          fontSize: '0.72rem',
+          marginTop: '10px',
+          fontSize: '0.70rem',
           opacity: 0.5,
           lineHeight: 1.5,
         }}>
