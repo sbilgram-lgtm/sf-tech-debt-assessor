@@ -366,29 +366,45 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
   ],
 };
 
+// Group colors: accent for left border on category cards
+const GROUP_COLORS: Record<string, string> = {
+  'Security & Access':          '#e74c3c', // red
+  'Code & Development':         '#8e44ad', // purple
+  'Performance & Limits':       '#d35400', // orange
+  'Configuration & Architecture':'#2980b9', // blue
+  'CRM & Service':              '#27ae60', // green
+  'Governance & Hygiene':       '#7f8c8d', // grey
+};
+
 const CATEGORIES = [
-  { icon: '⚙️',  name: 'Configuration',          checks: 13 },
-  { icon: '💻',  name: 'Code Quality',            checks: 29 },
-  { icon: '🗄️',  name: 'Data Model',              checks: 4  },
-  { icon: '🎧',  name: 'Service Cloud',           checks: 69 },
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 24 },
-  { icon: '🔌',  name: 'Integrations',            checks: 9  },
-  { icon: '🧪',  name: 'Test Coverage',           checks: 4  },
-  { icon: '📊',  name: 'Org Limits',              checks: 5  },
-  { icon: '🔁',  name: 'Duplicate Rules',         checks: 4  },
-  { icon: '📈',  name: 'Reports & Dashboards',    checks: 3  },
-  { icon: '📧',  name: 'Email Templates',         checks: 3  },
-  { icon: '⚡',  name: 'Platform Events',         checks: 3  },
-  { icon: '📦',  name: 'Managed Packages',        checks: 3  },
-  { icon: '🔧',  name: 'Custom Metadata',         checks: 3  },
-  { icon: '📋',  name: 'Record Types & Layouts',  checks: 4  },
-  { icon: '🤖',  name: 'Einstein & AI',           checks: 9  },
-  { icon: '🌐',  name: 'Experience Cloud',        checks: 12 },
-  { icon: '🛡️',  name: 'Connected App Security',  checks: 12 },
-  { icon: '⚡',  name: 'LWC & Components',        checks: 39 },
-  { icon: '🎨',  name: 'OmniStudio',             checks: 26 },
-  { icon: '🚀',  name: 'Performance',             checks: 21 },
-  { icon: '📎',  name: 'Notes & Attachments',     checks: 12 },
+  // ── Security & Access ──────────────────────────────────────────
+  { icon: '🔒',  name: 'Sharing & Security',      checks: 24, group: 'Security & Access' },
+  { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
+  { icon: '🌐',  name: 'Experience Cloud',        checks: 12, group: 'Security & Access' },
+  // ── Code & Development ─────────────────────────────────────────
+  { icon: '💻',  name: 'Code Quality',            checks: 29, group: 'Code & Development' },
+  { icon: '🧪',  name: 'Test Coverage',           checks: 4,  group: 'Code & Development' },
+  { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
+  { icon: '🎨',  name: 'OmniStudio',             checks: 26, group: 'Code & Development' },
+  // ── Performance & Limits ───────────────────────────────────────
+  { icon: '🚀',  name: 'Performance',             checks: 21, group: 'Performance & Limits' },
+  { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },
+  { icon: '⚡',  name: 'Platform Events',         checks: 3,  group: 'Performance & Limits' },
+  // ── Configuration & Architecture ──────────────────────────────
+  { icon: '⚙️',  name: 'Configuration',          checks: 13, group: 'Configuration & Architecture' },
+  { icon: '🗄️',  name: 'Data Model',              checks: 4,  group: 'Configuration & Architecture' },
+  { icon: '📋',  name: 'Record Types & Layouts',  checks: 4,  group: 'Configuration & Architecture' },
+  { icon: '🔧',  name: 'Custom Metadata',         checks: 3,  group: 'Configuration & Architecture' },
+  { icon: '🔁',  name: 'Duplicate Rules',         checks: 4,  group: 'Configuration & Architecture' },
+  { icon: '🔌',  name: 'Integrations',            checks: 9,  group: 'Configuration & Architecture' },
+  // ── CRM & Service ──────────────────────────────────────────────
+  { icon: '🎧',  name: 'Service Cloud',           checks: 69, group: 'CRM & Service' },
+  { icon: '🤖',  name: 'Einstein & AI',           checks: 9,  group: 'CRM & Service' },
+  { icon: '📦',  name: 'Managed Packages',        checks: 3,  group: 'CRM & Service' },
+  // ── Governance & Hygiene ───────────────────────────────────────
+  { icon: '📈',  name: 'Reports & Dashboards',    checks: 3,  group: 'Governance & Hygiene' },
+  { icon: '📧',  name: 'Email Templates',         checks: 3,  group: 'Governance & Hygiene' },
+  { icon: '📎',  name: 'Notes & Attachments',     checks: 12, group: 'Governance & Hygiene' },
 ];
 
 const TOTAL_CHECKS = CATEGORIES.reduce((sum, c) => sum + c.checks, 0);
@@ -565,57 +581,85 @@ export const LoginPage: React.FC = () => {
             gridTemplateColumns: 'repeat(3, 1fr)',
             gap: '10px',
           }}>
-            {CATEGORIES.map(cat => (
-              <div
-                key={cat.name}
-                onClick={() => setSelectedCategory(cat.name)}
-                onMouseEnter={() => setHoveredCategory(cat.name)}
-                onMouseLeave={() => setHoveredCategory(null)}
-                style={{
-                  backgroundColor: hoveredCategory === cat.name
-                    ? 'rgba(255,255,255,0.2)'
-                    : 'rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
-                  padding: '12px 14px',
-                  backdropFilter: 'blur(4px)',
-                  border: hoveredCategory === cat.name
-                    ? '1px solid rgba(255,255,255,0.4)'
-                    : '1px solid rgba(255,255,255,0.12)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.12s, border-color 0.12s',
-                  userSelect: 'none',
-                }}
-              >
-                <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{cat.icon}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}>
-                    {cat.name}
-                  </div>
-                  <div style={{
-                    fontSize: '0.7rem',
-                    opacity: 0.65,
-                    marginTop: '1px',
-                  }}>
-                    {cat.checks} check{cat.checks !== 1 ? 's' : ''}
+            {CATEGORIES.map(cat => {
+              const accentColor = GROUP_COLORS[cat.group] || 'rgba(255,255,255,0.4)';
+              const isHovered = hoveredCategory === cat.name;
+              return (
+                <div
+                  key={cat.name}
+                  onClick={() => setSelectedCategory(cat.name)}
+                  onMouseEnter={() => setHoveredCategory(cat.name)}
+                  onMouseLeave={() => setHoveredCategory(null)}
+                  style={{
+                    backgroundColor: isHovered
+                      ? 'rgba(255,255,255,0.2)'
+                      : 'rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    padding: '12px 14px 12px 12px',
+                    backdropFilter: 'blur(4px)',
+                    border: isHovered
+                      ? '1px solid rgba(255,255,255,0.35)'
+                      : '1px solid rgba(255,255,255,0.12)',
+                    borderLeft: `3px solid ${accentColor}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.12s, border-color 0.12s',
+                    userSelect: 'none',
+                  }}
+                >
+                  <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{cat.icon}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {cat.name}
+                    </div>
+                    <div style={{
+                      fontSize: '0.7rem',
+                      opacity: 0.65,
+                      marginTop: '1px',
+                    }}>
+                      {cat.checks} check{cat.checks !== 1 ? 's' : ''}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+        </div>
+
+        {/* Group legend */}
+        <div style={{
+          marginTop: '14px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '10px 18px',
+        }}>
+          {Object.entries(GROUP_COLORS).map(([group, color]) => (
+            <div key={group} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '2px',
+                backgroundColor: color,
+                flexShrink: 0,
+              }} />
+              <span style={{ fontSize: '0.68rem', opacity: 0.7, whiteSpace: 'nowrap' }}>
+                {group}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* Footer note */}
         <p style={{
-          marginTop: '28px',
+          marginTop: '16px',
           fontSize: '0.72rem',
           opacity: 0.5,
           lineHeight: 1.5,
