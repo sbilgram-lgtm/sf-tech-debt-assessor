@@ -117,6 +117,37 @@ export interface ServiceCloudData {
   openCasesExpiredEntitlementCount: number;
   caseTeamTemplates: any[];
   unlinkedSocialPostCount: number;
+  // Entitlement deep checks
+  orphanedEntitlements: any[];
+  multiEntitlementCaseCount: number;
+  bhNoHolidays: any[];
+  suspectMilestoneTriggers: any[];
+  duplicateMilestoneTriggerCount: number;
+  // Knowledge deep checks
+  legacyChannelArticleCount: number;
+  promotedSearchTermCount: number;
+  synonymDictCount: number;
+  duplicateArticleTitles: any[];
+  articlesNoSummaryCount: number;
+  articlesNoCaseLinkCount: number;
+  totalCaseArticleCount: number;
+  // Case deep checks
+  orphanedCaseCount: number;
+  noPriorityCaseCount: number;
+  noOriginCaseCount: number;
+  veryOldCaseCount: number;
+  noDescCaseCount: number;
+  userOwnedCaseCount: number;
+  // Other Service Cloud capabilities
+  openIncidents: any[];
+  incidentsNoRelatedItemCount: number;
+  staleSwarms: any[];
+  unlinkedWorkOrderCount: number;
+  casesNoAssetLinkCount: number;
+  activeSurveys: any[];
+  surveyResponseCount: number;
+  voiceCallsNoCaseCount: number;
+  voiceCallsTotalCount: number;
 }
 
 export interface ValidationRuleData {
@@ -253,6 +284,12 @@ export interface OmniStudioData {
   dataTransforms: any[];
   flexCards: any[];
   managedPackageVersion: string | null;
+  auraRuntimeScripts: any[];
+  ipsNoErrorHandling: any[];
+  dataTransformTypes: Record<string, number>;
+  namingViolations: any[];
+  remoteActionElements: any[];
+  legacyKavTypes: any[];
 }
 
 export interface PerformanceData {

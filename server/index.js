@@ -499,6 +499,162 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       unlinkedSocialPosts = await safeQuery(conn, "SELECT COUNT(Id) FROM SocialPost WHERE ParentId = null AND IsOutbound = false AND Posted = LAST_N_DAYS:30");
     } catch(e) {}
 
+    // ── Entitlement deep checks ──────────────────────────────────────────────────
+
+    // E-1: Active entitlements never linked to any case
+    let orphanedEntitlements = { records: [] };
+    try {
+      orphanedEntitlements = await safeQuery(conn, "SELECT Id, Name, AccountId, Account.Name, StartDate, EndDate, Status FROM Entitlement WHERE Status = 'Active' AND Id NOT IN (SELECT EntitlementId FROM Case WHERE EntitlementId != null) ORDER BY StartDate ASC LIMIT 200");
+    } catch(e) {}
+
+    // E-2: Cases linked to multiple entitlements (CaseEntitlement junction)
+    let multiEntitlementCases = { records: [] };
+    try {
+      multiEntitlementCases = await safeQuery(conn, "SELECT CaseId, COUNT(Id) FROM CaseEntitlement GROUP BY CaseId HAVING COUNT(Id) > 1 LIMIT 200");
+    } catch(e) {}
+
+    // E-3: BusinessHours with no weekend + no holiday exceptions
+    let weekdayOnlyBH = { records: [] };
+    let bhHolidayCounts = { records: [] };
+    try {
+      weekdayOnlyBH = await safeQuery(conn, "SELECT Id, Name, IsActive, IsDefault, SaturdayStartTime, SundayStartTime FROM BusinessHours WHERE IsActive = true AND SaturdayStartTime = null AND SundayStartTime = null LIMIT 50");
+      bhHolidayCounts = await safeQuery(conn, "SELECT BusinessHoursId, COUNT(Id) FROM BusinessHoursHoliday GROUP BY BusinessHoursId LIMIT 100");
+    } catch(e) {}
+    const bhWithHolidayIds = new Set((bhHolidayCounts.records || []).map(r => r.BusinessHoursId));
+    const bhNoHolidays = (weekdayOnlyBH.records || []).filter(bh => !bhWithHolidayIds.has(bh.Id));
+
+    // E-4: Entitlement process milestones with TimeTrigger <= 5 (unrealistic / zero)
+    let suspectMilestoneTriggers = { records: [] };
+    try {
+      suspectMilestoneTriggers = await safeQuery(conn, "SELECT Id, Name, SlaProcessId, SlaProcess.Name, TimeTrigger, Order FROM EntitlementProcessMilestone WHERE TimeTrigger <= 5 ORDER BY SlaProcessId, Order ASC LIMIT 200");
+    } catch(e) {}
+
+    // E-5: Entitlement process milestones with duplicate TimeTrigger within same process
+    let duplicateMilestoneTriggers = { records: [] };
+    try {
+      duplicateMilestoneTriggers = await safeQuery(conn, "SELECT SlaProcessId, TimeTrigger, COUNT(Id) FROM EntitlementProcessMilestone GROUP BY SlaProcessId, TimeTrigger HAVING COUNT(Id) > 1 LIMIT 100");
+    } catch(e) {}
+
+    // ── Knowledge deep checks ────────────────────────────────────────────────────
+
+    // K-1: Published articles still visible in legacy CSP/PRM channels
+    let legacyChannelArticles = { records: [{ expr0: 0 }] };
+    try {
+      legacyChannelArticles = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND IsVisibleInCsp = true");
+    } catch(e) {}
+
+    // K-2: Promoted search terms count (zero = Knowledge search not optimised)
+    let promotedSearchTermCount = { records: [{ expr0: 0 }] };
+    let synonymDictCount = { records: [{ expr0: 0 }] };
+    try {
+      promotedSearchTermCount = await safeQuery(conn, "SELECT COUNT(Id) FROM SearchPromotionRule");
+    } catch(e) {}
+    try {
+      synonymDictCount = await safeToolingQuery(conn, "SELECT COUNT(Id) FROM SynonymDictionary");
+    } catch(e) {}
+
+    // K-3: Duplicate article titles
+    let duplicateArticleTitles = { records: [] };
+    try {
+      duplicateArticleTitles = await safeQuery(conn, "SELECT Title, COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' GROUP BY Title HAVING COUNT(Id) > 1 ORDER BY COUNT(Id) DESC LIMIT 100");
+    } catch(e) {}
+
+    // K-4: Published articles with no Summary
+    let articlesNoSummary = { records: [{ expr0: 0 }] };
+    try {
+      articlesNoSummary = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND Summary = null");
+    } catch(e) {}
+
+    // K-5: Published articles with no linked CaseArticle (no deflection evidence)
+    let articlesNoCaseLink = { records: [{ expr0: 0 }] };
+    let totalCaseArticles = { records: [{ expr0: 0 }] };
+    try {
+      articlesNoCaseLink = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND KnowledgeArticleId NOT IN (SELECT KnowledgeArticleId FROM CaseArticle)");
+      totalCaseArticles = await safeQuery(conn, "SELECT COUNT(Id) FROM CaseArticle");
+    } catch(e) {}
+
+    // ── Case deep checks ─────────────────────────────────────────────────────────
+
+    // C-1: Open cases with no Contact and no Account
+    let orphanedCases = { records: [{ expr0: 0 }] };
+    try {
+      orphanedCases = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND ContactId = null AND AccountId = null");
+    } catch(e) {}
+
+    // C-2: Open cases with Priority = null
+    let noPriorityCases = { records: [{ expr0: 0 }] };
+    try {
+      noPriorityCases = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND Priority = null");
+    } catch(e) {}
+
+    // C-3: Open cases with Origin = null
+    let noOriginCases = { records: [{ expr0: 0 }] };
+    try {
+      noOriginCases = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND Origin = null");
+    } catch(e) {}
+
+    // C-4: Very old open cases (90+ days)
+    let veryOldCases = { records: [{ expr0: 0 }] };
+    try {
+      veryOldCases = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND CreatedDate < LAST_N_DAYS:90");
+    } catch(e) {}
+
+    // C-5: Open cases with no Description
+    let noDescCases = { records: [{ expr0: 0 }] };
+    try {
+      noDescCases = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND Description = null");
+    } catch(e) {}
+
+    // C-6: Open cases owned by individual users (not queues)
+    let userOwnedCases = { records: [{ expr0: 0 }] };
+    try {
+      userOwnedCases = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND Owner.Type = 'User'");
+    } catch(e) {}
+
+    // ── Other Service Cloud capabilities ─────────────────────────────────────────
+
+    // SC-1: Incident Management — open incidents with no IncidentRelatedItem
+    let openIncidents = { records: [] };
+    let incidentsNoRelatedItem = { records: [{ expr0: 0 }] };
+    try {
+      openIncidents = await safeQuery(conn, "SELECT Id, IncidentNumber, Subject, Status, Priority, CreatedDate FROM Incident WHERE IsClosed = false ORDER BY CreatedDate DESC LIMIT 200");
+      incidentsNoRelatedItem = await safeQuery(conn, "SELECT COUNT(Id) FROM Incident WHERE IsClosed = false AND Id NOT IN (SELECT IncidentId FROM IncidentRelatedItem)");
+    } catch(e) {}
+
+    // SC-2: Swarming — stale open swarms (no update in 14 days)
+    let staleSwarms = { records: [] };
+    try {
+      staleSwarms = await safeQuery(conn, "SELECT Id, Name, Status, Subject, CaseId, OwnerId, CreatedDate, LastModifiedDate FROM Swarm WHERE Status != 'Closed' AND LastModifiedDate < LAST_N_DAYS:14 ORDER BY LastModifiedDate ASC LIMIT 200");
+    } catch(e) {}
+
+    // SC-3: Work orders with no Case and no Asset
+    let unlinkedWorkOrders = { records: [{ expr0: 0 }] };
+    try {
+      unlinkedWorkOrders = await safeQuery(conn, "SELECT COUNT(Id) FROM WorkOrder WHERE Status != 'Closed' AND CaseId = null AND AssetId = null");
+    } catch(e) {}
+
+    // SC-4: Open cases on accounts that have assets but cases have no AssetId
+    let casesNoAssetLinkCount = { records: [{ expr0: 0 }] };
+    try {
+      casesNoAssetLinkCount = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND AssetId = null AND AccountId != null AND AccountId IN (SELECT AccountId FROM Asset WHERE AccountId != null)");
+    } catch(e) {}
+
+    // SC-5: Salesforce Feedback Management — active surveys with zero responses
+    let activeSurveys = { records: [] };
+    let surveyResponses = { records: [{ expr0: 0 }] };
+    try {
+      activeSurveys = await safeQuery(conn, "SELECT Id, Name, Status, CreatedDate FROM Survey WHERE Status = 'Active' ORDER BY CreatedDate DESC LIMIT 50");
+      surveyResponses = await safeQuery(conn, "SELECT COUNT(Id) FROM SurveyResponse");
+    } catch(e) {}
+
+    // SC-6: Service Cloud Voice — completed calls with no linked Case
+    let voiceCallsNoCase = { records: [{ expr0: 0 }] };
+    let voiceCallsTotal = { records: [{ expr0: 0 }] };
+    try {
+      voiceCallsNoCase = await safeQuery(conn, "SELECT COUNT(Id) FROM VoiceCall WHERE Status = 'Completed' AND CaseId = null AND CreatedDate = LAST_N_DAYS:30");
+      voiceCallsTotal = await safeQuery(conn, "SELECT COUNT(Id) FROM VoiceCall WHERE Status = 'Completed' AND CreatedDate = LAST_N_DAYS:30");
+    } catch(e) {}
+
     res.json({
       caseRecordTypes: caseRecordTypes.records || [],
       emailToCase: [],
@@ -552,7 +708,38 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       expiredActiveEntitlements: expiredActiveEntitlements.records || [],
       openCasesExpiredEntitlementCount: (openCasesExpiredEntitlement.records[0] || {}).expr0 || 0,
       caseTeamTemplates: caseTeamTemplates.records || [],
-      unlinkedSocialPostCount: (unlinkedSocialPosts.records[0] || {}).expr0 || 0
+      unlinkedSocialPostCount: (unlinkedSocialPosts.records[0] || {}).expr0 || 0,
+      // Entitlement deep checks
+      orphanedEntitlements: orphanedEntitlements.records || [],
+      multiEntitlementCaseCount: (multiEntitlementCases.records || []).length,
+      bhNoHolidays,
+      suspectMilestoneTriggers: suspectMilestoneTriggers.records || [],
+      duplicateMilestoneTriggerCount: (duplicateMilestoneTriggers.records || []).length,
+      // Knowledge deep checks
+      legacyChannelArticleCount: (legacyChannelArticles.records[0] || {}).expr0 || 0,
+      promotedSearchTermCount: (promotedSearchTermCount.records[0] || {}).expr0 || 0,
+      synonymDictCount: (synonymDictCount.records[0] || {}).expr0 || 0,
+      duplicateArticleTitles: duplicateArticleTitles.records || [],
+      articlesNoSummaryCount: (articlesNoSummary.records[0] || {}).expr0 || 0,
+      articlesNoCaseLinkCount: (articlesNoCaseLink.records[0] || {}).expr0 || 0,
+      totalCaseArticleCount: (totalCaseArticles.records[0] || {}).expr0 || 0,
+      // Case deep checks
+      orphanedCaseCount: (orphanedCases.records[0] || {}).expr0 || 0,
+      noPriorityCaseCount: (noPriorityCases.records[0] || {}).expr0 || 0,
+      noOriginCaseCount: (noOriginCases.records[0] || {}).expr0 || 0,
+      veryOldCaseCount: (veryOldCases.records[0] || {}).expr0 || 0,
+      noDescCaseCount: (noDescCases.records[0] || {}).expr0 || 0,
+      userOwnedCaseCount: (userOwnedCases.records[0] || {}).expr0 || 0,
+      // Other Service Cloud capabilities
+      openIncidents: openIncidents.records || [],
+      incidentsNoRelatedItemCount: (incidentsNoRelatedItem.records[0] || {}).expr0 || 0,
+      staleSwarms: staleSwarms.records || [],
+      unlinkedWorkOrderCount: (unlinkedWorkOrders.records[0] || {}).expr0 || 0,
+      casesNoAssetLinkCount: (casesNoAssetLinkCount.records[0] || {}).expr0 || 0,
+      activeSurveys: activeSurveys.records || [],
+      surveyResponseCount: (surveyResponses.records[0] || {}).expr0 || 0,
+      voiceCallsNoCaseCount: (voiceCallsNoCase.records[0] || {}).expr0 || 0,
+      voiceCallsTotalCount: (voiceCallsTotal.records[0] || {}).expr0 || 0
     });
   } catch (err) {
     console.error('Service Cloud assessment error:', err);
@@ -1240,7 +1427,62 @@ app.get('/api/assess/omnistudio', requireAuth, async (req, res) => {
       }));
     }
 
-    res.json({ installed: true, flavor, omniScripts, integrationProcedures, dataTransforms, flexCards, managedPackageVersion });
+    // ── Additional OmniStudio checks ─────────────────────────────────────────────
+
+    // O-1: Active OmniScripts with LWC runtime disabled (Aura runtime still active)
+    let auraRuntimeScripts = [];
+    if (isNative) {
+      const res1 = await safeQuery(conn, "SELECT Id, Name, Type, SubType, IsActive, IsLvtEnabled, LastModifiedDate FROM OmniProcess WHERE Type = 'OmniScript' AND IsActive = true AND IsLvtEnabled = false LIMIT 200").catch(() => ({ records: [] }));
+      auraRuntimeScripts = res1.records || [];
+    } else {
+      const nsFld = `${ns}IsLwcEnabled__c`;
+      const res1 = await safeQuery(conn, `SELECT Id, Name, ${ns}Type__c, ${ns}SubType__c, ${ns}IsActive__c, ${nsFld}, LastModifiedDate FROM ${ns}OmniScript__c WHERE ${ns}IsActive__c = true AND ${nsFld} = false LIMIT 200`).catch(() => ({ records: [] }));
+      auraRuntimeScripts = (res1.records || []).map(r => ({ Id: r.Id, Name: r.Name, Type: r[`${ns}Type__c`], SubType: r[`${ns}SubType__c`], IsActive: r[`${ns}IsActive__c`], IsLvtEnabled: r[nsFld], LastModifiedDate: r.LastModifiedDate }));
+    }
+
+    // O-2: Active Integration Procedures with no error-handling elements (SetErrors/Throw)
+    let ipsWithErrors = new Set();
+    let allActiveIps = integrationProcedures.filter(ip => ip.IsActive);
+    if (isNative && allActiveIps.length > 0) {
+      const errEls = await safeQuery(conn, "SELECT OmniProcessId FROM OmniProcessElement WHERE OmniProcess.Type = 'IntegrationProcedure' AND OmniProcess.IsActive = true AND Type IN ('SetErrors','Throw') LIMIT 500").catch(() => ({ records: [] }));
+      ipsWithErrors = new Set((errEls.records || []).map(r => r.OmniProcessId));
+    }
+    const ipsNoErrorHandling = allActiveIps.filter(ip => !ipsWithErrors.has(ip.Id));
+
+    // O-3: DataTransform type distribution — flag over-reliance on standard Extract vs Turbo Extract
+    let dataTransformTypes = {};
+    if (isNative) {
+      const dtTypes = await safeQuery(conn, "SELECT InterfaceType, COUNT(Id) FROM OmniDataTransform GROUP BY InterfaceType LIMIT 20").catch(() => ({ records: [] }));
+      (dtTypes.records || []).forEach(r => { dataTransformTypes[r.InterfaceType] = r.expr0; });
+    } else {
+      const dtTypes = await safeQuery(conn, `SELECT ${ns}MapType__c, COUNT(Id) FROM ${ns}DRBundle__c GROUP BY ${ns}MapType__c LIMIT 20`).catch(() => ({ records: [] }));
+      (dtTypes.records || []).forEach(r => { dataTransformTypes[r[`${ns}MapType__c`]] = r.expr0; });
+    }
+
+    // O-4: OmniScript naming convention violations (spaces in Type/SubType)
+    let namingViolations = [];
+    if (isNative) {
+      const res4 = await safeQuery(conn, "SELECT Id, Name, Type, SubType, IsActive, LastModifiedDate FROM OmniProcess WHERE Type = 'OmniScript' AND (Type LIKE '% %' OR SubType LIKE '% %') LIMIT 200").catch(() => ({ records: [] }));
+      namingViolations = res4.records || [];
+    } else {
+      const res4 = await safeQuery(conn, `SELECT Id, Name, ${ns}Type__c, ${ns}SubType__c, ${ns}IsActive__c FROM ${ns}OmniScript__c WHERE (${ns}Type__c LIKE '% %' OR ${ns}SubType__c LIKE '% %') LIMIT 200`).catch(() => ({ records: [] }));
+      namingViolations = (res4.records || []).map(r => ({ Id: r.Id, Name: r.Name, Type: r[`${ns}Type__c`], SubType: r[`${ns}SubType__c`] }));
+    }
+
+    // O-6: Active OmniScripts using deprecated Remote Action elements
+    let remoteActionElements = [];
+    if (isNative) {
+      const res6 = await safeQuery(conn, "SELECT Id, Name, Type, OmniProcessId, OmniProcess.Name, OmniProcess.IsActive FROM OmniProcessElement WHERE Type = 'Remote Action' AND OmniProcess.IsActive = true LIMIT 200").catch(() => ({ records: [] }));
+      remoteActionElements = (res6.records || []).map(r => ({ Id: r.Id, ScriptName: r.OmniProcess?.Name || r.OmniProcessId, ElementName: r.Name }));
+    } else {
+      const res6 = await safeQuery(conn, `SELECT Id, Name, ${ns}Type__c, ${ns}OmniScriptId__c FROM ${ns}OmniScriptElement__c WHERE ${ns}Type__c = 'Remote Action' LIMIT 200`).catch(() => ({ records: [] }));
+      remoteActionElements = (res6.records || []).map(r => ({ Id: r.Id, ScriptName: r[`${ns}OmniScriptId__c`], ElementName: r.Name }));
+    }
+
+    // O-5: Legacy article types in schema (pre-Spring '20 Knowledge migration)
+    const legacyKavTypes = await safeToolingQuery(conn, "SELECT QualifiedApiName, Label FROM EntityDefinition WHERE QualifiedApiName LIKE '%__kav' AND QualifiedApiName != 'Knowledge__kav' LIMIT 50").catch(() => ({ records: [] }));
+
+    res.json({ installed: true, flavor, omniScripts, integrationProcedures, dataTransforms, flexCards, managedPackageVersion, auraRuntimeScripts, ipsNoErrorHandling, dataTransformTypes, namingViolations, remoteActionElements, legacyKavTypes: legacyKavTypes.records || [] });
   } catch (err) {
     console.error('OmniStudio assess error:', err);
     res.status(500).json({ error: err.message });

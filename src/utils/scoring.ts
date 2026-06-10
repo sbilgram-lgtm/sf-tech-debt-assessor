@@ -1060,6 +1060,211 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       {}));
   }
 
+  // ── Entitlement deep checks ───────────────────────────────────────────────────
+
+  const orphanedEntitlements = data.orphanedEntitlements || [];
+  if (orphanedEntitlements.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${orphanedEntitlements.length} Active Entitlement${orphanedEntitlements.length !== 1 ? 's' : ''} Never Linked to Any Case`,
+      'These active entitlements have never had a case associated. They may represent contracts imported without operationalisation, or customers entitled to support who have never logged a case — both inflate capacity figures and pollute SLA reporting.',
+      'Audit orphaned entitlements. Confirm whether they represent active contracts. Deactivate or delete entitlements for expired or unused contracts.',
+      { records: orphanedEntitlements.slice(0, 50).map((e: any) => ({ name: e.Name, detail: e.Account?.Name || e.AccountId || 'No Account' })) }
+    ));
+  }
+
+  if ((data.multiEntitlementCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.multiEntitlementCaseCount} Cases Linked to Multiple Entitlements`,
+      'Cases with multiple entitlement associations create SLA ambiguity — only the Case.EntitlementId field drives milestone tracking, but multiple CaseEntitlement records suggest automated entitlement assignment rules are over-associating entitlements.',
+      'Review CaseEntitlement assignment rules. Ensure only the primary applicable entitlement is attached to each case. Clean up duplicate CaseEntitlement junction records.',
+      { count: data.multiEntitlementCaseCount }
+    ));
+  }
+
+  const bhNoHolidays = data.bhNoHolidays || [];
+  if (bhNoHolidays.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${bhNoHolidays.length} Business Hours Record${bhNoHolidays.length !== 1 ? 's' : ''} Exclude Weekends but Have No Holiday Exceptions`,
+      'Business hours records with Mon–Fri schedules but no Holiday records will run SLA milestone timers on public holidays, causing false violations and breach of customer SLA commitments.',
+      'Add Holiday records via Setup → Business Hours → Holidays. Assign relevant holidays to each BusinessHours record used in active entitlement processes.',
+      { records: bhNoHolidays.map((bh: any) => ({ name: bh.Name, detail: bh.IsDefault ? 'Default business hours' : '' })) }
+    ));
+  }
+
+  const suspectTriggers = data.suspectMilestoneTriggers || [];
+  if (suspectTriggers.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${suspectTriggers.length} Entitlement Milestone${suspectTriggers.length !== 1 ? 's' : ''} With Target Time of 5 Minutes or Less`,
+      'Milestone target times of 5 minutes or less are almost certainly configuration errors — these milestones will be violated immediately after case creation and generate a constant stream of false violations that desensitise agents to real SLA breaches.',
+      'Review entitlement process milestones with near-zero TimeTrigger values. Set realistic target times aligned to your SLA commitments (e.g., First Response = 60 minutes, Resolution = 8 hours).',
+      { records: suspectTriggers.map((m: any) => ({ name: m.Name, detail: `Process: ${m.SlaProcess?.Name || m.SlaProcessId} — ${m.TimeTrigger} min` })) }
+    ));
+  }
+
+  if ((data.duplicateMilestoneTriggerCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.duplicateMilestoneTriggerCount} Entitlement Processes Have Milestones With Duplicate Target Times`,
+      'Multiple milestones within the same entitlement process sharing identical TimeTrigger values produce non-deterministic sequencing and simultaneous violations, making SLA reporting unreliable.',
+      'Review entitlement process milestones with duplicate TimeTrigger values. Each milestone within a process should have a unique, progressively increasing target time.',
+      { count: data.duplicateMilestoneTriggerCount }
+    ));
+  }
+
+  // ── Knowledge deep checks ─────────────────────────────────────────────────────
+
+  if ((data.legacyChannelArticleCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'low',
+      `${data.legacyChannelArticleCount} Published Articles Still Visible in Legacy Customer Self-Service Portal Channel`,
+      'Articles marked visible in the legacy Customer Self-Service Portal (IsVisibleInCsp) channel are configured for a deprecated portal type. This flag adds no value for orgs using Experience Cloud and may expose articles to unintended legacy portals.',
+      'Audit IsVisibleInCsp visibility on all published articles. Remove CSP visibility where the org uses Experience Cloud instead of the legacy Self-Service portal.',
+      { count: data.legacyChannelArticleCount }
+    ));
+  }
+
+  const publishedCount = data.publishedArticleCount || 0;
+  if (publishedCount > 10 && (data.promotedSearchTermCount || 0) === 0 && (data.synonymDictCount || 0) === 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'Knowledge Search Not Optimised — No Promoted Terms or Synonym Groups Configured',
+      'The org has a published Knowledge library but zero promoted search terms (SearchPromotionRule) and zero synonym groups. High-value deflection articles will not surface for variations in customer search terminology, reducing deflection rates.',
+      'Configure promoted search terms in Setup → Knowledge → Promoted Search Terms for top-category articles. Add synonym groups in Setup → Knowledge → Synonyms for common terminology variants (e.g., "invoice" = "bill" = "receipt").',
+      {}
+    ));
+  }
+
+  const dupTitles = data.duplicateArticleTitles || [];
+  if (dupTitles.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${dupTitles.length} Duplicate Published Article Title${dupTitles.length !== 1 ? 's' : ''} Found`,
+      'Multiple published articles share the same title. Duplicate titles create agent confusion during search, make it impossible to determine the authoritative version, and indicate articles are being duplicated instead of versioned.',
+      'Consolidate duplicate articles. Archive or delete older versions. Use Knowledge article versioning (Archive + New Draft) rather than creating new articles for updates.',
+      { records: dupTitles.slice(0, 30).map((t: any) => ({ name: t.Title, detail: `${t.expr0} copies` })) }
+    ));
+  }
+
+  if ((data.articlesNoSummaryCount || 0) > 0 && publishedCount > 0) {
+    const pct = Math.round(((data.articlesNoSummaryCount || 0) / publishedCount) * 100);
+    items.push(createDebtItem('serviceCloud', 'low',
+      `${data.articlesNoSummaryCount} Published Articles Have No Summary (${pct}% of library)`,
+      'Articles without a Summary field produce poor search result snippets in the Lightning console, help centres, and Einstein Search — reducing agent and customer ability to identify relevant content before opening the article.',
+      'Add Summary text to all published articles. Aim for 1–2 sentences describing the article\'s content and the scenario it addresses.',
+      { count: data.articlesNoSummaryCount }
+    ));
+  }
+
+  if (publishedCount > 20 && (data.totalCaseArticleCount || 0) === 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'No Knowledge Articles Have Been Attached to Any Case (Zero Deflection Evidence)',
+      'A published Knowledge library exists but no CaseArticle records indicate agents are not using Knowledge in case resolution. This may signal poor Knowledge search configuration, irrelevant content, or agents bypassing the Knowledge base.',
+      'Review Knowledge search configuration and article visibility settings. Enable the Knowledge component on case record pages. Measure article attachment rates and train agents on Knowledge usage.',
+      { count: publishedCount }
+    ));
+  }
+
+  // ── Case deep checks ──────────────────────────────────────────────────────────
+
+  if ((data.orphanedCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.orphanedCaseCount} Open Cases With No Contact and No Account`,
+      'Open cases with neither a Contact nor an Account cannot trigger entitlement lookups, are excluded from 360-degree account views, and cannot be routed by assignment rules that rely on account/contact relationships.',
+      'Investigate the source creating these cases (web forms, API integrations, bulk imports). Add validation rules or flow checks to require Contact or Account on case creation.',
+      { count: data.orphanedCaseCount }
+    ));
+  }
+
+  if ((data.noPriorityCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.noPriorityCaseCount} Open Cases With No Priority Set`,
+      'Cases without a Priority bypass priority-based escalation rules entirely — potentially critical issues are never automatically escalated. Priority is also required for most SLA milestone criteria.',
+      'Add a validation rule or default value that sets Priority on all new cases. Update assignment rule entries to set Priority based on case origin or contact tier.',
+      { count: data.noPriorityCaseCount }
+    ));
+  }
+
+  if ((data.noOriginCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.noOriginCaseCount} Open Cases With No Origin (Unknown Channel)`,
+      'Cases with no Origin value are invisible to channel-specific reports, cannot be routed by origin-based assignment rules, and indicate gaps in case creation flows — likely programmatic creation or data imports bypassing standard capture.',
+      'Add Origin as a required field on all case creation entry points. Set a default origin value in each case creation flow, web-to-case form, and email-to-case routing address.',
+      { count: data.noOriginCaseCount }
+    ));
+  }
+
+  if ((data.veryOldCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.veryOldCaseCount} Open Cases Older Than 90 Days`,
+      'Cases open for 90+ days represent chronic resolution failures — stalled escalations, abandoned work, or cases that were never properly closed. These pollute queue metrics and inflate open-case counts in dashboards.',
+      'Run an aged case review with team leads. Close cases that are resolved but not formally closed. Establish an escalation rule that fires when cases exceed 30 days open without modification.',
+      { count: data.veryOldCaseCount }
+    ));
+  }
+
+  if ((data.noDescCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'low',
+      `${data.noDescCaseCount} Open Cases With No Description`,
+      'Cases without a Description have no recorded narrative of the issue. This forces agents to rely on comments or email threads, makes Einstein Case Classification impossible, and prevents keyword-based routing and Knowledge deflection.',
+      'Add Description as a required field on case creation flows and web-to-case forms. For cases already missing descriptions, triage and update the top open cases.',
+      { count: data.noDescCaseCount }
+    ));
+  }
+
+  if ((data.userOwnedCaseCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.userOwnedCaseCount} Open Cases Owned by Individual Users (Not Queues)`,
+      'Cases assigned directly to users cannot be redistributed by Omnichannel capacity management, cannot be picked up by coverage agents during absence, and create single-agent bottlenecks. Salesforce routing best practices require queue-based case ownership.',
+      'Review assignment rules and ensure cases are routed to queues. For cases currently owned by users, reassign to appropriate queues. Use personal queue worklists only as a temporary holding pattern.',
+      { count: data.userOwnedCaseCount }
+    ));
+  }
+
+  // ── Other Service Cloud capabilities ─────────────────────────────────────────
+
+  if ((data.openIncidents || []).length > 0 && (data.incidentsNoRelatedItemCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.incidentsNoRelatedItemCount} Open Incident${data.incidentsNoRelatedItemCount !== 1 ? 's' : ''} With No Related Items`,
+      'Incident Management is in use but active incidents have no IncidentRelatedItem records — no impacted cases or assets are linked. These incidents have no defined scope and cannot drive impact-based prioritisation or mass case updates.',
+      'For each open incident, link all impacted cases, assets, or accounts via the IncidentRelatedItem junction. This enables impact count reporting and mass status updates to affected customers.',
+      { records: (data.openIncidents || []).slice(0, 30).map((i: any) => ({ name: i.IncidentNumber || i.Id, detail: i.Subject || '' })) }
+    ));
+  }
+
+  const staleSwarms = data.staleSwarms || [];
+  if (staleSwarms.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'low',
+      `${staleSwarms.length} Open Swarm${staleSwarms.length !== 1 ? 's' : ''} With No Activity in 14+ Days`,
+      'Open swarms not updated in over two weeks represent either forgotten escalations or resolved issues where the swarm was never closed. Ghost swarms generate unnecessary reminder notifications and pollute swarming dashboards.',
+      'Review stale swarms and close those where the underlying case is resolved. Add a flow that auto-closes swarms when the associated case is closed.',
+      { records: staleSwarms.slice(0, 30).map((s: any) => ({ name: s.Name || s.Id, detail: s.Subject || '' })) }
+    ));
+  }
+
+  if ((data.unlinkedWorkOrderCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.unlinkedWorkOrderCount} Open Work Order${data.unlinkedWorkOrderCount !== 1 ? 's' : ''} With No Case and No Asset`,
+      'Work orders with neither a Case nor an Asset link have no service context — they are excluded from asset service history, cannot be tracked against case resolution, and are invisible to FSL scheduling optimisation.',
+      'Update work order creation flows to always populate CaseId or AssetId. Review existing unlinked work orders and manually associate them with the correct case or asset.',
+      { count: data.unlinkedWorkOrderCount }
+    ));
+  }
+
+  if ((data.activeSurveys || []).length > 0 && (data.surveyResponseCount || 0) === 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'Active CSAT Surveys Configured but No Survey Responses Received',
+      'Feedback Management surveys are active but have zero responses. Survey invitations are either not being sent, the delivery mechanism is misconfigured, or the survey link in outbound emails is broken.',
+      'Review Survey Invitation records and the flow/process sending invitations. Test the survey delivery path end-to-end. Confirm survey links are included in post-case closure email templates.',
+      { count: (data.activeSurveys || []).length }
+    ));
+  }
+
+  if ((data.voiceCallsTotalCount || 0) > 0 && (data.voiceCallsNoCaseCount || 0) > 0) {
+    const pct = Math.round(((data.voiceCallsNoCaseCount || 0) / (data.voiceCallsTotalCount || 1)) * 100);
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.voiceCallsNoCaseCount} Completed Voice Calls With No Linked Case (${pct}% of calls last 30 days)`,
+      'Completed VoiceCall records with no CaseId mean agents are ending calls without completing the post-call wrap-up flow. These interactions have no case history, no CSAT survey eligibility, and no contact timeline record.',
+      'Review the Service Cloud Voice post-call flow configuration. Ensure the wrap-up flow creates and links a case before the call is marked completed. Train agents on wrap-up procedures.',
+      { count: data.voiceCallsNoCaseCount }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -3027,6 +3232,87 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
       'A large number of DataRaptors increases deployment complexity and the risk of conflicts during upgrades.',
       'Audit for duplicate or near-duplicate DataRaptors. Consolidate where possible and enforce a naming and ownership convention.',
       { count: totalDTs }
+    ));
+  }
+
+  // ── LWC Runtime & Accessibility ──────────────────────────────────────────────
+
+  const auraRuntimeScripts = data.auraRuntimeScripts || [];
+  if (auraRuntimeScripts.length > 0) {
+    items.push(createDebtItem('omniStudio', 'high',
+      `${auraRuntimeScripts.length} Active OmniScripts Still Using Aura Runtime (LWC Disabled)`,
+      'Salesforce retired the Aura-based OmniScript runtime. Active OmniScripts with IsLvtEnabled = false fail WCAG 2.1 AA accessibility requirements, lack keyboard navigation and ARIA support, and are on a deprecated execution path with no future investment.',
+      'Enable the LWC runtime on all active OmniScripts. In Setup → OmniStudio, open each script and toggle the LWC Compilation setting. Test thoroughly before activating — LWC runtime may expose layout differences.',
+      { records: auraRuntimeScripts.map((s: any) => ({ name: s.Name, detail: `${s.Type}/${s.SubType || ''}` })) }
+    ));
+  }
+
+  // ── Integration Procedure error handling ─────────────────────────────────────
+
+  const ipsNoErrorHandling = data.ipsNoErrorHandling || [];
+  if (ipsNoErrorHandling.length > 0) {
+    items.push(createDebtItem('omniStudio', 'high',
+      `${ipsNoErrorHandling.length} Active Integration Procedures With No Error-Handling Element`,
+      'Integration Procedures without a SetErrors or Throw element silently swallow API failures and return empty data to the calling OmniScript with no user feedback or logging. This leads to broken form flows and undetectable data corruption.',
+      'Add a SetErrors or Throw element to every Integration Procedure to handle HTTP errors and unexpected empty responses. Route error paths to a dedicated error response structure.',
+      { records: ipsNoErrorHandling.map((ip: any) => ({ name: ip.Name, detail: `${ip.Type}/${ip.SubType || ''}` })) }
+    ));
+  }
+
+  // ── DataTransform type distribution ──────────────────────────────────────────
+
+  const dtTypes = data.dataTransformTypes || {};
+  const extractCount = (dtTypes['Retrieve'] || dtTypes['Extract'] || 0) as number;
+  const turboCount = (dtTypes['RetrieveSObjectCollections'] || dtTypes['Turbo Extract'] || 0) as number;
+  if (extractCount > 0 && turboCount === 0) {
+    items.push(createDebtItem('omniStudio', 'medium',
+      `${extractCount} Standard Extract DataRaptors — No Turbo Extract in Use`,
+      'All Extract DataRaptors use the standard extraction engine. Salesforce recommends Turbo Extract for read-only SOQL retrievals — it bypasses the transformation engine and is significantly faster. Zero Turbo Extract usage signals a missed performance optimisation opportunity.',
+      'Audit Extract DataRaptors for candidates to convert to Turbo Extract. Any DataRaptor that only reads data (no complex mappings) is a conversion candidate.',
+      { count: extractCount }
+    ));
+  } else if (extractCount > turboCount * 2 && extractCount > 5) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${extractCount} Standard Extract DataRaptors vs ${turboCount} Turbo Extract — Consider More Turbo Extract`,
+      'Standard Extract DataRaptors significantly outnumber Turbo Extract DataRaptors. Salesforce recommends Turbo Extract for read-only retrievals as a performance best practice.',
+      'Review standard Extract DataRaptors. Migrate simple read-only retrievals to Turbo Extract to reduce transaction time.',
+      {}
+    ));
+  }
+
+  // ── Naming conventions ────────────────────────────────────────────────────────
+
+  const namingViolations = data.namingViolations || [];
+  if (namingViolations.length > 0) {
+    items.push(createDebtItem('omniStudio', 'low',
+      `${namingViolations.length} OmniScripts With Spaces in Type or SubType`,
+      'OmniScript Type and SubType should use PascalCase with no spaces. Spaces in the composite key break invocation by API name, cause issues in URL-based launching, and signal uncontrolled creation.',
+      'Rename OmniScript Type/SubType fields to use PascalCase (e.g., "Address Change" → "AddressChange"). Update all references to the composite key.',
+      { records: namingViolations.map((s: any) => ({ name: s.Name, detail: `Type: "${s.Type}" / SubType: "${s.SubType || ''}"` })) }
+    ));
+  }
+
+  // ── Deprecated element types ──────────────────────────────────────────────────
+
+  const remoteActionElements = data.remoteActionElements || [];
+  if (remoteActionElements.length > 0) {
+    items.push(createDebtItem('omniStudio', 'high',
+      `${remoteActionElements.length} Active OmniScripts Using Deprecated Remote Action Elements`,
+      'Remote Action elements (Visualforce-style Apex Remote Actions) are deprecated in OmniStudio. They are incompatible with the LWC runtime and headless OmniScript invocation, and receive no new platform investment.',
+      'Replace Remote Action elements with Integration Procedure Action elements calling a properly structured Integration Procedure, or use DataRaptor Turbo Extract for data retrieval.',
+      { records: remoteActionElements.map((e: any) => ({ name: e.ScriptName || e.Id, detail: `Element: ${e.ElementName}` })) }
+    ));
+  }
+
+  // ── Legacy Knowledge article types ───────────────────────────────────────────
+
+  const legacyKavTypes = data.legacyKavTypes || [];
+  if (legacyKavTypes.length > 0) {
+    items.push(createDebtItem('omniStudio', 'high',
+      `${legacyKavTypes.length} Legacy Knowledge Article Type${legacyKavTypes.length !== 1 ? 's' : ''} Still in Schema (Pre-Spring '20 Migration Incomplete)`,
+      'Legacy article type objects (e.g., FAQ__kav, HowTo__kav) from before the Spring 2020 unified Knowledge migration are still present. These objects are deprecated, receive no new platform investment, and create Knowledge search inconsistencies.',
+      'Complete the Knowledge article type migration to the unified Knowledge__kav model. Use the Salesforce Knowledge Migration Tool and follow the Winter \'20 migration guide.',
+      { records: legacyKavTypes.map((t: any) => ({ name: t.QualifiedApiName, detail: t.Label })) }
     ));
   }
 
