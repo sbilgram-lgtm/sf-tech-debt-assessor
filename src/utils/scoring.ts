@@ -23,7 +23,8 @@ import {
   ConnectedAppSecurityData,
   LwcData,
   OmniStudioData,
-  PerformanceData
+  PerformanceData,
+  NotesAttachmentsData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -3765,6 +3766,108 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return {
     category: 'Performance',
+    score: Math.max(0, maxScore - deductions),
+    maxScore,
+    percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),
+    items
+  };
+}
+
+export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  // ── Legacy Notes ──────────────────────────────────────────────────────────────
+
+  if (data.legacyNoteCount > 0) {
+    items.push(createDebtItem('notesAttachments', 'high',
+      `${data.legacyNoteCount.toLocaleString()} Legacy Note Records Found`,
+      'Classic Note records (the Note object) are a deprecated data format. They are plain-text only, have limited formatting, cannot be searched via the unified Salesforce search, and cannot be managed through the Files & Content governance framework.',
+      'Enable Enhanced Notes in Setup → Notes Settings. Migrate legacy Note records to ContentNote using the Salesforce Notes Migration Tool or a bulk data migration. Enhanced Notes support rich text, related records, and standard content permissions.',
+      {}
+    ));
+  }
+
+  // ── Legacy Attachments ────────────────────────────────────────────────────────
+
+  if (data.legacyAttachmentCount > 0) {
+    items.push(createDebtItem('notesAttachments', 'high',
+      `${data.legacyAttachmentCount.toLocaleString()} Legacy Attachment Records Found`,
+      'Classic Attachment records are stored against the parent record directly and bypass the Salesforce Files (ContentDocument/ContentVersion) framework. They lack version control, external sharing controls, content delivery options, and file governance. Salesforce has deprecated the Attachment object and it may be removed in a future release.',
+      'Migrate legacy Attachments to Salesforce Files (ContentDocument/ContentVersion/ContentDocumentLink) using the Salesforce Files Migration Utility. After migration, deactivate Attachment upload functionality in your page layouts.',
+      {}
+    ));
+  }
+
+  // ── Enhanced Notes not enabled ────────────────────────────────────────────────
+
+  if (!data.enhancedNotesEnabled && data.legacyNoteCount === 0 && data.contentNoteCount === 0) {
+    items.push(createDebtItem('notesAttachments', 'medium',
+      'Enhanced Notes Not Enabled',
+      'Enhanced Notes (ContentNote) are disabled. Users are limited to plain-text legacy Notes that lack rich-text formatting, file attachments within a note, and integration with the Salesforce Files framework.',
+      'Enable Enhanced Notes in Setup → Notes Settings. This enables rich-text note-taking directly on records and stores notes as ContentNote records compatible with the Files framework.',
+      {}
+    ));
+  }
+
+  // ── Orphaned ContentDocuments ─────────────────────────────────────────────────
+
+  if (data.orphanedContentDocumentCount > 0) {
+    items.push(createDebtItem('notesAttachments', 'medium',
+      `${data.orphanedContentDocumentCount.toLocaleString()} Orphaned ContentDocument Records`,
+      'ContentDocument records with no ContentDocumentLink are not linked to any record, library, or user. These files consume org storage, cannot be discovered through standard navigation, and represent a governance gap as their provenance is unknown.',
+      'Identify and review orphaned ContentDocuments. Files with no business context should be deleted. Files that belong to records should be re-linked via ContentDocumentLink. Run this audit periodically to prevent storage bloat.',
+      {}
+    ));
+  }
+
+  // ── Large files ───────────────────────────────────────────────────────────────
+
+  if (data.largeFileCount > 0) {
+    items.push(createDebtItem('notesAttachments', 'medium',
+      `${data.largeFileCount} Files Larger Than 25 MB`,
+      'Files over 25 MB slow download performance, consume significant file storage allocation, and can cause timeouts during API-based file retrieval. Salesforce file storage is metered and large files are the primary driver of storage limit consumption.',
+      'Review large files and determine if they belong in Salesforce. Consider moving binary assets (videos, large PDFs, datasets) to an external content store (SharePoint, Box, Google Drive) and linking them via Salesforce Files Connect or custom rich text fields.',
+      { records: data.largeFiles.map((f: any) => ({ name: f.Title || 'Untitled', detail: `${Math.round((f.ContentSize || 0) / 1048576)} MB` })) }
+    ));
+  }
+
+  // ── Untitled ContentDocuments ─────────────────────────────────────────────────
+
+  if (data.untitledContentDocumentCount > 0) {
+    items.push(createDebtItem('notesAttachments', 'low',
+      `${data.untitledContentDocumentCount} Files With No Title`,
+      'ContentDocument records without a Title are undiscoverable through search and provide no context for viewers. They indicate files uploaded without proper governance (e.g., from API integrations or data migrations).',
+      'Bulk-update untitled ContentDocument records to set meaningful titles. Enforce title entry at the point of upload by reviewing page layout and upload component settings. For files created via API, ensure the integration sets Title on ContentVersion.',
+      {}
+    ));
+  }
+
+  // ── Externally shared files ───────────────────────────────────────────────────
+
+  if (data.externallySharedFileCount > 0) {
+    items.push(createDebtItem('notesAttachments', 'high',
+      `${data.externallySharedFileCount} Files Shared Externally via Content Delivery`,
+      'ContentDistribution records create publicly accessible links to files hosted in Salesforce. Files shared with no expiry date remain publicly accessible indefinitely. This is a data exposure risk for any file that contains customer, employee, or confidential business data.',
+      'Audit all active ContentDistribution records. Revoke external sharing for files that no longer need it. Set expiry dates on all active distributions. Establish a governance policy for external file sharing with regular review cycles.',
+      {}
+    ));
+  }
+
+  // ── No content libraries ──────────────────────────────────────────────────────
+
+  if (data.contentWorkspaceCount === 0) {
+    items.push(createDebtItem('notesAttachments', 'low',
+      'No Salesforce Content Libraries Configured',
+      'Content Libraries (ContentWorkspace) provide a governed shared repository for files that need to be accessible across multiple records or users. Without libraries, files are ad-hoc attachments with no reusability or version governance.',
+      'Create Content Libraries in Setup → Content → Content Deliveries and Libraries for reusable assets (templates, branding assets, product documentation). Assign appropriate library permissions based on user roles.',
+      {}
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return {
+    category: 'Notes & Attachments',
     score: Math.max(0, maxScore - deductions),
     maxScore,
     percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),

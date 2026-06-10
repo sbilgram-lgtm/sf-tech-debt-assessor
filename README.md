@@ -1,7 +1,7 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **293 checks in 21 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **301 checks in 22 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Data & Privacy
 
@@ -140,6 +140,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **LWC & Components** | 39 | See detail table below |
 | **OmniStudio** | 26 | See detail table below |
 | **Performance** | 16 | Large Apex classes, multi-trigger objects, async job queue depth, failed jobs, scheduled Apex, active trace flags, record-triggered flows, Platform Cache, wide objects, event log files |
+| **Notes & Attachments** | 8 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files (ContentDistribution), Content Libraries |
 
 ---
 

@@ -1686,6 +1686,62 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [
+      legacyNotes,
+      legacyAttachments,
+      contentNotes,
+      contentVersions,
+      orphanedDocs,
+      largeFiles,
+      untitledDocs,
+      externalShares,
+      contentWorkspaces,
+      topAttachmentObjects,
+      orgPreferences
+    ] = await Promise.all([
+      safeQuery(conn, "SELECT COUNT(Id) FROM Note LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Attachment LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentNote LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentVersion WHERE IsLatest = true AND FileType != 'SNOTE' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDocument WHERE Id NOT IN (SELECT ContentDocumentId FROM ContentDocumentLink) LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT Id, Title, ContentSize FROM ContentVersion WHERE IsLatest = true AND ContentSize > 26214400 LIMIT 100").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDocument WHERE Title = null OR Title = '' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDistribution WHERE ExpiryDate = null OR ExpiryDate > TODAY LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentWorkspace LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT LinkedEntityType, COUNT(Id) FROM ContentDocumentLink WHERE LinkedEntityType IN ('Account','Contact','Case','Lead','Opportunity','Task','Event') GROUP BY LinkedEntityType ORDER BY COUNT(Id) DESC LIMIT 10").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name, Value FROM OrgPreference WHERE Name = 'EnhancedNotes' LIMIT 1").catch(() => ({ records: [] }))
+    ]);
+
+    const topObjects = (topAttachmentObjects.records || []).map(r => ({
+      obj: r.LinkedEntityType,
+      count: r.expr0
+    }));
+
+    const enhancedNotesEnabled = (orgPreferences.records || []).some(r => r.Value === 'true' || r.Value === true);
+
+    res.json({
+      legacyNoteCount: (legacyNotes.records[0] || {}).expr0 || 0,
+      legacyAttachmentCount: (legacyAttachments.records[0] || {}).expr0 || 0,
+      contentNoteCount: (contentNotes.records[0] || {}).expr0 || 0,
+      contentVersionCount: (contentVersions.records[0] || {}).expr0 || 0,
+      orphanedContentDocumentCount: (orphanedDocs.records[0] || {}).expr0 || 0,
+      largeFileCount: (largeFiles.records || []).length,
+      largeFiles: largeFiles.records || [],
+      untitledContentDocumentCount: (untitledDocs.records[0] || {}).expr0 || 0,
+      externallySharedFileCount: (externalShares.records[0] || {}).expr0 || 0,
+      contentWorkspaceCount: (contentWorkspaces.records[0] || {}).expr0 || 0,
+      topAttachmentObjects: topObjects,
+      enhancedNotesEnabled
+    });
+  } catch (err) {
+    console.error('Notes & Attachments assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // In production, serve the React build
 if (isProduction) {
   app.use(express.static(path.resolve(__dirname, '../build')));

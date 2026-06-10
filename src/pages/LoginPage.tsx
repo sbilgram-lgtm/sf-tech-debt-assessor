@@ -333,6 +333,16 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Objects with 6+ Lightning Pages', severity: 'low' },
     { title: 'Event Monitoring Not Producing Logs (Last 7 Days)', severity: 'low' },
   ],
+  'Notes & Attachments': [
+    { title: 'Legacy Note Records Found', severity: 'high' },
+    { title: 'Legacy Attachment Records Found', severity: 'high' },
+    { title: 'Enhanced Notes Not Enabled', severity: 'medium' },
+    { title: 'Orphaned ContentDocument Records', severity: 'medium' },
+    { title: 'Files Larger Than 25 MB', severity: 'medium' },
+    { title: 'Files With No Title', severity: 'low' },
+    { title: 'Files Shared Externally via Content Delivery', severity: 'high' },
+    { title: 'No Salesforce Content Libraries Configured', severity: 'low' },
+  ],
 };
 
 const CATEGORIES = [
@@ -357,6 +367,7 @@ const CATEGORIES = [
   { icon: '⚡',  name: 'LWC & Components',        checks: 39 },
   { icon: '🎨',  name: 'OmniStudio',             checks: 26 },
   { icon: '🚀',  name: 'Performance',             checks: 16 },
+  { icon: '📎',  name: 'Notes & Attachments',     checks: 8  },
 ];
 
 const TOTAL_CHECKS = CATEGORIES.reduce((sum, c) => sum + c.checks, 0);

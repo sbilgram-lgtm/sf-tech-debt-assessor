@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -320,6 +320,21 @@ export interface PerformanceData {
   heavyEntities: { eid: string; count: number }[];
   eventLogFiles: any[];
   futureQueueable: any[];
+}
+
+export interface NotesAttachmentsData {
+  legacyNoteCount: number;
+  legacyAttachmentCount: number;
+  contentNoteCount: number;
+  contentVersionCount: number;
+  orphanedContentDocumentCount: number;
+  largeFileCount: number;
+  largeFiles: any[];
+  untitledContentDocumentCount: number;
+  externallySharedFileCount: number;
+  contentWorkspaceCount: number;
+  topAttachmentObjects: { obj: string; count: number }[];
+  enhancedNotesEnabled: boolean;
 }
 
 export interface LwcData {

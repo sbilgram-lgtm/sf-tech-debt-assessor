@@ -109,3 +109,7 @@ export async function getOmniStudioData() {
 export async function getPerformanceData() {
   return fetchApi('/api/assess/performance');
 }
+
+export async function getNotesAttachmentsData() {
+  return fetchApi('/api/assess/notes-attachments');
+}
