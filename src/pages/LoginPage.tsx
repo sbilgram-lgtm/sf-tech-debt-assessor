@@ -373,7 +373,7 @@ const GROUP_COLORS: Record<string, string> = {
   'Performance & Limits':       '#d35400', // orange
   'Configuration & Architecture':'#00bcd4', // teal
   'CRM & Service':              '#27ae60', // green
-  'Governance & Hygiene':       '#7f8c8d', // grey
+  'Governance & Hygiene':       '#e8a838', // amber/gold
 };
 
 const CATEGORIES = [
@@ -597,9 +597,9 @@ export const LoginPage: React.FC = () => {
                     borderRadius: '8px',
                     padding: '8px 10px 8px 10px',
                     backdropFilter: 'blur(4px)',
-                    border: isHovered
-                      ? '1px solid rgba(255,255,255,0.35)'
-                      : '1px solid rgba(255,255,255,0.12)',
+                    borderTop: isHovered ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.12)',
+                    borderRight: isHovered ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.12)',
+                    borderBottom: isHovered ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.12)',
                     borderLeft: `3px solid ${accentColor}`,
                     display: 'flex',
                     alignItems: 'center',
