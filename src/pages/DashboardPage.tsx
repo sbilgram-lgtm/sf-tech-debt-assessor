@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
-import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getTerritoryData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData, getPerformanceData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessTerritory, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, assessPerformance, calculateOverallScore } from '../utils/scoring';
+import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData, getPerformanceData } from '../services/api';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, assessPerformance, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 import { RemediationRoadmap } from '../components/RemediationRoadmap';
@@ -83,10 +83,7 @@ export const DashboardPage: React.FC = () => {
       setProgress('Assessing Einstein & AI usage...');
       const einsteinAIData = await getEinsteinAIData();
 
-      setProgress('Checking territory management...');
-      const territoryData = await getTerritoryData();
-
-      setProgress('Assessing Experience Cloud sites...');
+setProgress('Assessing Experience Cloud sites...');
       const experienceCloudData = await getExperienceCloudData();
 
       setProgress('Auditing Connected App security...');
@@ -118,7 +115,6 @@ export const DashboardPage: React.FC = () => {
       const customMetadataScore = assessCustomMetadata(customMetadataData);
       const recordTypesScore = assessRecordTypesLayouts(recordTypesLayoutsData);
       const einsteinScore = assessEinsteinAI(einsteinAIData);
-      const territoryScore = assessTerritory(territoryData);
       const experienceCloudScore = assessExperienceCloud(experienceCloudData);
       const connectedAppSecurityScore = assessConnectedAppSecurity(connectedAppSecurityData);
       const lwcScore = assessLwc(lwcData);
@@ -129,7 +125,7 @@ export const DashboardPage: React.FC = () => {
         configScore, codeScore, dataScore, serviceScore, sharingScore,
         integrationScore, testScore, limitsScore, duplicateScore, reportsScore,
         emailScore, platformEventsScore, packagesScore, customMetadataScore,
-        recordTypesScore, einsteinScore, territoryScore, experienceCloudScore,
+        recordTypesScore, einsteinScore, experienceCloudScore,
         connectedAppSecurityScore, lwcScore, omniStudioScore, performanceScore
       ]);
 

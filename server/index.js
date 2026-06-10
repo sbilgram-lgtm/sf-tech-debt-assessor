@@ -419,6 +419,86 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       messagingChannelsNoOptOut = await safeQuery(conn, "SELECT Id, DeveloperName, MessagingPlatformType FROM MessagingChannel WHERE IsActive = true AND OptOutKeyword = null LIMIT 50");
     } catch(e) {}
 
+    // ── New Service Cloud checks ─────────────────────────────────────────────────
+
+    // Open cases with active SLA milestone violations
+    let violatedMilestones = { records: [] };
+    try {
+      violatedMilestones = await safeQuery(conn, "SELECT Id, CaseId, MilestoneName, IsCompleted, IsViolated, TargetDate FROM CaseMilestone WHERE IsViolated = true AND IsCompleted = false LIMIT 200");
+    } catch(e) {}
+
+    // Open escalated cases with no activity in 3+ days
+    let staleEscalatedCases = { records: [] };
+    try {
+      staleEscalatedCases = await safeQuery(conn, "SELECT Id, CaseNumber, Subject, OwnerId, Priority, IsEscalated, LastModifiedDate, CreatedDate FROM Case WHERE IsEscalated = true AND IsClosed = false AND LastModifiedDate < LAST_N_DAYS:3 LIMIT 200");
+    } catch(e) {}
+
+    // Open cases not modified in 7+ days (stuck/untriaged)
+    let staleCases = { records: [] };
+    try {
+      staleCases = await safeQuery(conn, "SELECT Id, CaseNumber, Subject, OwnerId, CreatedDate, LastModifiedDate FROM Case WHERE IsClosed = false AND CreatedDate < LAST_N_DAYS:7 AND LastModifiedDate < LAST_N_DAYS:7 LIMIT 200");
+    } catch(e) {}
+
+    // Cases closed with zero CaseComment activity (zero-touch close rate)
+    let closedCasesTotal = { records: [{ expr0: 0 }] };
+    let closedCasesWithComments = { records: [{ expr0: 0 }] };
+    try {
+      closedCasesTotal = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90");
+      closedCasesWithComments = await safeQuery(conn, "SELECT COUNT(Id) FROM CaseComment WHERE CreatedDate = LAST_N_DAYS:90");
+    } catch(e) {}
+
+    // Quick Text records — zero or stale
+    let quickTexts = { records: [] };
+    let staleQuickTextCount = 0;
+    try {
+      quickTexts = await safeQuery(conn, "SELECT Id, Name, Channel, Category, LastModifiedDate, IsActive FROM QuickText WHERE IsActive = true LIMIT 200");
+      const staleQT = await safeQuery(conn, "SELECT COUNT(Id) FROM QuickText WHERE IsActive = true AND LastModifiedDate < LAST_N_DAYS:365");
+      staleQuickTextCount = (staleQT.records[0] || {}).expr0 || 0;
+    } catch(e) {}
+
+    // ContactRequest records not completed after 24h
+    let openContactRequests = { records: [] };
+    try {
+      openContactRequests = await safeQuery(conn, "SELECT Id, PreferredPhone, PreferredChannel, Status, CreatedDate FROM ContactRequest WHERE Status != 'Completed' AND CreatedDate < LAST_N_DAYS:1 LIMIT 200");
+    } catch(e) {}
+
+    // MessagingSession ended with zero agent messages (bot handoff failures)
+    let zeroAgentSessions = { records: [{ expr0: 0 }] };
+    try {
+      zeroAgentSessions = await safeQuery(conn, "SELECT COUNT(Id) FROM MessagingSession WHERE Status = 'Ended' AND AgentMessageCount = 0 AND EndUserMessageCount > 0 AND CreatedDate = LAST_N_DAYS:30");
+    } catch(e) {}
+
+    // Live chat transcripts with no linked Case
+    let unlinkedTranscripts = { records: [{ expr0: 0 }] };
+    try {
+      unlinkedTranscripts = await safeQuery(conn, "SELECT COUNT(Id) FROM LiveChatTranscript WHERE Status = 'Completed' AND CaseId = null AND CreatedDate = LAST_N_DAYS:30");
+    } catch(e) {}
+
+    // Expired entitlements still active with open cases
+    let expiredActiveEntitlements = { records: [] };
+    let openCasesExpiredEntitlement = { records: [{ expr0: 0 }] };
+    try {
+      expiredActiveEntitlements = await safeQuery(conn, "SELECT Id, Name, EndDate, Status, AccountId FROM Entitlement WHERE Status = 'Active' AND EndDate < TODAY LIMIT 200");
+    } catch(e) {}
+    if ((expiredActiveEntitlements.records || []).length > 0) {
+      try {
+        const expiredIds = (expiredActiveEntitlements.records || []).slice(0, 100).map(e => `'${e.Id}'`).join(',');
+        openCasesExpiredEntitlement = await safeQuery(conn, `SELECT COUNT(Id) FROM Case WHERE IsClosed = false AND EntitlementId IN (${expiredIds})`);
+      } catch(e) {}
+    }
+
+    // CaseTeamTemplate — zero configured
+    let caseTeamTemplates = { records: [] };
+    try {
+      caseTeamTemplates = await safeQuery(conn, "SELECT Id, Name, Description FROM CaseTeamTemplate LIMIT 50");
+    } catch(e) {}
+
+    // Inbound SocialPost with no linked Case (last 30 days)
+    let unlinkedSocialPosts = { records: [{ expr0: 0 }] };
+    try {
+      unlinkedSocialPosts = await safeQuery(conn, "SELECT COUNT(Id) FROM SocialPost WHERE ParentId = null AND IsOutbound = false AND Posted = LAST_N_DAYS:30");
+    } catch(e) {}
+
     res.json({
       caseRecordTypes: caseRecordTypes.records || [],
       emailToCase: [],
@@ -458,7 +538,21 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       serviceResources: serviceResources.records || [],
       workTypes: workTypes.records || [],
       schedulingPolicies: schedulingPolicies.records || [],
-      messagingChannelsNoOptOut: messagingChannelsNoOptOut.records || []
+      messagingChannelsNoOptOut: messagingChannelsNoOptOut.records || [],
+      violatedMilestones: violatedMilestones.records || [],
+      staleEscalatedCases: staleEscalatedCases.records || [],
+      staleCases: staleCases.records || [],
+      closedCasesTotal90Days: (closedCasesTotal.records[0] || {}).expr0 || 0,
+      closedCasesWithComments90Days: (closedCasesWithComments.records[0] || {}).expr0 || 0,
+      quickTexts: quickTexts.records || [],
+      staleQuickTextCount,
+      openContactRequests: openContactRequests.records || [],
+      zeroAgentSessionCount: (zeroAgentSessions.records[0] || {}).expr0 || 0,
+      unlinkedTranscriptCount: (unlinkedTranscripts.records[0] || {}).expr0 || 0,
+      expiredActiveEntitlements: expiredActiveEntitlements.records || [],
+      openCasesExpiredEntitlementCount: (openCasesExpiredEntitlement.records[0] || {}).expr0 || 0,
+      caseTeamTemplates: caseTeamTemplates.records || [],
+      unlinkedSocialPostCount: (unlinkedSocialPosts.records[0] || {}).expr0 || 0
     });
   } catch (err) {
     console.error('Service Cloud assessment error:', err);
@@ -1059,20 +1153,6 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
   }
 });
 
-// ─── Territory Management ─────────────────────────────────────────────────────
-app.get('/api/assess/territory', requireAuth, async (req, res) => {
-  const conn = getConnection(req);
-  try {
-    const [territoryModels, territories, rules] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, State FROM Territory2Model LIMIT 20"),
-      safeQuery(conn, "SELECT Id, Name, Territory2ModelId FROM Territory2 LIMIT 200"),
-      safeQuery(conn, "SELECT Id, Name, IsActive, ObjectType FROM Territory2Rule LIMIT 100")
-    ]);
-    res.json({ territoryModels: territoryModels.records || [], territories: territories.records || [], assignmentRules: rules.records || [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ─── OmniStudio ───────────────────────────────────────────────────────────────
 app.get('/api/assess/omnistudio', requireAuth, async (req, res) => {

@@ -89,9 +89,6 @@ export async function getEinsteinAIData() {
   return fetchApi('/api/assess/einstein-ai');
 }
 
-export async function getTerritoryData() {
-  return fetchApi('/api/assess/territory');
-}
 
 export async function getExperienceCloudData() {
   return fetchApi('/api/assess/experience-cloud');

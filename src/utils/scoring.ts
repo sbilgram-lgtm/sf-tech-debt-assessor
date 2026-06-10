@@ -19,7 +19,6 @@ import {
   CustomMetadataData,
   RecordTypesLayoutsData,
   EinsteinAIData,
-  TerritoryData,
   ExperienceCloudData,
   ConnectedAppSecurityData,
   LwcData,
@@ -934,6 +933,133 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       { records: messagingChannelsNoOptOut.slice(0, 30).map((ch: any) => ({ name: ch.DeveloperName, detail: `${ch.MessagingPlatformType} — no OPTOUT keyword` })) }));
   }
 
+  // ── SLA & Case Health ────────────────────────────────────────────────────────
+
+  // SLA-1: Active SLA milestone violations
+  const violatedMilestones = data.violatedMilestones || [];
+  if (violatedMilestones.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${violatedMilestones.length} Open Cases With Active SLA Milestone Violations`,
+      'SLA milestones are in violation — target time has passed without completion. These cases are actively breaching contracted SLA terms. Milestone violation actions (alerts, escalations) may not be configured or have already fired without resolution.',
+      'Review violated milestones in the Entitlement Milestones dashboard. Configure milestone violation actions (email alerts, queue reassignments) in Setup → Entitlements → Entitlement Processes for each milestone.',
+      { records: violatedMilestones.slice(0, 50).map((m: any) => ({ name: m.MilestoneName, detail: `Case ${m.CaseId} — target: ${m.TargetDate ? new Date(m.TargetDate).toLocaleDateString() : 'none'}` })) }));
+  }
+
+  // SLA-2: Open escalated cases with no activity in 3+ days
+  const staleEscalatedCases = data.staleEscalatedCases || [];
+  if (staleEscalatedCases.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${staleEscalatedCases.length} Open Escalated Cases With No Activity in 3+ Days`,
+      'These cases have IsEscalated = true but have not been modified in over 3 days. Escalation rules fired but no one acted — the escalation path is broken, routing is failing, or queue ownership is unclear.',
+      'Review each escalated case. Ensure escalation rules trigger queue reassignments or direct notifications with owner accountability. Add a flow to auto-reassign stalled escalated cases after 48 hours.',
+      { records: staleEscalatedCases.slice(0, 50).map((c: any) => ({ name: c.CaseNumber || c.Id, detail: c.Subject || 'No subject' })) }));
+  }
+
+  // SLA-3: Open cases not modified in 7+ days (stuck/untriaged)
+  const staleCases = data.staleCases || [];
+  if (staleCases.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${staleCases.length} Open Cases Not Modified in 7+ Days`,
+      'These cases have been open and untouched for over a week. Dormant open cases indicate routing failures, absent queue owners, or agents not working their queues — all leading to SLA breaches.',
+      'Audit the owners and queues of dormant cases. Set up escalation rules or flow-based alerts that fire when open cases exceed 5 days without modification. Add supervisor dashboard views for case age.',
+      { records: staleCases.slice(0, 50).map((c: any) => ({ name: c.CaseNumber || c.Id, detail: c.Subject || 'No subject' })) }));
+  }
+
+  // SLA-4: High zero-touch case close rate
+  const closedTotal = data.closedCasesTotal90Days || 0;
+  const closedWithActivity = data.closedCasesWithComments90Days || 0;
+  if (closedTotal > 0 && closedWithActivity < closedTotal * 0.5) {
+    const zeroTouchPct = Math.round(((closedTotal - closedWithActivity) / closedTotal) * 100);
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${zeroTouchPct}% of Cases Closed in Last 90 Days Have No Documented Activity`,
+      'More than half of recently closed cases have no case comments. Cases closed without documented interaction have no resolution notes, produce no Knowledge content, and corrupt Einstein Case Classification training data.',
+      'Implement a validation rule or flow requiring at least one internal note or email before case closure. Train agents to document resolution steps as case comments.',
+      { count: closedTotal - closedWithActivity }));
+  }
+
+  // SLA-5: Expired entitlements still active on open cases
+  const expiredEntitlements = data.expiredActiveEntitlements || [];
+  if (expiredEntitlements.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${expiredEntitlements.length} Entitlement${expiredEntitlements.length !== 1 ? 's' : ''} Past End Date Still Marked Active`,
+      'Entitlement records past their EndDate that remain Active produce invalid SLA metrics — cases linked to these entitlements have SLA clocks running under lapsed contract terms, and customers whose contracts have ended may still receive SLA protection.',
+      'Create a scheduled Flow or Apex job to deactivate Entitlements when EndDate passes. Review open cases linked to expired entitlements and either re-entitle or manually close SLA tracking.',
+      { records: expiredEntitlements.slice(0, 50).map((e: any) => ({ name: e.Name, detail: `EndDate: ${e.EndDate ? new Date(e.EndDate).toLocaleDateString() : 'none'}` })) }));
+  }
+  if ((data.openCasesExpiredEntitlementCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'critical',
+      `${data.openCasesExpiredEntitlementCount} Open Cases Linked to Expired Entitlements`,
+      'Open cases are still linked to entitlement records whose contracts have expired. SLA milestones are counting against terms that are no longer valid.',
+      'Immediately review these cases. Remove or replace entitlement links where contracts have ended. Escalate to the account team if renewal is pending.',
+      { count: data.openCasesExpiredEntitlementCount }));
+  }
+
+  // ── Agent Efficiency ──────────────────────────────────────────────────────────
+
+  // AE-1: Zero Quick Texts (AHT gap)
+  const quickTexts = data.quickTexts || [];
+  if (quickTexts.length === 0 && data.queues.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'No Active Quick Texts Configured',
+      'Zero active Quick Texts means all agent responses are typed freeform — inconsistent language, higher AHT, and no foundation for Einstein Reply Recommendations. Salesforce positions Quick Texts as a baseline AHT reduction tool for any Service Cloud org.',
+      'Create Quick Texts for the top 20 most common agent responses (greetings, holds, closings, standard resolutions). Organise by Channel and Category for easy discovery in the console.',
+      {}));
+  } else if (data.staleQuickTextCount > 0 && (data.staleQuickTextCount / Math.max(quickTexts.length, 1)) > 0.5) {
+    items.push(createDebtItem('serviceCloud', 'low',
+      `${data.staleQuickTextCount} Quick Texts Not Updated in 12+ Months`,
+      'More than half of active Quick Texts have not been updated in over a year. Stale Quick Texts may contain outdated product names, discontinued processes, or incorrect policy language.',
+      'Review all Quick Texts annually. Archive outdated entries. Assign a Quick Text owner in each support team responsible for quarterly reviews.',
+      { count: data.staleQuickTextCount }));
+  }
+
+  // AE-2: Unresolved ContactRequest records > 24h old
+  const openContactRequests = data.openContactRequests || [];
+  if (openContactRequests.length > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${openContactRequests.length} Callback Request${openContactRequests.length !== 1 ? 's' : ''} Unresolved After 24+ Hours`,
+      'ContactRequest records in non-Completed status after 24 hours represent customers who requested a callback and received none. The automation that should create a Case or Task from these requests is missing or broken.',
+      'Create a Flow triggered on ContactRequest insert to generate a Case or Task. Assign it to the appropriate service queue. Alert supervisors when ContactRequests age beyond 4 hours without action.',
+      { records: openContactRequests.slice(0, 50).map((cr: any) => ({ name: cr.PreferredChannel || 'Unknown channel', detail: `Created: ${cr.CreatedDate ? new Date(cr.CreatedDate).toLocaleDateString() : 'unknown'}` })) }));
+  }
+
+  // ── Channel Coverage Gaps ─────────────────────────────────────────────────────
+
+  // CC-1: MessagingSession ended with zero agent messages
+  if ((data.zeroAgentSessionCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.zeroAgentSessionCount} Messaging Sessions Ended With No Agent Response (Last 30 Days)`,
+      'Messaging sessions where customers sent messages but received zero agent replies represent abandoned conversations — customers reached out and were ignored. This indicates bot handoff failures or understaffed queues.',
+      'Review MessagingSession records with AgentMessageCount = 0. Test all bot-to-agent escalation paths. Ensure queues routing Messaging work have active agents during operating hours.',
+      { count: data.zeroAgentSessionCount }));
+  }
+
+  // CC-2: Live chat transcripts with no Case link
+  if ((data.unlinkedTranscriptCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      `${data.unlinkedTranscriptCount} Completed Chat Transcripts With No Linked Case (Last 30 Days)`,
+      'Chat conversations that ended without creating a case have no record in contact history — CSAT surveys cannot be sent, Knowledge deflection cannot be measured, and the interaction is invisible to account teams.',
+      'Configure a flow or post-chat survey that creates a Case for every completed chat. Set CaseId on the LiveChatTranscript via a flow triggered on transcript completion.',
+      { count: data.unlinkedTranscriptCount }));
+  }
+
+  // CC-3: Inbound social posts with no Case
+  if ((data.unlinkedSocialPostCount || 0) > 0) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      `${data.unlinkedSocialPostCount} Inbound Social Posts With No Linked Case (Last 30 Days)`,
+      'Social mentions or DMs received but never converted to a case mean customers who reached out via social channels received no response — a channel coverage gap with direct CSAT and reputational risk.',
+      'Review Social Customer Service triage workflows. Ensure all inbound social contacts trigger a case creation rule or manual review queue. Unlinked SocialPosts should be a supervisor alert.',
+      { count: data.unlinkedSocialPostCount }));
+  }
+
+  // CC-4: No CaseTeamTemplates for multi-party cases
+  if ((data.caseTeamTemplates || []).length === 0 && data.queues.length > 5) {
+    items.push(createDebtItem('serviceCloud', 'low',
+      'No Case Team Templates Configured',
+      'No CaseTeamTemplates exist. Complex multi-party cases (escalations, enterprise accounts, cross-functional investigations) have no predefined collaboration structure — team members must be added ad-hoc, role-based visibility cannot be enforced.',
+      'Create Case Team Templates in Setup → Cases → Case Teams for common escalation patterns (e.g., "Billing + Technical + Manager"). Add templates as a quick action on high-priority case record types.',
+      {}));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1846,49 +1972,6 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
   return { category: 'Einstein & AI Usage', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
 }
 
-export function assessTerritory(data: TerritoryData): CategoryScore {
-  const items: DebtItem[] = [];
-
-  if (data.territoryModels.length === 0) {
-    items.push(createDebtItem('territory', 'low',
-      'Territory Management Not Configured',
-      'Territory Management is not in use. This is informational — only relevant if the org uses territory-based sales coverage.',
-      'If territory-based coverage is needed, set up Territory2 models. Otherwise no action required.'));
-    const maxScore = 100;
-    return { category: 'Territory Management', score: maxScore, maxScore, percentage: 100, items };
-  }
-
-  const activeModels = data.territoryModels.filter((m: any) => m.State === 'Active');
-  const draftModels = data.territoryModels.filter((m: any) => m.State === 'Planning');
-  if (draftModels.length > 0) {
-    items.push(createDebtItem('territory', 'medium',
-      `${draftModels.length} Territory Models Still in Planning State`,
-      'Territory models in Planning state are not live. If these are abandoned plans, they add confusion.',
-      'Activate territory models that are ready, or archive Planning models that are no longer in use.',
-      { records: draftModels.map((m:any) => ({ name: m.Name, detail: 'Planning' })) }));
-  }
-
-  if (activeModels.length > 1) {
-    items.push(createDebtItem('territory', 'medium',
-      `${activeModels.length} Active Territory Models`,
-      'Multiple active territory models can cause confusion and conflict in opportunity assignment.',
-      'Consolidate to a single active territory model. Archive models from prior fiscal years.',
-      { count: activeModels.length }));
-  }
-
-  const inactiveRules = data.assignmentRules.filter((r: any) => !r.IsActive);
-  if (inactiveRules.length > 0) {
-    items.push(createDebtItem('territory', 'low',
-      `${inactiveRules.length} Inactive Territory Assignment Rules`,
-      'Inactive territory rules are dead configuration and may confuse admins.',
-      'Delete inactive territory assignment rules that are no longer needed.',
-      { count: inactiveRules.length }));
-  }
-
-  const maxScore = 100;
-  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
-  return { category: 'Territory Management', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
-}
 
 export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore {
   const items: DebtItem[] = [];

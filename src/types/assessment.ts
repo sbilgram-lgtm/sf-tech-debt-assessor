@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'territory' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -102,6 +102,21 @@ export interface ServiceCloudData {
   schedulingPolicies: any[];
   // Messaging compliance
   messagingChannelsNoOptOut: any[];
+  // New Service Cloud checks
+  violatedMilestones: any[];
+  staleEscalatedCases: any[];
+  staleCases: any[];
+  closedCasesTotal90Days: number;
+  closedCasesWithComments90Days: number;
+  quickTexts: any[];
+  staleQuickTextCount: number;
+  openContactRequests: any[];
+  zeroAgentSessionCount: number;
+  unlinkedTranscriptCount: number;
+  expiredActiveEntitlements: any[];
+  openCasesExpiredEntitlementCount: number;
+  caseTeamTemplates: any[];
+  unlinkedSocialPostCount: number;
 }
 
 export interface ValidationRuleData {
@@ -206,11 +221,6 @@ export interface EinsteinAIData {
   recentClosedCaseCount: number;
 }
 
-export interface TerritoryData {
-  territoryModels: any[];
-  territories: any[];
-  assignmentRules: any[];
-}
 
 export interface ExperienceCloudData {
   sites: any[];
