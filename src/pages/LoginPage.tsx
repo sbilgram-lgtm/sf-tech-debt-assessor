@@ -112,13 +112,14 @@ export const LoginPage: React.FC = () => {
       }}>
         {/* Header */}
         <div style={{ marginBottom: '40px' }}>
-          {/* Salesforce cloud wordmark */}
+          {/* Salesforce logo + wordmark */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            <svg width="40" height="28" viewBox="0 0 40 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M16.5 4C18.3 1.5 21 0 24 0C28.4 0 32.1 3.1 33.1 7.2C34 6.8 35 6.6 36 6.6C38.2 6.6 40 8.4 40 10.6C40 12.8 38.2 14.6 36 14.6H7C4.2 14.6 2 12.4 2 9.6C2 7.3 3.6 5.4 5.7 4.8C5.2 3.9 5 2.9 5 1.9C5 0.9 5.2 0 5.5 0C7.8 0 9.8 1 11.2 2.6C12.7 1.6 14.5 1 16.5 1V4Z" fill="white" fillOpacity="0.3"/>
-              <rect x="4" y="17" width="32" height="2.5" rx="1.25" fill="white" fillOpacity="0.5"/>
-              <rect x="8" y="22" width="24" height="2.5" rx="1.25" fill="white" fillOpacity="0.35"/>
-              <rect x="14" y="27" width="12" height="1.5" rx="0.75" fill="white" fillOpacity="0.2"/>
+            {/* Official Salesforce cloud logo SVG */}
+            <svg width="48" height="34" viewBox="0 0 437 311" xmlns="http://www.w3.org/2000/svg">
+              <path d="M181 30c20-22 48-36 79-36 42 0 79 23 98 57 17-8 36-12 56-12 71 0
+                       128 58 128 129 0 71-57 129-128 129H114C51 297 0 246 0 183c0-55 37-101
+                       87-117C83 55 81 43 81 30 81 13 94 0 111 0c28 0 52 12 70 30z"
+                fill="white"/>
             </svg>
             <span style={{ fontSize: '0.8rem', fontWeight: 500, opacity: 0.85, letterSpacing: '0.05em' }}>
               SALESFORCE TECH DEBT ASSESSOR

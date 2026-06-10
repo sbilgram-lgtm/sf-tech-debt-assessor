@@ -23,9 +23,12 @@ export const DashboardPage: React.FC = () => {
     getAuthStatus().then(status => {
       if (!status.authenticated) {
         navigate('/login');
+      } else {
+        runAssessment();
       }
     }).catch(() => navigate('/login'));
-  }, [navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const runAssessment = async () => {
     setLoading(true);
@@ -177,30 +180,7 @@ setProgress('Assessing Experience Cloud sites...');
 
   return (
     <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
-      {!assessment && !loading && (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <h2 style={{ color: '#2c3e50', marginBottom: '16px' }}>Ready to Assess</h2>
-          <p style={{ color: '#7f8c8d', marginBottom: '32px', maxWidth: '500px', margin: '0 auto 32px' }}>
-            Click below to scan your connected Salesforce org for technical debt across
-            configuration, code quality, data model, and Service Cloud setup.
-          </p>
-          <button
-            onClick={runAssessment}
-            style={{
-              backgroundColor: '#27ae60',
-              color: 'white',
-              border: 'none',
-              padding: '16px 40px',
-              borderRadius: '8px',
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            Run Assessment
-          </button>
-        </div>
-      )}
+      {!assessment && !loading && error && null}
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
