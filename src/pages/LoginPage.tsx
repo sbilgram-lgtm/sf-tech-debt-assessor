@@ -2,6 +2,339 @@ import React, { useState, useEffect } from 'react';
 
 const STORAGE_KEY = 'sf_tda_credentials';
 
+type Severity = 'critical' | 'high' | 'medium' | 'low';
+
+interface CheckItem {
+  title: string;
+  severity: Severity;
+}
+
+const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
+  'Configuration': [
+    { title: 'Active Workflow Rules', severity: 'high' },
+    { title: 'Active Process Builders', severity: 'high' },
+    { title: 'Objects with Overlapping Automation', severity: 'medium' },
+    { title: 'Active Validation Rules (>50)', severity: 'medium' },
+    { title: 'Validation Rules Without Descriptions', severity: 'low' },
+    { title: 'Classic Approval Processes Still Active', severity: 'medium' },
+    { title: 'Flows Using Legacy Einstein for Flow Actions', severity: 'low' },
+    { title: 'Web-to-Case Enabled Without CAPTCHA', severity: 'high' },
+    { title: 'Active Case Auto-Response Rules', severity: 'low' },
+    { title: 's-Controls Still Active — Deprecated Technology', severity: 'critical' },
+    { title: "Active PushTopics — Deprecated Summer '26", severity: 'high' },
+    { title: 'Pending Time-Based Workflow Actions in Queue', severity: 'medium' },
+    { title: 'No Login Flows Configured', severity: 'low' },
+  ],
+  'Code Quality': [
+    { title: 'Triggers with Business Logic', severity: 'high' },
+    { title: 'Classes/Triggers Below 75% Coverage', severity: 'high' },
+    { title: 'Components on Outdated API Versions', severity: 'medium' },
+    { title: 'Classes with SOQL in Loops', severity: 'critical' },
+    { title: 'Classes with Hardcoded IDs', severity: 'high' },
+    { title: 'Classes with Empty catch Blocks', severity: 'high' },
+    { title: 'Classes with DML Operations in Loops', severity: 'critical' },
+    { title: 'Classes Use Schema.getGlobalDescribe()', severity: 'medium' },
+    { title: 'Apex Classes Without a Sharing Declaration', severity: 'high' },
+    { title: 'Classes Use System.setPassword()', severity: 'critical' },
+    { title: 'Classes Access UserInfo.getSessionId()', severity: 'high' },
+    { title: 'SOQL Queries Without FLS Enforcement', severity: 'medium' },
+    { title: 'Apex Classes May Use Legacy SOAP login()', severity: 'medium' },
+    { title: 'Apex Classes Reference Hardcoded Login URLs', severity: 'high' },
+    { title: 'Classes May Have SOQL Injection Vulnerabilities', severity: 'critical' },
+    { title: '@future(callout=true) Methods Also Perform DML', severity: 'medium' },
+    { title: 'Classes Use Weak Cryptographic Algorithms (MD5/SHA-1)', severity: 'high' },
+    { title: 'Test Classes Use @IsTest(SeeAllData=true)', severity: 'high' },
+    { title: 'Test Classes Have No Assert Statements', severity: 'high' },
+    { title: 'Test Classes Missing Test.startTest() / Test.stopTest()', severity: 'medium' },
+    { title: 'Test Classes Insert Data Without @TestSetup', severity: 'low' },
+  ],
+  'Data Model': [
+    { title: 'Custom Objects Without Descriptions', severity: 'low' },
+    { title: 'Custom Fields Lack Descriptions (>50%)', severity: 'medium' },
+    { title: 'Objects with 100+ Custom Fields', severity: 'high' },
+    { title: 'Custom Object Count (>200)', severity: 'medium' },
+  ],
+  'Service Cloud': [
+    { title: 'Excessive Case Record Types (>10)', severity: 'medium' },
+    { title: 'Inactive Case Record Types', severity: 'low' },
+    { title: 'Excessive Queues Configured (>50)', severity: 'medium' },
+    { title: 'Case Assignment Rules — Legacy', severity: 'medium' },
+    { title: 'Escalation Rules — Legacy', severity: 'low' },
+    { title: 'Unverified Organization-Wide Email Addresses', severity: 'high' },
+    { title: 'No Omni-Channel Service Channels Configured', severity: 'medium' },
+    { title: 'Routing Configurations Use Legacy Tab-Based Capacity', severity: 'critical' },
+    { title: 'Routing Configurations Have No Push Timeout', severity: 'high' },
+    { title: 'No Skills-Based Routing — Availability-Only', severity: 'medium' },
+    { title: 'Presence Configurations Have No Capacity Limit', severity: 'high' },
+    { title: 'No Presence Configurations Defined', severity: 'medium' },
+    { title: 'Knowledge Enabled but No Published Articles', severity: 'medium' },
+    { title: 'Draft Knowledge Articles Stalled 180+ Days', severity: 'medium' },
+    { title: 'Published Articles Not Updated in 12+ Months', severity: 'high' },
+    { title: 'No Data Category Groups Configured', severity: 'high' },
+    { title: 'Published Articles Have No Data Category', severity: 'high' },
+    { title: 'Published Articles Have No Validation Status', severity: 'medium' },
+    { title: 'Entitlement Processes Have No Business Hours', severity: 'critical' },
+    { title: 'Entitlement Processes Have No Milestone Actions', severity: 'critical' },
+    { title: 'Open Cases With Entitlement but No SLA Start Date', severity: 'high' },
+    { title: 'Service Contracts Have No Linked Entitlements', severity: 'high' },
+    { title: 'Email-to-Case Routing Addresses Without TLS', severity: 'critical' },
+    { title: 'Email-to-Case Routing Addresses Have No Default Owner', severity: 'high' },
+    { title: 'Inbound Emails Creating New Cases Instead of Threading', severity: 'high' },
+    { title: 'Email Service Addresses Accept Emails from Any Sender', severity: 'medium' },
+    { title: 'Live Chat Buttons Not Routed Through Omni-Channel', severity: 'critical' },
+    { title: 'Active Legacy Live Agent Deployments Without Embedded Service', severity: 'critical' },
+    { title: 'Legacy Live Chat Active but MIAW Not Adopted', severity: 'high' },
+    { title: 'Live Chat Buttons Point to Empty or Deleted Queues', severity: 'high' },
+    { title: 'No Lightning Service Console App Configured', severity: 'critical' },
+    { title: 'No Active Macros Configured', severity: 'high' },
+    { title: 'No Einstein Next Best Action Strategies', severity: 'high' },
+    { title: 'Call Center Configured but No Softphone Layout', severity: 'medium' },
+    { title: 'Messaging Channels Without OPTOUT Keyword (TCPA/GDPR)', severity: 'high' },
+    { title: 'Open Cases With Active SLA Milestone Violations', severity: 'critical' },
+    { title: 'Open Escalated Cases With No Activity in 3+ Days', severity: 'critical' },
+    { title: 'Open Cases Not Modified in 7+ Days', severity: 'high' },
+    { title: 'High Zero-Touch Case Close Rate (No Activity Documented)', severity: 'high' },
+    { title: 'Entitlements Past End Date Still Marked Active', severity: 'high' },
+    { title: 'Open Cases Linked to Expired Entitlements', severity: 'critical' },
+    { title: 'No Active Quick Texts Configured', severity: 'medium' },
+    { title: 'Quick Texts Not Updated in 12+ Months', severity: 'low' },
+    { title: 'Callback Requests Unresolved After 24+ Hours', severity: 'high' },
+    { title: 'Messaging Sessions With No Agent Response', severity: 'high' },
+    { title: 'Completed Chat Transcripts With No Linked Case', severity: 'medium' },
+    { title: 'Inbound Social Posts With No Linked Case', severity: 'high' },
+    { title: 'No Case Team Templates Configured', severity: 'low' },
+    { title: 'Active Entitlements Never Linked to Any Case', severity: 'medium' },
+    { title: 'Cases Linked to Multiple Entitlements', severity: 'medium' },
+    { title: 'Business Hours Records With No Holiday Exceptions', severity: 'medium' },
+    { title: 'Entitlement Milestones With 5-Minute or Less Target Time', severity: 'high' },
+    { title: 'Entitlement Processes With Duplicate Milestone Target Times', severity: 'high' },
+    { title: 'Articles Visible in Legacy Self-Service Portal Channel', severity: 'low' },
+    { title: 'Knowledge Search Not Optimised (No Promoted Terms/Synonyms)', severity: 'medium' },
+    { title: 'Duplicate Published Article Titles', severity: 'medium' },
+    { title: 'Published Articles Have No Summary', severity: 'low' },
+    { title: 'No Knowledge Articles Attached to Any Case', severity: 'medium' },
+    { title: 'Open Cases With No Contact and No Account', severity: 'high' },
+    { title: 'Open Cases With No Priority Set', severity: 'medium' },
+    { title: 'Open Cases With No Origin (Unknown Channel)', severity: 'medium' },
+    { title: 'Open Cases Older Than 90 Days', severity: 'high' },
+    { title: 'Open Cases With No Description', severity: 'low' },
+    { title: 'Open Cases Owned by Individual Users (Not Queues)', severity: 'medium' },
+    { title: 'Open Incidents With No Related Items', severity: 'medium' },
+    { title: 'Open Swarms With No Activity in 14+ Days', severity: 'low' },
+    { title: 'Open Work Orders With No Case and No Asset', severity: 'medium' },
+    { title: 'Active CSAT Surveys With No Survey Responses', severity: 'medium' },
+    { title: 'Completed Voice Calls With No Linked Case', severity: 'high' },
+  ],
+  'Sharing & Security': [
+    { title: 'Objects with Public Read/Write OWD', severity: 'critical' },
+    { title: 'Objects with Public Read Only OWD (>5)', severity: 'medium' },
+    { title: 'Too Many Profiles Configured (>20)', severity: 'medium' },
+    { title: 'Permission Sets Without Descriptions', severity: 'low' },
+    { title: 'Excessive Sharing Rules (>50)', severity: 'high' },
+    { title: 'Active Users with Modify All Data', severity: 'critical' },
+    { title: 'Active Users Inactive for 90+ Days', severity: 'high' },
+    { title: 'Integration/API Users Without IP Restrictions', severity: 'high' },
+    { title: 'Standard Profiles Without Login IP Restrictions', severity: 'medium' },
+    { title: 'Active Users Not Enrolled in MFA', severity: 'critical' },
+    { title: 'Security Health Check Score Below Threshold', severity: 'critical' },
+    { title: 'Active OAuth Access Tokens (>100)', severity: 'medium' },
+    { title: 'Users with Standard-Assurance Sessions (No MFA Step-Up)', severity: 'medium' },
+    { title: 'Users with Passwords That Never Expire', severity: 'high' },
+    { title: 'Active Sites with Guest User Access', severity: 'high' },
+    { title: 'Permission Sets Grant Privileged Access — Phishing-Resistant MFA Required', severity: 'high' },
+    { title: 'Async Sharing Recalculation Release Update Not Activated', severity: 'medium' },
+    { title: 'Guest Profiles with Case Read Access — Unauthenticated Data Exposure', severity: 'critical' },
+    { title: 'Active Outbound Messages — Session IDs Retired February 2026', severity: 'high' },
+    { title: 'Permission Set Groups Not in Use', severity: 'medium' },
+    { title: 'Users Assigned 10+ Custom Permission Sets', severity: 'medium' },
+    { title: 'Cloned System Administrator Profiles Detected', severity: 'critical' },
+    { title: 'No Transaction Security Policies Configured', severity: 'low' },
+    { title: 'Excessive Active Users (stale account risk)', severity: 'medium' },
+  ],
+  'Integrations': [
+    { title: 'Remote Sites with Protocol Security Disabled', severity: 'critical' },
+    { title: 'Inactive Remote Site Settings', severity: 'low' },
+    { title: 'Connected Apps Without Descriptions', severity: 'low' },
+    { title: 'Classes with Hardcoded HTTP Endpoints', severity: 'high' },
+    { title: 'Named Credentials Using Per-User Auth', severity: 'medium' },
+    { title: "Apex Classes on Retired API Versions (≤v30)", severity: 'critical' },
+    { title: "Active PushTopics — Streaming API Deprecated Summer '26", severity: 'high' },
+    { title: 'No External Credentials Configured', severity: 'medium' },
+    { title: 'No Dedicated Integration User Profiles Found', severity: 'medium' },
+  ],
+  'Test Coverage': [
+    { title: 'Low Test Class Ratio (<30%)', severity: 'high' },
+    { title: 'Classes/Triggers with No Test Coverage', severity: 'critical' },
+    { title: 'Components Below 75% Test Coverage', severity: 'high' },
+    { title: 'Triggers Without a Dedicated Test Class', severity: 'medium' },
+  ],
+  'Org Limits': [
+    { title: 'Org Limit ≥90% Consumed', severity: 'critical' },
+    { title: 'Org Limit 75–89% Consumed', severity: 'high' },
+    { title: 'Org Limit 50–74% Consumed', severity: 'medium' },
+  ],
+  'Duplicate Rules': [
+    { title: 'No Duplicate Rules Configured', severity: 'high' },
+    { title: 'Inactive Duplicate Rules', severity: 'medium' },
+    { title: 'No Matching Rules Configured', severity: 'high' },
+    { title: 'Duplicate Rules Without Descriptions', severity: 'low' },
+  ],
+  'Reports & Dashboards': [
+    { title: 'Reports Not Run in 6+ Months (>50)', severity: 'medium' },
+    { title: 'Dashboards Not Viewed in 6+ Months (>20)', severity: 'medium' },
+    { title: 'Total Reports in Org (>2,000)', severity: 'medium' },
+  ],
+  'Email Templates': [
+    { title: 'Classic (Non-Lightning) Email Templates', severity: 'medium' },
+    { title: 'Email Templates Not Modified in 2+ Years', severity: 'low' },
+    { title: 'No Email Templates Found', severity: 'low' },
+  ],
+  'Platform Events': [
+    { title: 'Platform Event Channels with No Active Subscribers', severity: 'high' },
+    { title: 'Change Data Capture Entities Enabled (>20)', severity: 'medium' },
+    { title: 'No Platform Events or CDC Configured', severity: 'low' },
+  ],
+  'Managed Packages': [
+    { title: 'Managed Packages Installed (>20)', severity: 'medium' },
+    { title: 'Beta Managed Packages Installed in Org', severity: 'high' },
+    { title: 'Managed Packages — Review for Currency', severity: 'low' },
+  ],
+  'Custom Metadata': [
+    { title: 'Custom Settings in Use — Legacy Configuration Pattern', severity: 'medium' },
+    { title: 'Custom Settings Without Descriptions', severity: 'low' },
+    { title: 'No Custom Metadata Types Found', severity: 'medium' },
+  ],
+  'Record Types & Layouts': [
+    { title: 'Inactive Record Types', severity: 'medium' },
+    { title: 'Custom Record Types Across Org (>100)', severity: 'medium' },
+    { title: 'Record Types Without Descriptions (>10)', severity: 'low' },
+    { title: 'Page Layouts Configured (>100)', severity: 'medium' },
+  ],
+  'Einstein & AI': [
+    { title: 'Einstein Generative AI / Agentforce Not Enabled', severity: 'low' },
+    { title: 'Einstein Enabled but No Prompt Templates Configured', severity: 'medium' },
+    { title: 'Inactive Bot/Agent Definitions', severity: 'medium' },
+    { title: 'Einstein/Agentforce Enabled but No Implementation Found', severity: 'low' },
+    { title: 'Einstein AI Applications Exist but None Are Active', severity: 'medium' },
+    { title: 'Einstein Case Classification — Insufficient Training Data', severity: 'high' },
+    { title: 'Agentforce Bots Exist but No Agent Topics Configured', severity: 'high' },
+    { title: 'Agentforce Topics Configured but No Agent Actions Defined', severity: 'high' },
+    { title: 'Agentforce Active but Data Cloud Not Connected', severity: 'medium' },
+  ],
+  'Experience Cloud': [
+    { title: 'Experience Sites Using Legacy Template (Aura/Visualforce)', severity: 'high' },
+    { title: 'Inactive/Draft Experience Cloud Sites', severity: 'low' },
+    { title: 'Sites with Self-Registration Enabled', severity: 'medium' },
+    { title: 'Active Sites with Guest User Access', severity: 'medium' },
+    { title: 'Active Sites Without a Custom Domain', severity: 'low' },
+    { title: 'Active Sites — Review for Governance (>5)', severity: 'medium' },
+    { title: 'Live Sites Without CDN Enabled', severity: 'low' },
+    { title: 'Custom Domains Without HTTPS Enforced', severity: 'high' },
+    { title: "WCAG 2.2 Accessibility Release Updates Not Enabled", severity: 'medium' },
+    { title: 'Active Sites with Clickjack Protection Disabled (AllowAll)', severity: 'critical' },
+    { title: 'Live Sites with Browser XSS Protection Disabled', severity: 'medium' },
+    { title: 'Live Sites with Content Sniffing Protection Disabled', severity: 'medium' },
+  ],
+  'Connected App Security': [
+    { title: 'Connected Apps Without Session Timeout', severity: 'high' },
+    { title: 'Connected Apps Without Descriptions', severity: 'medium' },
+    { title: 'Connected Apps with 20+ Active OAuth Tokens', severity: 'medium' },
+    { title: 'Stale OAuth Tokens Not Used in 90+ Days', severity: 'high' },
+    { title: 'Duplicate Connected App Names Detected', severity: 'medium' },
+    { title: 'Total Connected Apps in Org (>30)', severity: 'low' },
+    { title: 'Active Outbound Messages — Session ID Auth Retired Feb 2026', severity: 'high' },
+    { title: 'Certificates Exceed 200-Day Maximum Lifespan', severity: 'medium' },
+    { title: 'CTI / Telephony Connected Apps Without Session Timeout', severity: 'medium' },
+    { title: "Traditional Connected Apps — External Client Apps Are Spring '26 Standard", severity: 'medium' },
+  ],
+  'LWC & Components': [
+    { title: 'LWC Bundles Without Descriptions', severity: 'low' },
+    { title: 'LWC Bundles on Outdated API Versions (< v57)', severity: 'medium' },
+    { title: 'LWC Bundles on Retired API Versions (≤ v30)', severity: 'critical' },
+    { title: 'Aura Components vs LWC — Migration Debt', severity: 'medium' },
+    { title: 'Aura Components with Custom RENDERER', severity: 'medium' },
+    { title: 'Aura Application/Component Events Defined (>5)', severity: 'low' },
+    { title: 'LWC Bundles Without Jest Test Files', severity: 'medium' },
+    { title: 'Components Not Modified in 2+ Years', severity: 'low' },
+    { title: 'Managed Package LWC Components Modified', severity: 'medium' },
+    { title: 'LWC Components Contain debugger Statements', severity: 'critical' },
+    { title: 'LWC Components Use .innerHTML (XSS Risk)', severity: 'high' },
+    { title: 'LWC Components Query the Document Directly', severity: 'high' },
+    { title: 'LWC Components Add Event Listeners Without Removing Them', severity: 'medium' },
+    { title: 'LWC Components Use Async Timer Operations', severity: 'medium' },
+    { title: 'LWC Components Use async/await', severity: 'medium' },
+    { title: 'LWC Components Reference Browser Globals (SSR Incompatible)', severity: 'medium' },
+    { title: 'LWC Components Use for...of Loops', severity: 'low' },
+    { title: 'LWC Components Use Rest Parameters', severity: 'low' },
+    { title: 'LWC Components Reference process.env.NODE_ENV', severity: 'low' },
+    { title: 'LWC Components Have Duplicate Import Statements', severity: 'low' },
+    { title: 'LWC Components Use eval()', severity: 'critical' },
+    { title: 'LWC Components Contain console Statements', severity: 'medium' },
+    { title: 'LWC Components Use Deprecated @track Decorator', severity: 'low' },
+    { title: 'LWC Components Use JSON.parse(JSON.stringify()) for Cloning', severity: 'medium' },
+    { title: 'LWC Components Mutate Inline Styles via JavaScript', severity: 'low' },
+    { title: 'LWC Components Exceed 500 Lines of JavaScript', severity: 'medium' },
+    { title: 'LWC Components Use Deprecated if:true / if:false Directives', severity: 'medium' },
+    { title: 'LWC Components Use for:each Without a key Attribute', severity: 'high' },
+    { title: 'LWC Components Use Inline style= Attributes in Templates', severity: 'low' },
+    { title: 'LWC Components Fire Events with bubbles:true AND composed:true', severity: 'high' },
+    { title: 'LWC Components Override SLDS Classes with Hardcoded Colors', severity: 'medium' },
+    { title: 'Lightning Pages Not Modified in 2+ Years', severity: 'low' },
+    { title: 'Lightning Pages — Governance Review Recommended (>50)', severity: 'low' },
+    { title: 'Objects with 4+ Lightning Record Pages', severity: 'low' },
+    { title: 'Visualforce Pages in Org — Legacy UI Technology', severity: 'medium' },
+    { title: 'Visualforce Pages on Old API Versions (< v50)', severity: 'high' },
+    { title: 'Visualforce Pages Without Descriptions', severity: 'low' },
+    { title: 'Visualforce Pages Enabled for Salesforce Mobile — Poor UX', severity: 'medium' },
+  ],
+  'OmniStudio': [
+    { title: 'Inactive OmniScripts', severity: 'medium' },
+    { title: 'OmniScripts Without Descriptions', severity: 'low' },
+    { title: 'OmniScripts Not Modified in 2+ Years', severity: 'low' },
+    { title: 'OmniScript Types with Multiple Active Versions', severity: 'high' },
+    { title: 'Active OmniScripts in Test Mode', severity: 'critical' },
+    { title: 'Active Integration Procedures in Test Mode', severity: 'critical' },
+    { title: 'Active OmniScripts Without LWC Compilation', severity: 'medium' },
+    { title: 'Inactive Integration Procedures', severity: 'medium' },
+    { title: 'Integration Procedures Without Descriptions', severity: 'low' },
+    { title: 'Integration Procedures Not Modified in 2+ Years', severity: 'low' },
+    { title: 'Inactive DataRaptors / Data Transforms', severity: 'medium' },
+    { title: 'DataRaptors / Data Transforms Without Descriptions', severity: 'low' },
+    { title: 'DataRaptors / Data Transforms Not Modified in 2+ Years', severity: 'low' },
+    { title: 'Extract DataRaptors Without Turbo Extract', severity: 'medium' },
+    { title: 'Inactive FlexCards', severity: 'low' },
+    { title: 'FlexCards Not Modified in 2+ Years', severity: 'low' },
+    { title: 'FlexCards Without Descriptions', severity: 'low' },
+    { title: 'OmniStudio Managed Package Version Outdated', severity: 'medium' },
+    { title: 'DataRaptors / Data Transforms — High Volume (>100)', severity: 'medium' },
+    { title: 'Active OmniScripts Still Using Aura Runtime (LWC Disabled)', severity: 'high' },
+    { title: 'Active Integration Procedures With No Error-Handling Element', severity: 'high' },
+    { title: 'Standard Extract DataRaptors — No Turbo Extract in Use', severity: 'medium' },
+    { title: 'Standard Extract DataRaptors vs Turbo Extract — Consider More Turbo', severity: 'low' },
+    { title: 'OmniScripts With Spaces in Type or SubType (Naming Convention)', severity: 'low' },
+    { title: 'Active OmniScripts Using Deprecated Remote Action Elements', severity: 'high' },
+    { title: 'Legacy Knowledge Article Types Still in Schema', severity: 'high' },
+  ],
+  'Performance': [
+    { title: 'Apex Classes Over 1,000 Lines', severity: 'medium' },
+    { title: 'Objects with Multiple Active Triggers', severity: 'high' },
+    { title: 'Batch Apex Jobs Running Concurrently (>3)', severity: 'high' },
+    { title: 'Active Debug Trace Flags', severity: 'high' },
+    { title: 'Async Apex Jobs Queued (>50)', severity: 'high' },
+    { title: 'Future/Queueable Jobs Pending (>20)', severity: 'medium' },
+    { title: 'Async Apex Failures in the Last 30 Days (High)', severity: 'high' },
+    { title: 'Async Apex Failures in the Last 30 Days (Low)', severity: 'medium' },
+    { title: 'Scheduled Apex Jobs Waiting (>20)', severity: 'medium' },
+    { title: 'Active Scheduled Flows (>10)', severity: 'medium' },
+    { title: 'Objects with 4+ Record-Triggered Flows', severity: 'medium' },
+    { title: 'Platform Cache Not Configured', severity: 'low' },
+    { title: 'Custom Objects with 300+ Fields', severity: 'medium' },
+    { title: 'Aura Component Bundles Still Deployed (>50)', severity: 'low' },
+    { title: 'Objects with 6+ Lightning Pages', severity: 'low' },
+    { title: 'Event Monitoring Not Producing Logs (Last 7 Days)', severity: 'low' },
+  ],
+};
+
 const CATEGORIES = [
   { icon: '⚙️',  name: 'Configuration',          checks: 13 },
   { icon: '💻',  name: 'Code Quality',            checks: 21 },
@@ -28,12 +361,21 @@ const CATEGORIES = [
 
 const TOTAL_CHECKS = CATEGORIES.reduce((sum, c) => sum + c.checks, 0);
 
+const SEVERITY_COLORS: Record<Severity, { bg: string; color: string; label: string }> = {
+  critical: { bg: '#fde8e8', color: '#c0392b', label: 'Critical' },
+  high:     { bg: '#fef3e2', color: '#d35400', label: 'High' },
+  medium:   { bg: '#fef9e7', color: '#b8860b', label: 'Medium' },
+  low:      { bg: '#e8f8f0', color: '#27ae60', label: 'Low' },
+};
+
 export const LoginPage: React.FC = () => {
   const [loginUrl, setLoginUrl] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -49,6 +391,14 @@ export const LoginPage: React.FC = () => {
         if (s) setClientSecret(s);
       }
     } catch {}
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedCategory(null);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
   const handleLogin = () => {
@@ -93,6 +443,8 @@ export const LoginPage: React.FC = () => {
     letterSpacing: '0.02em',
     textTransform: 'uppercase',
   };
+
+  const modalChecks = selectedCategory ? (CATEGORY_CHECKS[selectedCategory] || []) : [];
 
   return (
     <div style={{
@@ -168,43 +520,61 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Category grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '10px',
-        }}>
-          {CATEGORIES.map(cat => (
-            <div key={cat.name} style={{
-              backgroundColor: 'rgba(255,255,255,0.1)',
-              borderRadius: '8px',
-              padding: '12px 14px',
-              backdropFilter: 'blur(4px)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-            }}>
-              <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{cat.icon}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}>
-                  {cat.name}
-                </div>
-                <div style={{
-                  fontSize: '0.7rem',
-                  opacity: 0.65,
-                  marginTop: '1px',
-                }}>
-                  {cat.checks} check{cat.checks !== 1 ? 's' : ''}
+        <div style={{ marginBottom: '10px' }}>
+          <p style={{ fontSize: '0.75rem', opacity: 0.6, margin: '0 0 12px', letterSpacing: '0.03em' }}>
+            Click any category to see all checks
+          </p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '10px',
+          }}>
+            {CATEGORIES.map(cat => (
+              <div
+                key={cat.name}
+                onClick={() => setSelectedCategory(cat.name)}
+                onMouseEnter={() => setHoveredCategory(cat.name)}
+                onMouseLeave={() => setHoveredCategory(null)}
+                style={{
+                  backgroundColor: hoveredCategory === cat.name
+                    ? 'rgba(255,255,255,0.2)'
+                    : 'rgba(255,255,255,0.1)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  backdropFilter: 'blur(4px)',
+                  border: hoveredCategory === cat.name
+                    ? '1px solid rgba(255,255,255,0.4)'
+                    : '1px solid rgba(255,255,255,0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.12s, border-color 0.12s',
+                  userSelect: 'none',
+                }}
+              >
+                <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{cat.icon}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>
+                    {cat.name}
+                  </div>
+                  <div style={{
+                    fontSize: '0.7rem',
+                    opacity: 0.65,
+                    marginTop: '1px',
+                  }}>
+                    {cat.checks} check{cat.checks !== 1 ? 's' : ''}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* Footer note */}
@@ -332,7 +702,7 @@ export const LoginPage: React.FC = () => {
           </button>
 
           <p style={{ marginTop: '20px', fontSize: '0.72rem', color: '#bdc3c7', lineHeight: 1.6, textAlign: 'center' }}>
-            Need a Connected App?{' '}
+            Need Instructions?{' '}
             <a
               href="https://github.com/sbilgram-lgtm/sf-tech-debt-assessor#setup"
               target="_blank"
@@ -344,6 +714,133 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* ── CATEGORY CHECKS MODAL ── */}
+      {selectedCategory && (
+        <div
+          onClick={() => setSelectedCategory(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '24px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              padding: '20px 24px 16px',
+              borderBottom: '1px solid #f0f0f0',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              flexShrink: 0,
+            }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: 700, color: '#1a2332' }}>
+                  {CATEGORIES.find(c => c.name === selectedCategory)?.icon} {selectedCategory}
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#7f8c8d' }}>
+                  {modalChecks.length} check{modalChecks.length !== 1 ? 's' : ''} · click backdrop or press Esc to close
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedCategory(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.4rem',
+                  cursor: 'pointer',
+                  color: '#aaa',
+                  lineHeight: 1,
+                  padding: '0 0 0 16px',
+                  flexShrink: 0,
+                }}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Severity legend */}
+            <div style={{
+              padding: '10px 24px',
+              borderBottom: '1px solid #f0f0f0',
+              display: 'flex',
+              gap: '12px',
+              flexShrink: 0,
+            }}>
+              {(['critical', 'high', 'medium', 'low'] as Severity[]).map(sev => (
+                <div key={sev} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{
+                    display: 'inline-block',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: SEVERITY_COLORS[sev].color,
+                  }} />
+                  <span style={{ fontSize: '0.7rem', color: '#888' }}>{SEVERITY_COLORS[sev].label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Check list */}
+            <div style={{ overflowY: 'auto', padding: '8px 24px 20px', flexGrow: 1 }}>
+              {modalChecks.map((check, idx) => {
+                const sc = SEVERITY_COLORS[check.severity];
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '9px 0',
+                      borderBottom: idx < modalChecks.length - 1 ? '1px solid #f5f5f5' : 'none',
+                    }}
+                  >
+                    <span style={{
+                      flexShrink: 0,
+                      marginTop: '1px',
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.03em',
+                      textTransform: 'uppercase',
+                      backgroundColor: sc.bg,
+                      color: sc.color,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {sc.label}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', color: '#2c3e50', lineHeight: 1.4 }}>
+                      {check.title}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
