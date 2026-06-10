@@ -38,6 +38,10 @@ export interface AutomationData {
   einsteinFlowActions: any[];
   webToCaseSettings: any;
   caseAutoResponseRules: any[];
+  sControls: any[];
+  activePushTopics: any[];
+  pendingTimeQueueCount: number;
+  loginFlows: any[];
 }
 
 export interface ApexData {
@@ -46,6 +50,10 @@ export interface ApexData {
   coverage: any[];
   soapLoginApex: any[];
   hardcodedLoginUrls: any[];
+  seeAllDataClasses: any[];
+  noAssertClasses: any[];
+  noStartStopTestClasses: any[];
+  noTestSetupClasses: any[];
 }
 
 export interface DataModelData {
@@ -172,6 +180,10 @@ export interface SharingSecurityData {
   asyncSharingUpdateActive: boolean;
   activeOutboundMessages: any[];
   caseGuestProfiles: any[];
+  permissionSetGroupCount: number;
+  usersWithExcessivePermSets: any[];
+  clonedSysAdminProfiles: any[];
+  transactionSecurityPolicies: any[];
 }
 
 export interface IntegrationData {
@@ -180,6 +192,9 @@ export interface IntegrationData {
   remoteSiteSettings: any[];
   apexCallouts: any[];
   retiredApiApexClasses: any[];
+  activePushTopics: any[];
+  externalCredentialCount: number;
+  dedicatedIntegrationUserCount: number;
 }
 
 export interface TestCoverageData {
@@ -244,6 +259,9 @@ export interface EinsteinAIData {
   bots: any[];
   aiApplications: any[];
   recentClosedCaseCount: number;
+  agentTopicCount: number;
+  agentActionCount: number;
+  dataCloudConnected: boolean;
 }
 
 
@@ -313,4 +331,5 @@ export interface LwcData {
   jsResources: any[];
   htmlResources: any[];
   cssResources: any[];
+  vfPages: any[];
 }

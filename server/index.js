@@ -204,6 +204,13 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       safeToolingQuery(conn, "SELECT Id, Name, Active FROM AutoResponseRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
+    const [sControlsRes, activePushTopicsRes, pendingTimeQueueRes, loginFlowsRes] = await Promise.all([
+      safeToolingQuery(conn, "SELECT Id, Name FROM Scontrol LIMIT 50").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name, ApiVersion, Query FROM PushTopic WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ProcessInstance WHERE Status = 'Pending' AND CreatedDate = LAST_N_DAYS:30").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT Id, FlowDefinitionView.ApiName, EntityType FROM LoginFlow LIMIT 20").catch(() => ({ records: [] }))
+    ]);
+
     res.json({
       workflowRules: workflowRules.records || [],
       processBuilders,
@@ -212,7 +219,11 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       approvalProcesses: approvalProcesses.records || [],
       einsteinFlowActions: einsteinFlowActions.records || [],
       webToCaseSettings: (webToCaseSettingsRes.records || [])[0] || null,
-      caseAutoResponseRules: caseAutoResponseRulesRes.records || []
+      caseAutoResponseRules: caseAutoResponseRulesRes.records || [],
+      sControls: sControlsRes.records || [],
+      activePushTopics: activePushTopicsRes.records || [],
+      pendingTimeQueueCount: (pendingTimeQueueRes.records[0] || {}).expr0 || 0,
+      loginFlows: loginFlowsRes.records || []
     });
   } catch (err) {
     console.error('Automation assessment error:', err);
@@ -258,12 +269,36 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') LIMIT 30");
     const hardcodedLoginUrls = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND (Name LIKE '%loginUrl%' OR Name LIKE '%LoginUrl%') LIMIT 20");
 
+    // Test quality checks — scan test class source bodies for anti-patterns
+    const testClassBodies = (classes.records || []).filter(c => {
+      const body = (c.Body || '').toLowerCase();
+      return body.includes('@istest') || body.includes('testmethod');
+    });
+    const seeAllDataClasses = testClassBodies.filter(c => /SeeAllData\s*=\s*true/i.test(c.Body || ''));
+    const noAssertClasses = testClassBodies.filter(c => {
+      const body = c.Body || '';
+      return !/System\.assert|Assert\./i.test(body);
+    });
+    const noStartStopTestClasses = testClassBodies.filter(c => {
+      const body = c.Body || '';
+      return !/Test\.startTest/i.test(body);
+    });
+    const noTestSetupClasses = testClassBodies.filter(c => {
+      const body = c.Body || '';
+      // Flag classes that insert test data but don't use @TestSetup
+      return /Database\.insert|insert\s+new\s+\w/i.test(body) && !/@TestSetup/i.test(body);
+    });
+
     res.json({
       classes: classes.records || [],
       triggers: triggers.records || [],
       coverage: testCoverage.records || [],
       soapLoginApex: soapLoginApex.records || [],
-      hardcodedLoginUrls: hardcodedLoginUrls.records || []
+      hardcodedLoginUrls: hardcodedLoginUrls.records || [],
+      seeAllDataClasses,
+      noAssertClasses,
+      noStartStopTestClasses,
+      noTestSetupClasses
     });
   } catch (err) {
     console.error('Apex assessment error:', err);
@@ -864,6 +899,22 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, Name, PermissionsReadCases, PermissionsEditCases, Parent.Name, Parent.IsOwnedByProfile FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.IsOwnedByProfile = true AND PermissionsReadCases = true LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
+    // PSG count — how many Permission Set Groups exist
+    const psgCountRes = await safeQuery(conn, "SELECT COUNT(Id) FROM PermissionSetGroup").catch(() => ({ records: [{ expr0: 0 }] }));
+
+    // Users with >10 permission sets assigned
+    const usersWithExcessivePSRes = await safeQuery(conn,
+      "SELECT AssigneeId, COUNT(Id) FROM PermissionSetAssignment WHERE PermissionSet.IsCustom = true GROUP BY AssigneeId HAVING COUNT(Id) > 10 LIMIT 50"
+    ).catch(() => ({ records: [] }));
+
+    // Cloned System Administrator profiles (name contains 'System Administrator' or 'Admin' but isn't the standard one)
+    const clonedSysAdminRes = await safeQuery(conn,
+      "SELECT Id, Name FROM Profile WHERE UserType = 'Standard' AND (Name LIKE '%System Administrator%' OR Name LIKE '%Sys Admin%') AND Name != 'System Administrator' LIMIT 20"
+    ).catch(() => ({ records: [] }));
+
+    // Transaction Security Policies
+    const txnSecurityRes = await safeQuery(conn, "SELECT Id, Name FROM TransactionSecurityPolicy WHERE IsActive = true LIMIT 10").catch(() => ({ records: [] }));
+
     res.json({
       owdSettings: owdSettings.records || [],
       sharingRules,
@@ -887,7 +938,11 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       privilegedPermSets: privilegedUsersRes.records || [],
       asyncSharingUpdateActive: (asyncSharingUpdateRes.records || []).length > 0,
       activeOutboundMessages: outboundMsgRes.records || [],
-      caseGuestProfiles: caseGuestProfilesRes.records || []
+      caseGuestProfiles: caseGuestProfilesRes.records || [],
+      permissionSetGroupCount: (psgCountRes.records[0] || {}).expr0 || 0,
+      usersWithExcessivePermSets: usersWithExcessivePSRes.records || [],
+      clonedSysAdminProfiles: clonedSysAdminRes.records || [],
+      transactionSecurityPolicies: txnSecurityRes.records || []
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -939,12 +994,36 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, DeveloperName FROM LightningComponentBundle WHERE IsExposed = true LIMIT 200")
     ]);
 
+    // Active PushTopics (deprecated — Summer '26)
+    let integrationPushTopics = { records: [] };
+    try {
+      integrationPushTopics = await safeQuery(conn, "SELECT Id, Name, ApiVersion FROM PushTopic WHERE IsActive = true LIMIT 50");
+    } catch(e) {}
+
+    // External Credentials count (modern Named Credential replacement)
+    let externalCredentialCount = 0;
+    try {
+      const ecRes = await safeToolingQuery(conn, "SELECT COUNT(Id) FROM ExternalCredential LIMIT 1");
+      externalCredentialCount = (ecRes.records[0] || {}).expr0 || 0;
+    } catch(e) {}
+
+    // Dedicated integration users (API-only profile users still active)
+    let dedicatedIntegrationUsers = { records: [] };
+    try {
+      dedicatedIntegrationUsers = await safeQuery(conn,
+        "SELECT COUNT(Id) FROM User WHERE IsActive = true AND (Profile.Name LIKE '%API Only%' OR Profile.Name LIKE '%Integration%' OR Profile.Name LIKE '%Service Account%') LIMIT 1"
+      );
+    } catch(e) {}
+
     res.json({
       connectedApps: connectedApps.records || [],
       namedCredentials: namedCredentials.records || [],
       remoteSiteSettings: remoteSites.records || [],
       apexCallouts: apexCallouts.records || [],
-      retiredApiApexClasses: retiredApiApex.records || []
+      retiredApiApexClasses: retiredApiApex.records || [],
+      activePushTopics: integrationPushTopics.records || [],
+      externalCredentialCount,
+      dedicatedIntegrationUserCount: (dedicatedIntegrationUsers.records[0] || {}).expr0 || 0
     });
   } catch (err) {
     console.error('Integrations assessment error:', err);
@@ -1133,12 +1212,33 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, DeveloperName, Status FROM AiApplication LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT COUNT(Id) cnt FROM Case WHERE IsClosed = true AND CreatedDate = LAST_N_DAYS:365").catch(() => ({ records: [{ cnt: 0 }] }))
     ]);
+
+    // Agentforce: Agent Topics and Agent Actions
+    let agentTopicCount = 0;
+    let agentActionCount = 0;
+    let dataCloudConnected = false;
+    try {
+      const topicsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotTopic LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      agentTopicCount = (topicsRes.records[0] || {}).expr0 || 0;
+    } catch(e) {}
+    try {
+      const actionsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotStepAction LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      agentActionCount = (actionsRes.records[0] || {}).expr0 || 0;
+    } catch(e) {}
+    try {
+      const dcRes = await safeQuery(conn, "SELECT COUNT(Id) FROM DataConnector LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      dataCloudConnected = ((dcRes.records[0] || {}).expr0 || 0) > 0;
+    } catch(e) {}
+
     res.json({
       einsteinSettings: einsteinSettings.records || [],
       promptTemplates: promptTemplates.records || [],
       bots: bots.records || [],
       aiApplications: aiApplications.records || [],
-      recentClosedCaseCount: (recentClosedCases.records[0] || {}).cnt || 0
+      recentClosedCaseCount: (recentClosedCases.records[0] || {}).cnt || 0,
+      agentTopicCount,
+      agentActionCount,
+      dataCloudConnected
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1265,7 +1365,7 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
 app.get('/api/assess/lwc', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources, jsResources, htmlResources, cssResources] = await Promise.all([
+    const [lwcBundles, auraBundles, auraDefinitions, flexiPages, lwcResources, jsResources, htmlResources, cssResources, vfPages] = await Promise.all([
       safeToolingQuery(conn,
         "SELECT Id, DeveloperName, ApiVersion, Description, IsExposed, ManageableState, LastModifiedDate " +
         "FROM LightningComponentBundle WHERE NamespacePrefix = null LIMIT 500"
@@ -1297,6 +1397,10 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Source " +
         "FROM LightningComponentResource WHERE FilePath LIKE '%.css' LIMIT 1000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, Name, ApiVersion, Description, NamespacePrefix, IsAvailableInTouch, LastModifiedDate " +
+        "FROM ApexPage WHERE NamespacePrefix = null LIMIT 500"
       )
     ]);
 
@@ -1308,7 +1412,8 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       lwcResources: lwcResources.records || [],
       jsResources: jsResources.records || [],
       htmlResources: htmlResources.records || [],
-      cssResources: cssResources.records || []
+      cssResources: cssResources.records || [],
+      vfPages: vfPages.records || []
     });
   } catch (err) {
     console.error('LWC assessment error:', err);
