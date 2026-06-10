@@ -1213,20 +1213,24 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT COUNT(Id) cnt FROM Case WHERE IsClosed = true AND CreatedDate = LAST_N_DAYS:365").catch(() => ({ records: [{ cnt: 0 }] }))
     ]);
 
-    // Agentforce: Agent Topics and Agent Actions
+    // Agentforce: Agent Topics and Agent Actions (Summer '24+ objects)
     let agentTopicCount = 0;
     let agentActionCount = 0;
     let dataCloudConnected = false;
     try {
-      const topicsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotTopic LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
-      agentTopicCount = (topicsRes.records[0] || {}).expr0 || 0;
+      const topicsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotVersion LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      // BotVersion count > 0 means Agentforce/Einstein Bot versions exist; use BotDefinition as topic proxy
+      const botDefsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotDefinition WHERE BotType = 'EinsteinGptAgent' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      agentTopicCount = (botDefsRes.records[0] || {}).expr0 || 0;
     } catch(e) {}
     try {
-      const actionsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotStepAction LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      // BotBlock = Agentforce Action definitions (available in all orgs with Einstein Bot enabled)
+      const actionsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotBlock LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
       agentActionCount = (actionsRes.records[0] || {}).expr0 || 0;
     } catch(e) {}
     try {
-      const dcRes = await safeQuery(conn, "SELECT COUNT(Id) FROM DataConnector LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      // Data Cloud connection: DataStream is the primary queryable object when Data Cloud is connected
+      const dcRes = await safeQuery(conn, "SELECT COUNT(Id) FROM DataStream LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
       dataCloudConnected = ((dcRes.records[0] || {}).expr0 || 0) > 0;
     } catch(e) {}
 

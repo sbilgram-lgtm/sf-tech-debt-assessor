@@ -516,12 +516,15 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // Weak crypto — MD5 or SHA1 usage
+  // Weak crypto — MD5 or SHA-1 usage
+  // generateDigest() algorithm names: MD5, SHA1, SHA-256, SHA-384, SHA-512
+  // generateHMAC() algorithm names:  hmacMD5, hmacSHA1, hmacSHA256, hmacSHA512
   const weakCrypto = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    return /Crypto\.(generateDigest|generateHMAC)\s*\(\s*['"]MD5['"]/gi.test(body) ||
-           /Crypto\.(generateDigest|generateHMAC)\s*\(\s*['"]SHA1['"]/gi.test(body) ||
-           /Crypto\.(generateDigest|generateHMAC)\s*\(\s*['"]SHA-1['"]/gi.test(body);
+    return /Crypto\.generateDigest\s*\(\s*['"]MD5['"]/gi.test(body) ||
+           /Crypto\.generateDigest\s*\(\s*['"]SHA1['"]/gi.test(body) ||
+           /Crypto\.generateHMAC\s*\(\s*['"]hmacMD5['"]/gi.test(body) ||
+           /Crypto\.generateHMAC\s*\(\s*['"]hmacSHA1['"]/gi.test(body);
   });
   if (weakCrypto.length > 0) {
     items.push(createDebtItem(
