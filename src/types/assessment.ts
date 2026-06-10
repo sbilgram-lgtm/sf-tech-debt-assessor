@@ -214,6 +214,8 @@ export interface OrgLimitEntry {
 
 export interface OrgLimitsData {
   limits: OrgLimitEntry[];
+  apexClassCount: number;
+  customObjectCount: number;
 }
 
 export interface DuplicateRulesData {
@@ -320,6 +322,11 @@ export interface PerformanceData {
   heavyEntities: { eid: string; count: number }[];
   eventLogFiles: any[];
   futureQueueable: any[];
+  stuckAsyncJobCount: number;
+  totalActiveFlowCount: number;
+  obsoleteFlowCount: number;
+  flowsWithLoopsIds: string[];
+  flowsWithDmlIds: string[];
 }
 
 export interface NotesAttachmentsData {
@@ -332,6 +339,8 @@ export interface NotesAttachmentsData {
   largeFiles: any[];
   untitledContentDocumentCount: number;
   externallySharedFileCount: number;
+  permanentlySharedFileCount: number;
+  staleFileCount: number;
   contentWorkspaceCount: number;
   topAttachmentObjects: { obj: string; count: number }[];
   enhancedNotesEnabled: boolean;

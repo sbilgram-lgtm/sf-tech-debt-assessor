@@ -1082,7 +1082,15 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
       return { name, max, remaining, used, usedPct };
     }).filter(l => l.max > 0);
 
-    res.json({ limits });
+    const [apexClassCountResult, customObjectCountResult] = await Promise.all([
+      safeQuery(conn, "SELECT COUNT(Id) FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE IsCustomizable = true AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] }))
+    ]);
+
+    const apexClassCount = (apexClassCountResult.records[0] || {}).expr0 || 0;
+    const customObjectCount = (customObjectCountResult.records[0] || {}).expr0 || 0;
+
+    res.json({ limits, apexClassCount, customObjectCount });
   } catch (err) {
     console.error('Org limits assessment error:', err);
     res.status(500).json({ error: err.message });
@@ -1320,13 +1328,13 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
   try {
     // All connected apps with metadata
     const connectedApps = await safeToolingQuery(conn,
-      "SELECT Id, Name, Description, MobileSessionTimeout, StartUrl " +
+      "SELECT Id, Name, Description, MobileSessionTimeout, StartUrl, IpRelaxation " +
       "FROM ConnectedApplication LIMIT 200"
     );
 
     // Active OAuth tokens — who holds live sessions and when last used
     const oauthTokens = await safeQuery(conn,
-      "SELECT Id, AppName, UserId, User.Name, User.Username, " +
+      "SELECT Id, AppName, UserId, User.Name, User.Username, User.IsActive, " +
       "LastUsedDate, UseCount, CreatedDate " +
       "FROM OauthToken ORDER BY LastUsedDate DESC NULLS LAST LIMIT 500"
     );
@@ -1596,7 +1604,12 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       auraBundles,
       heavyFlexiPages,
       eventLogFiles,
-      futureQueueable
+      futureQueueable,
+      stuckAsyncJobs,
+      totalActiveFlowCount,
+      obsoleteFlowCount,
+      flowsWithLoops,
+      flowsWithDml
     ] = await Promise.all([
       safeToolingQuery(conn,
         "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 LIMIT 200"
@@ -1642,7 +1655,12 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       ),
       safeQuery(conn,
         "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('Future','Queueable') LIMIT 500"
-      )
+      ),
+      safeQuery(conn, `SELECT COUNT(Id) FROM AsyncApexJob WHERE Status IN ('Processing','Holding') AND CreatedDate < ${new Date(Date.now() - 86400000).toISOString()}`).catch(() => ({ records: [{ expr0: 0 }] })),
+      safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeToolingQuery(conn, "SELECT DISTINCT FlowVersionId FROM FlowElement WHERE Type = 'Loop' LIMIT 200").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT DISTINCT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete') LIMIT 500").catch(() => ({ records: [] }))
     ]);
 
     // Calculate trigger counts per object (aggregate alias not supported in REST API — use expr0)
@@ -1678,7 +1696,12 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       auraBundles: auraBundles.records || [],
       heavyEntities,
       eventLogFiles: eventLogFiles.records || [],
-      futureQueueable: futureQueueable.records || []
+      futureQueueable: futureQueueable.records || [],
+      stuckAsyncJobCount: (stuckAsyncJobs.records[0] || {}).expr0 || 0,
+      totalActiveFlowCount: (totalActiveFlowCount.records[0] || {}).expr0 || 0,
+      obsoleteFlowCount: (obsoleteFlowCount.records[0] || {}).expr0 || 0,
+      flowsWithLoopsIds: (flowsWithLoops.records || []).map(r => r.FlowVersionId),
+      flowsWithDmlIds: (flowsWithDml.records || []).map(r => r.FlowVersionId)
     });
   } catch (err) {
     console.error('Performance assessment error:', err);
@@ -1697,7 +1720,9 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
       orphanedDocs,
       largeFiles,
       untitledDocs,
-      externalShares,
+      expiringShares,
+      permanentShares,
+      staleFiles,
       contentWorkspaces,
       topAttachmentObjects,
       orgPreferences
@@ -1709,9 +1734,11 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT COUNT(Id) FROM ContentDocument WHERE Id NOT IN (SELECT ContentDocumentId FROM ContentDocumentLink) LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT Id, Title, ContentSize FROM ContentVersion WHERE IsLatest = true AND ContentSize > 26214400 LIMIT 100").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM ContentDocument WHERE Title = null OR Title = '' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDistribution WHERE ExpiryDate = null OR ExpiryDate > TODAY LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDistribution WHERE ExpiryDate > TODAY LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDistribution WHERE ExpiryDate = null LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ContentDocument WHERE LastViewedDate < LAST_N_YEARS:2 LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM ContentWorkspace LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT LinkedEntityType, COUNT(Id) FROM ContentDocumentLink WHERE LinkedEntityType IN ('Account','Contact','Case','Lead','Opportunity','Task','Event') GROUP BY LinkedEntityType ORDER BY COUNT(Id) DESC LIMIT 10").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT LinkedEntityType, COUNT(Id) FROM ContentDocumentLink GROUP BY LinkedEntityType ORDER BY COUNT(Id) DESC LIMIT 20").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, Name, Value FROM OrgPreference WHERE Name = 'EnhancedNotes' LIMIT 1").catch(() => ({ records: [] }))
     ]);
 
@@ -1731,7 +1758,9 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
       largeFileCount: (largeFiles.records || []).length,
       largeFiles: largeFiles.records || [],
       untitledContentDocumentCount: (untitledDocs.records[0] || {}).expr0 || 0,
-      externallySharedFileCount: (externalShares.records[0] || {}).expr0 || 0,
+      externallySharedFileCount: ((expiringShares.records[0] || {}).expr0 || 0) + ((permanentShares.records[0] || {}).expr0 || 0),
+      permanentlySharedFileCount: (permanentShares.records[0] || {}).expr0 || 0,
+      staleFileCount: (staleFiles.records[0] || {}).expr0 || 0,
       contentWorkspaceCount: (contentWorkspaces.records[0] || {}).expr0 || 0,
       topAttachmentObjects: topObjects,
       enhancedNotesEnabled

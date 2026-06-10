@@ -585,6 +585,128 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
+  // CQ-22: Global modifier (AvoidGlobalModifier)
+  const globalClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /\bglobal\s+(class|interface|enum|abstract|virtual|override|static|void|String|Integer|Boolean|List|Map|Set|Id)\b/gi.test(body);
+  });
+  if (globalClasses.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${globalClasses.length} Apex Classes Use the global Access Modifier`,
+      'The global access modifier exposes classes and methods as a permanent public API. Once deployed as global, these signatures can never be changed or removed — they create irreversible technical debt. This is flagged by Salesforce Code Analyzer (PMD: AvoidGlobalModifier) and AppExchange security review.',
+      'Replace global with public. Reserve global only for classes intentionally exposed as a Salesforce managed package API or for classes that implement global interfaces (e.g., Auth.RegistrationHandler). Audit each global class for actual external consumers.',
+      { records: globalClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'global modifier — permanent API surface, cannot be changed or removed' })) }
+    ));
+  }
+
+  // CQ-23: Queueable without Finalizer (QueueableWithoutFinalizer)
+  const queueableNoFinalizer = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /implements\s+[^{]*\bQueueable\b/i.test(body) && !/System\.attachFinalizer\s*\(/i.test(body);
+  });
+  if (queueableNoFinalizer.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${queueableNoFinalizer.length} Queueable Apex Classes Without a Finalizer`,
+      'Queueable classes that do not attach a Finalizer have no mechanism for handling asynchronous failures. If a Queueable job fails after being dequeued, there is no way to detect the failure, retry the job, or trigger compensating actions. This is flagged by Salesforce Code Analyzer (PMD: QueueableWithoutFinalizer).',
+      'Implement the Finalizer interface and attach it via System.attachFinalizer(finalizer) in the execute() method. Use the Finalizer to log failures, trigger retry logic, or send alerts when a Queueable job fails.',
+      { records: queueableNoFinalizer.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'Queueable without Finalizer — async failures are silent' })) }
+    ));
+  }
+
+  // CQ-24: @future annotation (AvoidFutureAnnotation)
+  const futureClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /@future\b/i.test(body);
+  });
+  if (futureClasses.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${futureClasses.length} Apex Classes Use the @future Annotation`,
+      '@future methods cannot be monitored, chained, cancelled, or tracked in the async queue. They are limited to 50 invocations per transaction and do not support passing sObject arguments. This is flagged by Salesforce Code Analyzer (PMD: AvoidFutureAnnotation). Queueable is the supported modern replacement.',
+      'Replace @future methods with Queueable classes. Queueable supports chaining, monitoring via AsyncApexJob, richer parameter types, and attaching a Finalizer for error handling.',
+      { records: futureClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: '@future — cannot chain, monitor, or cancel; use Queueable instead' })) }
+    ));
+  }
+
+  // CQ-25: DML in constructors/initializers (ApexCSRF)
+  const dmlInConstructor = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /public\s+\w+\s*\([^)]*\)\s*\{[^}]*\b(insert|update|delete|upsert|merge)\b/gi.test(body);
+  });
+  if (dmlInConstructor.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${dmlInConstructor.length} Apex Classes Perform DML in Constructors`,
+      'DML operations in Apex constructors execute automatically when a class is instantiated — including on page load in Visualforce controllers. This can cause unintended data mutations without explicit user action, mirroring a CSRF vulnerability. This is flagged by Salesforce Code Analyzer (PMD: ApexCSRF).',
+      'Move DML operations out of constructors into explicitly invoked action methods. For Visualforce controllers, use action methods triggered by user interaction (e.g., a button click).',
+      { records: dmlInConstructor.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'DML in constructor — unintended side effect on instantiation' })) }
+    ));
+  }
+
+  // CQ-26: addError with escape=false (ApexXSSFromEscapeFalse)
+  const addErrorEscapeFalse = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /\.addError\s*\([^)]*,\s*false\s*\)/gi.test(body);
+  });
+  if (addErrorEscapeFalse.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${addErrorEscapeFalse.length} Apex Classes Call addError() with escape=false`,
+      'addError(message, false) disables HTML escaping on the error message rendered to the user. If the message contains any user-controlled or externally-sourced data, this creates a stored Cross-Site Scripting (XSS) vulnerability. This is flagged by Salesforce Code Analyzer (PMD: ApexXSSFromEscapeFalse).',
+      'Remove the second parameter or change it to true to enable HTML escaping: record.addError(message) or record.addError(message, true). Never pass user-controlled data into addError() without escaping.',
+      { records: addErrorEscapeFalse.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'addError(msg, false) — XSS risk, HTML escaping disabled' })) }
+    ));
+  }
+
+  // CQ-27: HTTP (not HTTPS) callouts (ApexInsecureEndpoint)
+  const insecureEndpoints = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /['"]http:\/\/(?!localhost)/gi.test(body);
+  });
+  if (insecureEndpoints.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${insecureEndpoints.length} Apex Classes May Use Insecure HTTP Callout Endpoints`,
+      'HTTP (non-TLS) callout endpoints transmit data in plaintext, exposing credentials and payload data to interception. Salesforce Remote Site Settings now require HTTPS. This is flagged by Salesforce Code Analyzer (PMD: ApexInsecureEndpoint).',
+      'Replace all http:// endpoint URLs with https:// equivalents. Update corresponding Remote Site Settings to use HTTPS. Use Named Credentials to manage endpoint URLs and avoid hardcoding.',
+      { records: insecureEndpoints.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'http:// callout endpoint — unencrypted transmission' })) }
+    ));
+  }
+
+  // CQ-28: System.debug in production code (PMD: AvoidDebugStatements)
+  const debugClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /\bSystem\.debug\s*\(/gi.test(body);
+  });
+  if (debugClasses.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${debugClasses.length} Apex Classes Contain System.debug Statements`,
+      'System.debug calls consume CPU time on every transaction even when no debug log is active. In high-volume orgs, excessive debug statements are a measurable contributor to governor limit CPU consumption. This is flagged by Salesforce Code Analyzer (PMD: AvoidDebugStatements).',
+      'Remove System.debug calls from production code. Replace critical diagnostic logging with a structured logging framework (e.g., a custom Logger class that respects a logging level Custom Setting) so debug output can be toggled without code changes.',
+      { records: debugClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'System.debug — CPU overhead on every transaction' })) }
+    ));
+  }
+
+  // CQ-29: SOQL without WHERE clause or LIMIT (PMD: AvoidNonRestrictiveQueries)
+  const nonRestrictiveSOQL = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const soqlBlocks = body.match(/\[SELECT\b[\s\S]*?\]/gi) || [];
+    return soqlBlocks.some((q: string) =>
+      !/\bWHERE\b/i.test(q) && !/\bLIMIT\b/i.test(q)
+    );
+  });
+  if (nonRestrictiveSOQL.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${nonRestrictiveSOQL.length} Apex Classes Have SOQL Queries Without WHERE or LIMIT`,
+      'SOQL queries without a WHERE clause or LIMIT can scan entire object tables. In small sandboxes these work fine but cause governor limit errors (50,000 row query limit) in production orgs with large data volumes. This is flagged by Salesforce Code Analyzer (PMD: AvoidNonRestrictiveQueries).',
+      'Add WHERE conditions to filter to the relevant record set, or add LIMIT clauses where a full scan is intentional. For bulk operations, use batch Apex with appropriate query scope.',
+      { records: nonRestrictiveSOQL.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'SOQL without WHERE or LIMIT — full table scan risk at scale' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -2041,6 +2163,42 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
     ));
   });
 
+  // ── Apex class count approaching org limit ────────────────────────────────────
+  const apexCount = data.apexClassCount || 0;
+  if (apexCount > 4500) {
+    items.push(createDebtItem('orgLimits', 'high',
+      `${apexCount.toLocaleString()} Active Apex Classes — Approaching Org Limit (~5,000)`,
+      `Salesforce orgs have an effective ceiling of ~5,000 Apex classes (the documented limit is per-namespace, but org-wide performance degrades significantly above this threshold). At ${apexCount} classes, the org is critically close to triggering deployment failures.`,
+      'Audit all Apex classes. Delete unused classes, consolidate overly-fragmented utility classes, and evaluate managed packages that contribute to class count. Prioritise deletion of test-only classes that are no longer relevant.',
+      {}
+    ));
+  } else if (apexCount > 4000) {
+    items.push(createDebtItem('orgLimits', 'medium',
+      `${apexCount.toLocaleString()} Active Apex Classes — Monitor Org Limit`,
+      'The org is approaching the ~5,000 Apex class threshold. Continued growth without pruning will eventually cause deployment failures.',
+      'Begin auditing and removing unused Apex classes now to build headroom before the limit is reached.',
+      {}
+    ));
+  }
+
+  // ── Custom object count approaching org limit ─────────────────────────────────
+  const objCount = data.customObjectCount || 0;
+  if (objCount > 800) {
+    items.push(createDebtItem('orgLimits', 'high',
+      `${objCount.toLocaleString()} Custom Objects — Approaching Org Limit (~900)`,
+      'Salesforce orgs have a default custom object limit of 800–900 (varies by edition). A count above 800 means new object creation will fail. This also causes slowdowns in Schema describe operations and Setup page load times.',
+      'Audit custom objects. Delete unused objects and their data. Review if any objects can be consolidated using polymorphic relationships, Custom Metadata Types, or Platform Events instead.',
+      {}
+    ));
+  } else if (objCount > 600) {
+    items.push(createDebtItem('orgLimits', 'medium',
+      `${objCount.toLocaleString()} Custom Objects — Monitor Approaching Limit`,
+      'The org has a high number of custom objects. With a limit of ~900, the current count leaves limited headroom for future development.',
+      'Periodically audit custom object usage. Remove deprecated objects and resist creating new objects where existing ones can be extended.',
+      {}
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -2680,6 +2838,28 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
       `Connected App creation is disabled by default in Spring '26; External Client Apps (ECAs) are the new standard. ${apps.length} traditional Connected App${apps.length !== 1 ? 's' : ''} found with no External Client Apps configured.`,
       'Plan migration of Connected Apps to External Client Apps (ECAs) in Setup → External Client Apps. ECAs are metadata-compliant, support modern OAuth flows, and are required for new Spring \'26+ features.',
       { records: apps.slice(0, 50).map((a: any) => ({ name: a.Name || a.MasterLabel || a.Id, detail: 'Traditional Connected App — ECA is the Spring \'26 standard' })) }
+    ));
+  }
+
+  // ── OAuth tokens for inactive users ──────────────────────────────────────────
+  const inactiveUserTokens = (data.oauthTokens || []).filter((t: any) => t.User?.IsActive === false);
+  if (inactiveUserTokens.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'high',
+      `${inactiveUserTokens.length} Active OAuth Token${inactiveUserTokens.length !== 1 ? 's' : ''} Belonging to Deactivated Users`,
+      'Deactivating a Salesforce user does NOT revoke their existing OAuth tokens. Deactivated users retain valid access tokens that can be used by external systems to call the Salesforce API until the tokens expire or are manually revoked. This is a critical access control gap — a deactivated employee\'s integrations or compromised tokens remain live.',
+      'Revoke all OAuth tokens belonging to inactive users immediately. In Setup → Connected Apps → Manage, use "Revoke All" or revoke tokens per user. Establish a deprovisioning process that includes OAuth token revocation as a step when deactivating users.',
+      { records: inactiveUserTokens.slice(0, 50).map((t: any) => ({ name: t.AppName || 'Unknown App', detail: `User: ${t.User?.Username || t.UserId} — deactivated, token still live` })) }
+    ));
+  }
+
+  // ── Connected Apps bypassing IP login restrictions ────────────────────────────
+  const ipRelaxedApps = (data.connectedApps || []).filter((a: any) => a.IpRelaxation === 'RelaxedForThisApp');
+  if (ipRelaxedApps.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'medium',
+      `${ipRelaxedApps.length} Connected App${ipRelaxedApps.length !== 1 ? 's' : ''} Bypass IP Login Restrictions`,
+      'Connected Apps with IpRelaxation set to "Relax IP Restrictions" skip the org\'s IP allowlist checks for OAuth sessions. Even if the org enforces IP restrictions for standard login, these apps allow API access from any IP address. This widens the attack surface significantly, particularly for integrations that use long-lived refresh tokens.',
+      'Review each Connected App set to RelaxedForThisApp. Change IpRelaxation to "Enforce IP Restrictions" where feasible. For integrations that require broad IP access, compensate with shorter token lifetimes and IP-restricted Named Credentials.',
+      { records: ipRelaxedApps.slice(0, 20).map((a: any) => ({ name: a.Name, detail: 'IpRelaxation = RelaxedForThisApp — IP allowlist bypassed' })) }
     ));
   }
 
@@ -3762,6 +3942,60 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
     ));
   }
 
+  // ── Stuck async jobs ──────────────────────────────────────────────────────────
+  if ((data.stuckAsyncJobCount || 0) > 0) {
+    items.push(createDebtItem('performance', 'high',
+      `${data.stuckAsyncJobCount} Async Apex Jobs Stuck in Processing for 24+ Hours`,
+      'Async jobs stuck in Processing or Holding for more than 24 hours indicate a hung batch, a deadlock, or a runaway job consuming a platform worker. Jobs queued behind them are blocked indefinitely.',
+      'Check Setup → Apex Jobs for error messages on stuck jobs. Use AbortJob to terminate hung jobs. Investigate root cause — common causes include infinite loops, CPU exhaustion, or platform-level throttling.',
+      {}
+    ));
+  }
+
+  // ── Total active flow count ───────────────────────────────────────────────────
+  if ((data.totalActiveFlowCount || 0) > 300) {
+    items.push(createDebtItem('performance', 'medium',
+      `${data.totalActiveFlowCount} Active Flows in Org`,
+      'A very high number of active flows creates governance overhead and makes troubleshooting automation failures extremely difficult. Flow deployments also slow down org deployments as each active flow is evaluated.',
+      'Audit active flows. Deactivate and delete flows no longer in use. Consolidate overlapping flows into fewer, well-designed automations. Aim to keep active flow count below 200.',
+      {}
+    ));
+  }
+
+  // ── Obsolete flow versions ────────────────────────────────────────────────────
+  if ((data.obsoleteFlowCount || 0) > 200) {
+    items.push(createDebtItem('performance', 'low',
+      `${data.obsoleteFlowCount} Obsolete Flow Versions in Org`,
+      'Obsolete flow versions accumulate over time as flows are activated and replaced. Very large numbers of obsolete versions slow sandbox deployments and clutter the Setup interface.',
+      'Periodically delete obsolete flow versions via Setup → Flows or via the Metadata API. Keep only the current active version plus one prior version for rollback capability.',
+      {}
+    ));
+  }
+
+  // ── Apex 5,000+ lines (severe tier) ──────────────────────────────────────────
+  const veryLargeApexClasses = data.largeApexClasses.filter((c: any) => (c.LengthWithoutComments || 0) > 5000);
+  if (veryLargeApexClasses.length > 0) {
+    items.push(createDebtItem('performance', 'high',
+      `${veryLargeApexClasses.length} Apex Classes Exceed 5,000 Lines`,
+      'Apex classes over 5,000 lines are extreme outliers that severely violate the Single Responsibility Principle. They slow Apex compilation, make test coverage requirements harder to meet, and are prime candidates for governor limit failures due to method complexity.',
+      'Immediately prioritise refactoring these classes. Break into domain-specific service classes, extract utilities, and adopt a layered architecture (handler, service, selector, domain).',
+      { records: veryLargeApexClasses.map((c: any) => ({ name: c.Name, detail: `${c.LengthWithoutComments} lines` })) }
+    ));
+  }
+
+  // ── Flow DML in loops ─────────────────────────────────────────────────────────
+  const loopsSet = new Set((data.flowsWithLoopsIds || []).map(String));
+  const dmlSet = new Set((data.flowsWithDmlIds || []).map(String));
+  const flowsWithBoth = Array.from(loopsSet).filter(id => dmlSet.has(id));
+  if (flowsWithBoth.length > 0) {
+    items.push(createDebtItem('performance', 'high',
+      `${flowsWithBoth.length} Active Flows Contain Both Loop and DML Elements`,
+      'Flows that contain both a Loop element and record DML elements (Create/Update/Delete Records) are likely performing DML inside a loop. This hits the 150 DML statement governor limit in bulk scenarios and causes Flow fault errors or record save failures. This is flagged by Salesforce Code Analyzer (Flow Scanner: Database Operations in Loops).',
+      'Refactor the flow to collect records inside the loop into a collection variable, then perform a single Create/Update/Delete Records element outside the loop using the collection.',
+      {}
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return {
@@ -3862,6 +4096,51 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
       'Create Content Libraries in Setup → Content → Content Deliveries and Libraries for reusable assets (templates, branding assets, product documentation). Assign appropriate library permissions based on user roles.',
       {}
     ));
+  }
+
+  // ── Files permanently shared externally ──────────────────────────────────────
+  if ((data.permanentlySharedFileCount || 0) > 0) {
+    items.push(createDebtItem('notesAttachments', 'high',
+      `${data.permanentlySharedFileCount} Files Shared Externally With No Expiry Date`,
+      'ContentDistribution records with no ExpiryDate create publicly accessible download links that never expire. These files remain publicly accessible indefinitely — even if the associated record is deleted or the sharing was intended to be temporary. This is a data governance and potential data exposure risk.',
+      'Immediately audit all ContentDistribution records with no ExpiryDate. Set expiry dates on active distributions or revoke them. Establish a governance policy that mandates expiry dates on all external file shares.',
+      {}
+    ));
+  }
+
+  // ── High file volume by object ────────────────────────────────────────────────
+  const highVolumeObjects = (data.topAttachmentObjects || []).filter((o: any) => o.count > 10000);
+  if (highVolumeObjects.length > 0) {
+    items.push(createDebtItem('notesAttachments', 'medium',
+      `${highVolumeObjects.length} Object${highVolumeObjects.length !== 1 ? 's' : ''} with 10,000+ File Attachments`,
+      'Objects with extremely high ContentDocumentLink counts indicate uncontrolled file attachment behaviour. This drives up Salesforce file storage consumption (billed separately), slows record page load times when the Files related list loads, and complicates data migration or archiving efforts.',
+      'Review attachment patterns for high-volume objects. Implement file governance policies (max file size, allowed file types). Consider routing large file volumes to external storage (SharePoint, Box) via Files Connect. Archive or delete files older than your retention policy.',
+      { records: highVolumeObjects.map((o: any) => ({ name: o.obj, detail: `${o.count.toLocaleString()} files` })) }
+    ));
+  }
+
+  // ── Stale files not accessed in 2+ years ─────────────────────────────────────
+  if ((data.staleFileCount || 0) > 0) {
+    items.push(createDebtItem('notesAttachments', 'low',
+      `${data.staleFileCount.toLocaleString()} Files Not Viewed in 2+ Years`,
+      'Files with no LastViewedDate activity for over 2 years are likely abandoned. They consume file storage allocation, add noise to file searches, and complicate data migration and archiving.',
+      'Establish a file retention policy. Identify stale files with a bulk query and review with record owners. Delete files with no business retention requirement. Archive files required for compliance to a lower-cost storage tier.',
+      {}
+    ));
+  }
+
+  // ── Notes & Attachments by object breakdown ───────────────────────────────────
+  if (data.topAttachmentObjects && data.topAttachmentObjects.length > 0) {
+    const top5 = data.topAttachmentObjects.slice(0, 5);
+    const totalLinked = top5.reduce((s: number, o: any) => s + (o.count || 0), 0);
+    if (totalLinked > 5000) {
+      items.push(createDebtItem('notesAttachments', 'low',
+        `File Distribution Across Objects — Top Objects Identified`,
+        `The top ${top5.length} objects account for ${totalLinked.toLocaleString()} file links. Understanding which objects accumulate the most files helps prioritise storage governance and archiving efforts.`,
+        'Review file attachment volumes per object. Apply object-specific governance rules: enforce file type restrictions, implement automated archiving for old attachments on closed records, and set storage budgets per object type.',
+        { records: top5.map((o: any) => ({ name: o.obj, detail: `${o.count.toLocaleString()} files` })) }
+      ));
+    }
   }
 
   const maxScore = 100;

@@ -106,7 +106,7 @@ add_text(slide, "SF Tech Debt Assessor", 0.6, 1.4, 12, 1.1,
          size=44, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 add_text(slide, "Automated Salesforce Org Health Assessment", 0.6, 2.6, 12, 0.6,
          size=22, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
-add_text(slide, "22 Categories  ·  301 Checks  ·  Read-Only OAuth", 0.6, 3.2, 12, 0.5,
+add_text(slide, "22 Categories  ·  311 Checks  ·  Read-Only OAuth", 0.6, 3.2, 12, 0.5,
          size=15, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER, italic=True)
 add_text(slide, "Steven Bilgram, Success Architect  |  2026",
          0.6, 6.05, 12, 0.5,
@@ -156,13 +156,13 @@ footer(slide, 3)
 
 add_text(slide,
          "A web app that connects directly to any Salesforce org via OAuth and automatically "
-         "runs a scored technical debt assessment across 22 categories and 301 checks — producing a "
+         "runs a scored technical debt assessment across 22 categories and 311 checks — producing a "
          "stakeholder-ready report, drill-down record detail, and a phased remediation roadmap.",
          0.4, 1.3, 12.5, 0.9, size=14, color=NAVY)
 
 steps = [
     ("1", "Connect",  "Authenticate via OAuth\nusing your org credentials"),
-    ("2", "Assess",   "22-category scan across\n301 checks runs automatically"),
+    ("2", "Assess",   "22-category scan across\n311 checks runs automatically"),
     ("3", "Review",   "Scored report with\ndrill-down to affected records"),
     ("4", "Export",   "PDF · Excel · CSV ·\nRemediation Roadmap"),
 ]
@@ -191,18 +191,18 @@ add_text(slide, "Deployed at: sf-tech-debt-assessor.onrender.com",
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "What It Assesses",
-            "22 categories · 301 checks covering the full Salesforce technical stack")
+            "22 categories · 311 checks covering the full Salesforce technical stack")
 footer(slide, 4)
 
 categories = [
     ("Configuration",             13),
-    ("Code Quality",              21),
+    ("Code Quality",              29),
     ("Data Model",                 4),
     ("Service Cloud",             69),
     ("Sharing & Security",        24),
     ("Integrations",               9),
     ("Test Coverage",              4),
-    ("Org Limits",                 3),
+    ("Org Limits",                 5),
     ("Duplicate & Matching Rules", 4),
     ("Reports & Dashboards",       3),
     ("Email Templates",            3),
@@ -212,11 +212,11 @@ categories = [
     ("Record Types & Page Layouts",4),
     ("Einstein & AI Usage",        9),
     ("Experience Cloud",          12),
-    ("Connected App Security",    10),
+    ("Connected App Security",    12),
     ("LWC & Components",          39),
     ("OmniStudio",                26),
-    ("Performance",               16),
-    ("Notes & Attachments",        8),
+    ("Performance",               21),
+    ("Notes & Attachments",       12),
 ]
 
 cols = 3
@@ -394,12 +394,12 @@ add_text(slide, "Ready to See It in Action?", 0.6, 1.1, 12, 0.9,
          size=36, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 add_text(slide,
          "SF Tech Debt Assessor is live and available today.\n"
-         "Connect any Salesforce org and run a full 22-category, 301-check assessment in under 5 minutes.",
+         "Connect any Salesforce org and run a full 22-category, 311-check assessment in under 5 minutes.",
          0.6, 2.1, 12, 0.9,
          size=16, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
 
 # Stat bar
-stats = [("22", "Categories"), ("301", "Checks"), ("100%", "Read-Only")]
+stats = [("22", "Categories"), ("311", "Checks"), ("100%", "Read-Only")]
 for i, (val, lbl) in enumerate(stats):
     x = 1.5 + i * 3.5
     add_rect(slide, x, 3.2, 3.0, 1.3, fill=RGBColor(0x07, 0x50, 0x9A))
