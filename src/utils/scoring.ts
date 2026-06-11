@@ -83,28 +83,16 @@ export function assessConfiguration(
     ));
   }
 
-  // Check for automation overlap (multiple automations on same object)
-  const automationByObject = new Map<string, number>();
-  automation.allFlows.forEach(flow => {
-    const label = flow.MasterLabel || flow.Label || '';
-    const obj = flow.ProcessType === 'Workflow' ? label.split(' ')[0] : 'Unknown';
-    automationByObject.set(obj, (automationByObject.get(obj) || 0) + 1);
-  });
-  automation.workflowRules.forEach(rule => {
-    const obj = rule.TableEnumOrId;
-    automationByObject.set(obj, (automationByObject.get(obj) || 0) + 1);
-  });
-
-  const overlappingObjects = Array.from(automationByObject.entries())
-    .filter(([_, count]) => count > 3);
-  if (overlappingObjects.length > 0) {
+  // Check for high total automation count (overlap risk)
+  const totalAutomation = (automation.allFlows || []).length + (automation.workflowRules || []).length;
+  if (totalAutomation > 50) {
     items.push(createDebtItem(
       'configuration',
       'medium',
-      `${overlappingObjects.length} Objects with Overlapping Automation`,
-      'Multiple automation types on the same object increases complexity and risk of conflicts.',
-      'Consolidate automation into a single flow per object where possible.',
-      { objects: overlappingObjects }
+      `${totalAutomation} Active Automation Components — Review for Overlap`,
+      `${totalAutomation} active flows and workflow rules detected. High automation volume increases the risk of conflicting order-of-execution and makes change impact assessment difficult.`,
+      'Audit all active flows and workflow rules. Consolidate multiple flows on the same object into a single record-triggered flow with ordered actions.',
+      { count: totalAutomation }
     ));
   }
 
@@ -1611,16 +1599,16 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   if (integrationUsers.length > 0) {
     const profilesWithRanges = new Set((data.loginIpRanges || []).map((r: any) => r.ProfileId));
     const unrestrictedIntUsers = integrationUsers.filter(
-      (u: any) => !profilesWithRanges.has(u.Profile?.Id || '') && u.Profile?.UserType !== 'Standard'
+      (u: any) => !profilesWithRanges.has(u.Profile?.Id || '')
     );
     if (unrestrictedIntUsers.length > 0) {
       items.push(createDebtItem(
         'sharingSecurity',
         'high',
-        `${integrationUsers.length} Integration/API Users Detected`,
-        `Service account users with API-style profile names found. Verify each has IP restrictions and uses minimum required permissions.`,
+        `${unrestrictedIntUsers.length} Integration/API User${unrestrictedIntUsers.length !== 1 ? 's' : ''} Without IP Restrictions`,
+        `${unrestrictedIntUsers.length} service account user${unrestrictedIntUsers.length !== 1 ? 's' : ''} with API-style profile names have no login IP restrictions on their profile. This allows API access from any IP address.`,
         'Restrict integration user profiles to trusted IP ranges. Use Named Credentials instead of user credentials for callouts.',
-        { records: integrationUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
+        { records: unrestrictedIntUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
       ));
     }
   }
@@ -2606,8 +2594,15 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
   }
 
   // 5. Active sites without a custom domain (still on *.force.com or *.salesforce.com)
-  const siteIdsWithCustomDomain = new Set(customDomains.map((d: any) => d.SiteId));
-  const sitesWithoutCustomDomain = activeSites.filter((s: any) => !siteIdsWithCustomDomain.has(s.Id));
+  // customDomains contains DomainSite records with SiteId, or fallback Domain records without SiteId
+  const siteIdsWithCustomDomain = new Set(
+    customDomains.filter((d: any) => d.SiteId).map((d: any) => d.SiteId)
+  );
+  // If DomainSite returned records but none have SiteId, the fallback Domain query was used — skip the check
+  const canCheckCustomDomain = customDomains.length === 0 || customDomains.some((d: any) => d.SiteId !== undefined);
+  const sitesWithoutCustomDomain = canCheckCustomDomain
+    ? activeSites.filter((s: any) => !siteIdsWithCustomDomain.has(s.Id))
+    : [];
   if (sitesWithoutCustomDomain.length > 0) {
     items.push(createDebtItem('experienceCloud', 'low',
       `${sitesWithoutCustomDomain.length} Active Sites Without a Custom Domain`,
@@ -2638,13 +2633,20 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
   }
 
   // 8. HTTPS not enforced on custom domains
-  const insecureDomains = customDomains.filter((d: any) => d.HttpsOption !== 'Required');
+  // Handle both DomainSite records (Domain.HttpsOption) and fallback Domain records (HttpsOption)
+  const insecureDomains = customDomains.filter((d: any) => {
+    const httpsOption = d.Domain?.HttpsOption ?? d.HttpsOption;
+    return httpsOption !== undefined && httpsOption !== 'Required';
+  });
   if (insecureDomains.length > 0) {
     items.push(createDebtItem('experienceCloud', 'high',
       `${insecureDomains.length} Custom Domains Without HTTPS Enforced`,
       'Allowing non-HTTPS connections exposes session tokens and data in transit.',
       'Set HTTPS Option to "Required" on all custom domains in Setup → Domains.',
-      { records: insecureDomains.map((d:any) => ({ name: d.Domain, detail: `HTTPS: ${d.HttpsOption || 'Not Required'}` })) }));
+      { records: insecureDomains.map((d:any) => ({
+        name: d.Domain?.Domain ?? d.Domain,
+        detail: `HTTPS: ${d.Domain?.HttpsOption ?? d.HttpsOption ?? 'Not Required'}`
+      })) }));
   }
 
   // WCAG 2.2 Accessibility Release Updates — enforced Summer '26

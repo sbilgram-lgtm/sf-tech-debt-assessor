@@ -191,15 +191,16 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       "FROM WorkflowRule"
     );
     const processBuilders = flows.records.filter(f =>
-      f.ProcessType === 'Workflow' || f.ProcessType === 'InvocableProcess'
+      f.ProcessType === 'CustomEvent' || f.ProcessType === 'InvocableProcess'
     );
     const actualFlows = flows.records.filter(f =>
-      f.ProcessType === 'AutoLaunchedFlow' || f.ProcessType === 'Flow'
+      f.ProcessType === 'AutoLaunchedFlow' || f.ProcessType === 'Flow' ||
+      f.ProcessType === 'RecordTriggeredFlow' || f.ProcessType === 'ScheduledFlow'
     );
 
     const [approvalProcesses, einsteinFlowActions, webToCaseSettingsRes, caseAutoResponseRulesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 50"),
-      safeQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
       safeQuery(conn, "SELECT EnableWebToCase, CaseCaptchaEnabledFlag FROM WebToCaseSettings LIMIT 1").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, Name, Active FROM AutoResponseRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
@@ -349,20 +350,20 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       safeToolingQuery(conn, "SELECT Id, DeveloperName, Capacity FROM PresenceConfiguration LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
-    // Knowledge counts
+    // Knowledge counts — jsforce v1 always returns aggregate as expr0 (named aliases not supported)
     const [publishedArticles, staleArticles, draftStalled, dataCategoryGroups, articlesNoValidation] = await Promise.all([
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US'").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND LastModifiedDate < LAST_N_DAYS:365").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM KnowledgeArticleVersion WHERE PublishStatus = 'Draft' AND LastModifiedDate < LAST_N_DAYS:180").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM DataCategoryGroup").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND ValidationStatus = null").catch(() => ({ records: [{ cnt: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND LastModifiedDate < LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Draft' AND LastModifiedDate < LAST_N_DAYS:180").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM DataCategoryGroup").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND ValidationStatus = null").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
 
     // Entitlements
     const [entitlementProcesses, serviceContractsRaw, entitlementTemplates] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, IsActive, BusinessHoursId FROM EntitlementProcess WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, Name FROM ServiceContract LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM EntitlementTemplate").catch(() => ({ records: [{ cnt: 0 }] }))
+      safeQuery(conn, "SELECT Id, Name FROM ServiceContract LIMIT 100").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM EntitlementTemplate").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
 
     // Entitlement processes without business hours
@@ -377,9 +378,9 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     const entitlementProcessesWithoutMilestoneActions = (entitlementProcesses.records || []).filter(ep => !epIdsWithMilestones.has(ep.Id));
 
     // Open cases with entitlement but no SLA start date
-    let openCasesEntitlementNoSla = { records: [{ cnt: 0 }] };
+    let openCasesEntitlementNoSla = { records: [{ expr0: 0 }] };
     try {
-      openCasesEntitlementNoSla = await safeQuery(conn, "SELECT COUNT(Id) cnt FROM Case WHERE EntitlementId != null AND SlaStartDate = null AND IsClosed = false");
+      openCasesEntitlementNoSla = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE EntitlementId != null AND SlaStartDate = null AND IsClosed = false");
     } catch(e) {}
 
     // Service contracts without entitlements
@@ -398,8 +399,8 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
 
     let emailThreadingGapCount = 0;
     try {
-      const threadingGap = await safeQuery(conn, "SELECT COUNT(Id) cnt FROM EmailMessage WHERE Incoming = true AND ThreadIdentifier = null AND CreatedDate = LAST_N_DAYS:30");
-      emailThreadingGapCount = (threadingGap.records[0] || {}).cnt || 0;
+      const threadingGap = await safeQuery(conn, "SELECT COUNT(Id) FROM EmailMessage WHERE Incoming = true AND ThreadIdentifier = null AND CreatedDate = LAST_N_DAYS:30");
+      emailThreadingGapCount = (threadingGap.records[0] || {}).expr0 || 0;
     } catch(e) {}
 
     // Live Chat / Messaging
@@ -413,19 +414,19 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // Service Console
     const [consoleApps, macros, recommendationStrategies, callCenters, softphoneLayouts] = await Promise.all([
       safeToolingQuery(conn, "SELECT Id, DeveloperName, NavType FROM AppDefinition WHERE NavType = 'Console' LIMIT 10").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM Macro WHERE IsActive = true").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM RecommendationStrategy WHERE IsActive = true").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM CallCenter").catch(() => ({ records: [{ cnt: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM SoftphoneLayout WHERE IsDefault = true").catch(() => ({ records: [{ cnt: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM Macro WHERE IsActive = true").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM RecommendationStrategy WHERE IsActive = true").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM CallCenter").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM SoftphoneLayout WHERE IsDefault = true").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
 
     // Uncategorized articles (published with no data category assignment)
     let uncategorizedArticleCount = 0;
     try {
-      const allPublished = await safeQuery(conn, "SELECT COUNT(Id) cnt FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US'");
-      const categorized = await safeQuery(conn, "SELECT COUNT(Id) cnt FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND Id IN (SELECT ParentId FROM KnowledgeArticleVersionDataCategorySelection)");
-      const total = (allPublished.records[0] || {}).cnt || 0;
-      const cat = (categorized.records[0] || {}).cnt || 0;
+      const allPublished = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US'");
+      const categorized = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND Id IN (SELECT ParentId FROM KnowledgeArticleVersionDataCategorySelection)");
+      const total = (allPublished.records[0] || {}).expr0 || 0;
+      const cat = (categorized.records[0] || {}).expr0 || 0;
       uncategorizedArticleCount = Math.max(0, total - cat);
     } catch(e) {}
 
@@ -456,11 +457,12 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     } catch(e) {}
 
     // Cases closed with zero CaseComment activity (zero-touch close rate)
+    // Compare: total closed cases vs closed cases that have at least one comment
     let closedCasesTotal = { records: [{ expr0: 0 }] };
     let closedCasesWithComments = { records: [{ expr0: 0 }] };
     try {
       closedCasesTotal = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90");
-      closedCasesWithComments = await safeQuery(conn, "SELECT COUNT(Id) FROM CaseComment WHERE CreatedDate = LAST_N_DAYS:90");
+      closedCasesWithComments = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90 AND Id IN (SELECT ParentId FROM CaseComment WHERE CreatedDate = LAST_N_DAYS:90)");
     } catch(e) {}
 
     // Quick Text records — zero or stale
@@ -566,7 +568,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       promotedSearchTermCount = await safeQuery(conn, "SELECT COUNT(Id) FROM SearchPromotionRule");
     } catch(e) {}
     try {
-      synonymDictCount = await safeToolingQuery(conn, "SELECT COUNT(Id) FROM SynonymDictionary");
+      synonymDictCount = await safeQuery(conn, "SELECT COUNT(Id) FROM SynonymDictionary");
     } catch(e) {}
 
     // K-3: Duplicate article titles
@@ -681,18 +683,18 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       serviceChannels: serviceChannels.records || [],
       routingConfigurations: routingConfigurations.records || [],
       presenceConfigurations: presenceConfigurations.records || [],
-      publishedArticleCount: (publishedArticles.records[0] || {}).cnt || 0,
-      staleArticleCount: (staleArticles.records[0] || {}).cnt || 0,
-      draftStalledCount: (draftStalled.records[0] || {}).cnt || 0,
-      dataCategoryGroupCount: (dataCategoryGroups.records[0] || {}).cnt || 0,
+      publishedArticleCount: (publishedArticles.records[0] || {}).expr0 || 0,
+      staleArticleCount: (staleArticles.records[0] || {}).expr0 || 0,
+      draftStalledCount: (draftStalled.records[0] || {}).expr0 || 0,
+      dataCategoryGroupCount: (dataCategoryGroups.records[0] || {}).expr0 || 0,
       uncategorizedArticleCount,
-      articlesWithoutValidationCount: (articlesNoValidation.records[0] || {}).cnt || 0,
+      articlesWithoutValidationCount: (articlesNoValidation.records[0] || {}).expr0 || 0,
       entitlementProcesses: entitlementProcesses.records || [],
       entitlementProcessesWithoutBusinessHours,
       entitlementProcessesWithoutMilestoneActions,
-      openCasesEntitlementNoSla: (openCasesEntitlementNoSla.records[0] || {}).cnt || 0,
+      openCasesEntitlementNoSla: (openCasesEntitlementNoSla.records[0] || {}).expr0 || 0,
       serviceContractsWithoutEntitlements,
-      entitlementTemplateCount: (entitlementTemplates.records[0] || {}).cnt || 0,
+      entitlementTemplateCount: (entitlementTemplates.records[0] || {}).expr0 || 0,
       emailRoutingAddresses: emailRoutingAddresses.records || [],
       emailServicesAddresses: emailServicesAddresses.records || [],
       emailThreadingGapCount,
@@ -701,10 +703,10 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       messagingChannels: messagingChannels.records || [],
       embeddedServiceConfigs: embeddedServiceConfigs.records || [],
       consoleApps: consoleApps.records || [],
-      activeMacroCount: (macros.records[0] || {}).cnt || 0,
-      activeRecommendationStrategyCount: (recommendationStrategies.records[0] || {}).cnt || 0,
-      callCenters: (callCenters.records[0] || {}).cnt || 0,
-      softphoneLayouts: (softphoneLayouts.records[0] || {}).cnt || 0,
+      activeMacroCount: (macros.records[0] || {}).expr0 || 0,
+      activeRecommendationStrategyCount: (recommendationStrategies.records[0] || {}).expr0 || 0,
+      callCenters: (callCenters.records[0] || {}).expr0 || 0,
+      softphoneLayouts: (softphoneLayouts.records[0] || {}).expr0 || 0,
       messagingChannelsNoOptOut: messagingChannelsNoOptOut.records || [],
       violatedMilestones: violatedMilestones.records || [],
       staleEscalatedCases: staleEscalatedCases.records || [],
@@ -810,7 +812,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       "Profile.Name, Profile.UserType, " +
       "UserType, CreatedDate " +
       "FROM User WHERE IsActive = true AND UserType IN ('Standard', 'PowerPartner', 'CsnOnly') " +
-      "ORDER BY LastLoginDate DESC NULLS LAST LIMIT 200"
+      "ORDER BY LastLoginDate DESC NULLS LAST LIMIT 2000"
     );
 
     // Integration/API service account users (likely have API-only profiles)
@@ -823,14 +825,15 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       "ORDER BY LastLoginDate DESC NULLS LAST LIMIT 100"
     );
 
-    // Users with no login in 90+ days (stale accounts)
+    // Users with no login in 90+ days (stale accounts) — includes all user types
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     const staleUsers = await safeQuery(conn,
-      `SELECT Id, Name, Username, Email, LastLoginDate, Profile.Name ` +
-      `FROM User WHERE IsActive = true AND UserType = 'Standard' AND ` +
+      `SELECT Id, Name, Username, Email, LastLoginDate, Profile.Name, UserType ` +
+      `FROM User WHERE IsActive = true AND ` +
+      `UserType IN ('Standard', 'PowerPartner', 'CsnOnly', 'SelfService') AND ` +
       `(LastLoginDate < ${ninetyDaysAgo.toISOString()} OR LastLoginDate = null) ` +
-      `ORDER BY LastLoginDate ASC NULLS FIRST LIMIT 100`
+      `ORDER BY LastLoginDate ASC NULLS FIRST LIMIT 200`
     );
 
     // Users with Modify All Data or View All Data permission via profile
@@ -853,12 +856,10 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       "SELECT UserId FROM TwoFactorInfo WHERE Type IN ('TOTP', 'SalesforceAuthenticator', 'U2F', 'WebAuthn') LIMIT 5000"
     );
 
-    // Org-level MFA enforcement (when enabled, all UI users are challenged at login
-    // regardless of whether they have a TwoFactorInfo record — so individual enrollment
-    // tracking via TwoFactorInfo is not a reliable signal)
+    // Org-level MFA enforcement — SecuritySettings is Tooling API only
     let orgMfaEnforced = false;
     try {
-      const mfaSettings = await safeQuery(conn,
+      const mfaSettings = await safeToolingQuery(conn,
         "SELECT IsMFAUILoginEnabled FROM SecuritySettings LIMIT 1"
       );
       orgMfaEnforced = !!(mfaSettings.records && mfaSettings.records[0] && mfaSettings.records[0].IsMFAUILoginEnabled);
@@ -1199,7 +1200,7 @@ app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
   try {
     const [customSettings, customMetadataTypes] = await Promise.all([
       safeToolingQuery(conn, "SELECT Id, DeveloperName, CustomSettingsType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE NamespacePrefix = null AND DeveloperName LIKE '%__mdt' LIMIT 100")
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE QualifiedApiName LIKE '%__mdt' AND NamespacePrefix = null LIMIT 100")
     ]);
     res.json({ customSettings: customSettings.records || [], customMetadataTypes: customMetadataTypes.records || [] });
   } catch (err) {
@@ -1212,7 +1213,7 @@ app.get('/api/assess/record-types-layouts', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [recordTypes, pageLayouts] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE IsCustom = true LIMIT 500"),
+      safeQuery(conn, "SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE DeveloperName != 'Master' LIMIT 500"),
       safeToolingQuery(conn, "SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500")
     ]);
     res.json({ recordTypes: recordTypes.records || [], pageLayouts: pageLayouts.records || [] });
@@ -1230,22 +1231,26 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, DeveloperName, Status FROM PromptTemplate LIMIT 50"),
       safeQuery(conn, "SELECT Id, DeveloperName, Status FROM BotDefinition LIMIT 20"),
       safeQuery(conn, "SELECT Id, DeveloperName, Status FROM AiApplication LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT COUNT(Id) cnt FROM Case WHERE IsClosed = true AND CreatedDate = LAST_N_DAYS:365").catch(() => ({ records: [{ cnt: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND CreatedDate = LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
 
-    // Agentforce: Agent Topics and Agent Actions (Summer '24+ objects)
+    // Agentforce: Agent Topics and Agent Actions
     let agentTopicCount = 0;
     let agentActionCount = 0;
     let dataCloudConnected = false;
     try {
-      const topicsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotVersion LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
-      // BotVersion count > 0 means Agentforce/Einstein Bot versions exist; use BotDefinition as topic proxy
-      const botDefsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotDefinition WHERE BotType = 'EinsteinGptAgent' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
-      agentTopicCount = (botDefsRes.records[0] || {}).expr0 || 0;
+      // BotTopicDefinition = Agentforce Topics (Summer '24+); fall back to BotDefinition EinsteinGptAgent type
+      const topicsRes = await safeToolingQuery(conn, "SELECT COUNT(Id) FROM BotTopicDefinition LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      agentTopicCount = (topicsRes.records[0] || {}).expr0 || 0;
+      if (agentTopicCount === 0) {
+        // Fallback: count Agentforce-type bot definitions
+        const fallbackRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotDefinition WHERE BotType = 'EinsteinGptAgent'").catch(() => ({ records: [{ expr0: 0 }] }));
+        agentTopicCount = (fallbackRes.records[0] || {}).expr0 || 0;
+      }
     } catch(e) {}
     try {
-      // BotBlock = Agentforce Action definitions (available in all orgs with Einstein Bot enabled)
-      const actionsRes = await safeQuery(conn, "SELECT COUNT(Id) FROM BotBlock LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
+      // BotTopicAction = Agentforce Actions linked to topics
+      const actionsRes = await safeToolingQuery(conn, "SELECT COUNT(Id) FROM BotTopicAction LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }));
       agentActionCount = (actionsRes.records[0] || {}).expr0 || 0;
     } catch(e) {}
     try {
@@ -1259,7 +1264,7 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
       promptTemplates: promptTemplates.records || [],
       bots: bots.records || [],
       aiApplications: aiApplications.records || [],
-      recentClosedCaseCount: (recentClosedCases.records[0] || {}).cnt || 0,
+      recentClosedCaseCount: (recentClosedCases.records[0] || {}).expr0 || 0,
       agentTopicCount,
       agentActionCount,
       dataCloudConnected
@@ -1295,16 +1300,25 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
     );
 
     // Custom domains configured for Experience Cloud sites
-    const customDomains = await safeQuery(conn,
-      "SELECT Id, Domain " +
-      "FROM Domain LIMIT 100"
-    );
+    // DomainSite links a Domain to a Site — use it to detect which sites have custom domains
+    let customDomains = { records: [] };
+    try {
+      customDomains = await safeQuery(conn,
+        "SELECT Id, DomainId, Domain.Domain, Domain.HttpsOption, SiteId " +
+        "FROM DomainSite LIMIT 200"
+      );
+    } catch(e) {
+      // Fall back to querying Domain directly if DomainSite not available
+      try {
+        customDomains = await safeQuery(conn, "SELECT Id, Domain, HttpsOption FROM Domain LIMIT 100");
+      } catch(e2) { customDomains = { records: [] }; }
+    }
 
     const wcagUpdateRes = await safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName LIKE '%Accessibility%' OR ApiName LIKE '%WCAG%' LIMIT 5");
 
     let clickjackSites = { records: [] };
     try {
-      clickjackSites = await safeQuery(conn, "SELECT Id, Name, ClickjackProtection FROM Site WHERE ClickjackProtection = 'AllowAll' AND Status = 'Active' LIMIT 50");
+      clickjackSites = await safeQuery(conn, "SELECT Id, Name, ClickjackProtectionLevel FROM Site WHERE ClickjackProtectionLevel = 'AllowAll' AND Status = 'Active' LIMIT 50");
     } catch(e) {}
 
     let xssNetworks = { records: [] };
@@ -1671,8 +1685,8 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       safeQuery(conn, `SELECT COUNT(Id) FROM AsyncApexJob WHERE Status IN ('Processing','Holding') AND CreatedDate < ${new Date(Date.now() - 86400000).toISOString()}`).catch(() => ({ records: [{ expr0: 0 }] })),
       safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] })),
       safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete'").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeToolingQuery(conn, "SELECT DISTINCT FlowVersionId FROM FlowElement WHERE Type = 'Loop' LIMIT 200").catch(() => ({ records: [] })),
-      safeToolingQuery(conn, "SELECT DISTINCT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete') LIMIT 500").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT FlowVersionId FROM FlowElement WHERE Type = 'Loop' GROUP BY FlowVersionId LIMIT 200").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete') GROUP BY FlowVersionId LIMIT 500").catch(() => ({ records: [] }))
     ]);
 
     // Calculate trigger counts per object (aggregate alias not supported in REST API — use expr0)
