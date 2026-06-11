@@ -850,8 +850,19 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
 
     // MFA: users who have registered a TOTP/authenticator (TwoFactorInfo)
     const mfaEnrolledUsers = await safeQuery(conn,
-      "SELECT UserId FROM TwoFactorInfo WHERE Type IN ('TOTP', 'SalesforceAuthenticator', 'U2F', 'WebAuthn') LIMIT 2000"
+      "SELECT UserId FROM TwoFactorInfo WHERE Type IN ('TOTP', 'SalesforceAuthenticator', 'U2F', 'WebAuthn') LIMIT 5000"
     );
+
+    // Org-level MFA enforcement (when enabled, all UI users are challenged at login
+    // regardless of whether they have a TwoFactorInfo record — so individual enrollment
+    // tracking via TwoFactorInfo is not a reliable signal)
+    let orgMfaEnforced = false;
+    try {
+      const mfaSettings = await safeQuery(conn,
+        "SELECT IsMFAUILoginEnabled FROM SecuritySettings LIMIT 1"
+      );
+      orgMfaEnforced = !!(mfaSettings.records && mfaSettings.records[0] && mfaSettings.records[0].IsMFAUILoginEnabled);
+    } catch (e) { /* SecuritySettings may not be accessible with all profiles */ }
 
     // Security Health Check score and risk groups
     let securityHealthCheck = null;
@@ -930,6 +941,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       },
       loginIpRanges: loginIpRanges.records || [],
       mfaEnrolledUserIds: (mfaEnrolledUsers.records || []).map(r => r.UserId),
+      orgMfaEnforced,
       securityHealthCheck,
       activeOauthTokens: activeOauthTokens.records || [],
       lowSecuritySessions: lowSecuritySessions.records || [],

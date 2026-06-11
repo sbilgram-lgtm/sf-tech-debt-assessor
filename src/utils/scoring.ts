@@ -1642,9 +1642,13 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   }
 
   // MFA: users not enrolled
+  // Skip individual enrollment check when org-level MFA enforcement is active —
+  // Salesforce challenges all UI users at login regardless of TwoFactorInfo records,
+  // so the absence of a TwoFactorInfo record does not mean MFA is not in use.
+  const orgMfaEnforced = !!(data as any).orgMfaEnforced;
   const enrolledIds = new Set(data.mfaEnrolledUserIds || []);
   const unenrolledUsers = allUsers.filter((u: any) => !enrolledIds.has(u.Id));
-  if (allUsers.length > 0) {
+  if (!orgMfaEnforced && allUsers.length > 0) {
     const unenrolledPct = Math.round((unenrolledUsers.length / allUsers.length) * 100);
     if (unenrolledUsers.length > 0) {
       items.push(createDebtItem(

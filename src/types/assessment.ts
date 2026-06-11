@@ -171,6 +171,7 @@ export interface SharingSecurityData {
   };
   loginIpRanges: any[];
   mfaEnrolledUserIds: string[];
+  orgMfaEnforced: boolean;
   securityHealthCheck: any;
   activeOauthTokens: any[];
   lowSecuritySessions: any[];
