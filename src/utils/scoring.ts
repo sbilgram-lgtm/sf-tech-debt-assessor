@@ -2550,17 +2550,33 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
   const allNetworks = data.networks || [];
   const customDomains = data.customDomains || [];
 
-  // 1. Aura/Visualforce templates still in use (legacy) — Template field is on Network, not Site
+  // 1. Aura-based templates still in use — LWR templates always contain 'lwr' in their API name
+  // Known Aura/legacy templates: aloha, kokua, nto, oob, partner_central, salesforce_tabs+visualforce
+  const LEGACY_AURA_TEMPLATES = ['aloha', 'kokua', 'nto', 'oob', 'partner_central', 'salesforce_tabs'];
   const liveNetworks = allNetworks.filter((n: any) => n.Status === 'Live' || n.Status === 'Active');
-  const legacyTemplateSites = liveNetworks.filter((n: any) =>
-    n.Template && (n.Template.toLowerCase().includes('aura') || n.Template.toLowerCase().includes('visualforce') || n.Template.toLowerCase().includes('aloha'))
-  );
+  const legacyTemplateSites = liveNetworks.filter((n: any) => {
+    if (!n.Template) return false;
+    const t = n.Template.toLowerCase();
+    if (t.includes('lwr')) return false; // LWR — not legacy
+    return LEGACY_AURA_TEMPLATES.some(legacy => t.includes(legacy));
+  });
   if (legacyTemplateSites.length > 0) {
     items.push(createDebtItem('experienceCloud', 'high',
-      `${legacyTemplateSites.length} Experience Sites Using Legacy Template (Aura/Visualforce)`,
-      'Aura and Visualforce-based Experience Cloud templates are legacy. LWR (Lightning Web Runtime) delivers significantly better performance and is Salesforce\'s strategic direction.',
-      'Plan migration to LWR-based templates. LWR sites support headless and composable architecture and receive Salesforce investment first.',
-      { records: legacyTemplateSites.map((n:any) => ({ name: n.Name, detail: n.Template || 'Legacy Template' })) }));
+      `${legacyTemplateSites.length} Experience Site${legacyTemplateSites.length !== 1 ? 's' : ''} Using Legacy Aura Template`,
+      'Aura-based Experience Cloud templates (aloha, kokua, nto, oob, partner_central) are legacy. LWR (Lightning Web Runtime) sites load significantly faster — Salesforce benchmarks show 2-3x improvement — and are the only template type receiving new feature investment.',
+      'Plan migration to an LWR-based template. Use Build Your Own (LWR) for custom portals or a Salesforce-provided LWR template where available. Test all custom Aura components before migration — they require conversion to LWC.',
+      { records: legacyTemplateSites.map((n:any) => ({ name: n.Name, detail: n.Template || 'Aura template' })) }));
+  }
+
+  // 1b. Sites with no Template value — unknown/undetectable type
+  const unknownTemplateSites = liveNetworks.filter((n: any) => !n.Template);
+  if (unknownTemplateSites.length > 0 && legacyTemplateSites.length === 0) {
+    // Only flag if we couldn't detect any legacy sites — avoids double-noise
+    items.push(createDebtItem('experienceCloud', 'low',
+      `${unknownTemplateSites.length} Live Site${unknownTemplateSites.length !== 1 ? 's' : ''} with Unknown Template Type`,
+      'Template type could not be determined for these live sites. This may indicate a custom or undocumented template.',
+      'Verify the template type in Experience Builder → Administration → Template. Confirm whether it is LWR-based.',
+      { records: unknownTemplateSites.map((n:any) => ({ name: n.Name, detail: 'Template not returned' })) }));
   }
 
   // 2. Inactive / draft sites never published (stale config)
@@ -2671,24 +2687,30 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       { records: clickjackSites.map((s: any) => ({ name: s.Name, detail: 'ClickjackProtection = AllowAll — iframe embedding unrestricted' })) }));
   }
 
-  // XSS protection disabled
+  // XSS protection disabled — applies to both Aura and LWR sites
   const xssNetworks = (data.xssUnprotectedNetworks || []);
   if (xssNetworks.length > 0) {
     items.push(createDebtItem('experienceCloud', 'medium',
       `${xssNetworks.length} Live Experience Cloud Site${xssNetworks.length !== 1 ? 's' : ''} with Browser XSS Protection Disabled`,
-      'Browser XSS Protection headers (X-XSS-Protection) are disabled on these sites. While modern browsers have built-in XSS mitigation, disabling this header reduces defence-in-depth for older browsers.',
-      'Enable Browser XSS Protection in Setup → Digital Experiences → Settings for each site, or in the Network record.',
-      { records: xssNetworks.map((n: any) => ({ name: n.Name, detail: 'BrowserXssProtection = false' })) }));
+      'Browser XSS Protection headers (X-XSS-Protection) are disabled on these sites. While modern browsers have built-in XSS mitigation, disabling this header reduces defense-in-depth for older browsers and is a common security baseline requirement.',
+      'Enable Browser XSS Protection in Setup → Digital Experiences → All Sites → Workspaces → Administration → Security.',
+      { records: xssNetworks.map((n: any) => ({
+        name: n.Name,
+        detail: n.Template ? `BrowserXssProtection = false · ${n.Template.toLowerCase().includes('lwr') ? 'LWR' : 'Aura'} template` : 'BrowserXssProtection = false'
+      })) }));
   }
 
-  // Content sniffing protection disabled
+  // Content sniffing protection disabled — applies to both Aura and LWR sites
   const contentSniffNetworks = (data.contentSniffingUnprotectedNetworks || []);
   if (contentSniffNetworks.length > 0) {
     items.push(createDebtItem('experienceCloud', 'medium',
       `${contentSniffNetworks.length} Live Experience Cloud Site${contentSniffNetworks.length !== 1 ? 's' : ''} with Content Sniffing Protection Disabled`,
       'Content Sniffing Protection (X-Content-Type-Options: nosniff) prevents browsers from MIME-sniffing responses away from the declared content type. Disabling this enables content injection attacks.',
-      'Enable Content Sniffing Protection in Setup → Digital Experiences → Settings for each network.',
-      { records: contentSniffNetworks.map((n: any) => ({ name: n.Name, detail: 'ContentSniffingProtection = false' })) }));
+      'Enable Content Sniffing Protection in Setup → Digital Experiences → All Sites → Workspaces → Administration → Security.',
+      { records: contentSniffNetworks.map((n: any) => ({
+        name: n.Name,
+        detail: n.Template ? `ContentSniffingProtection = false · ${n.Template.toLowerCase().includes('lwr') ? 'LWR' : 'Aura'} template` : 'ContentSniffingProtection = false'
+      })) }));
   }
 
   const maxScore = 100;

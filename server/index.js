@@ -1281,7 +1281,7 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
     // All sites with status and self-registration info
     const sites = await safeQuery(conn,
       "SELECT Id, Name, Status, SiteType, UrlPathPrefix, GuestUserId, " +
-      "GuestUser.IsActive, OptionsAllowGuestSupportApi " +
+      "GuestUser.IsActive, GuestUser.Name, OptionsAllowGuestSupportApi " +
       "FROM Site LIMIT 200"
     );
 
@@ -1323,12 +1323,12 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
 
     let xssNetworks = { records: [] };
     try {
-      xssNetworks = await safeQuery(conn, "SELECT Id, Name FROM Network WHERE BrowserXssProtection = false AND Status = 'Live' LIMIT 50");
+      xssNetworks = await safeQuery(conn, "SELECT Id, Name, Template FROM Network WHERE BrowserXssProtection = false AND Status IN ('Live', 'Active') LIMIT 50");
     } catch(e) {}
 
     let contentSniffNetworks = { records: [] };
     try {
-      contentSniffNetworks = await safeQuery(conn, "SELECT Id, Name FROM Network WHERE ContentSniffingProtection = false AND Status = 'Live' LIMIT 50");
+      contentSniffNetworks = await safeQuery(conn, "SELECT Id, Name, Template FROM Network WHERE ContentSniffingProtection = false AND Status IN ('Live', 'Active') LIMIT 50");
     } catch(e) {}
 
     res.json({
