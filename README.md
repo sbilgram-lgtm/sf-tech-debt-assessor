@@ -97,7 +97,11 @@ The user who authenticates must have:
 
 1. Open **https://sf-tech-debt-assessor.onrender.com**
 2. Enter your org credentials on the landing page (auto-filled on return visits if you checked "Remember credentials"):
-   - **Org / Sandbox URL** — your org's My Domain URL, e.g. `https://mycompany--uat.sandbox.my.salesforce.com`
+   - **Org / Sandbox URL** — your org's My Domain URL. To find it:
+     - In Salesforce, go to **Setup → Company Settings → My Domain**
+     - Copy the value shown under **Current My Domain URL** — it will look like `https://mycompany.my.salesforce.com` (production) or `https://mycompany--uat.sandbox.my.salesforce.com` (sandbox)
+     - Alternatively, look at the URL in your browser when logged in to Salesforce — use everything up to and including `.salesforce.com` or `.cloudforce.com`
+     - Do **not** include any path after the domain (e.g. `/lightning/page/home`)
    - **Client ID** — Consumer Key from the app setup above
    - **Client Secret** — Consumer Secret from the app setup above
 3. Click **Connect to Salesforce**, log in to Salesforce, and click **Allow**
