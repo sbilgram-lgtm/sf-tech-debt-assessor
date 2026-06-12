@@ -1099,29 +1099,34 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
 
   // ── Service Console ──────────────────────────────────────────────────────────
 
-  // SC-1: No Console App configured
+  // SC-1: No Console App visible — AppDefinition returns apps visible to the authenticated user;
+  // if the console app exists but is not assigned to the running user's profile it will not appear.
+  // Guard on queues.length > 0 as a proxy for active Service Cloud usage.
   if ((data.consoleApps || []).length === 0 && data.queues.length > 0) {
-    items.push(createDebtItem('serviceCloud', 'critical',
-      'No Lightning Service Console App Configured',
-      'No Lightning App of type Console found. Agents are using standard navigation for case management — no split-view, no workspace tabs, no utility bar (Omni-Channel widget, macros, telephony). This negates the core productivity architecture of Service Cloud.',
-      'Create a Service Console App in Setup → App Manager → New Lightning App. Set Navigation Style to Console. Add the Omni-Channel utility item, Knowledge sidebar, and case-specific quick actions.'));
+    items.push(createDebtItem('serviceCloud', 'high',
+      'No Lightning Service Console App Detected',
+      'No Lightning App with Console navigation was found for the authenticated user. Agents may be using standard tab navigation for case management, losing split-view, workspace tabs, the utility bar (Omni-Channel widget, macros, telephony), and keyboard shortcuts. Note: if a console app exists but is not assigned to the running user\'s profile, it will not appear in this check.',
+      'Confirm whether a console app exists in Setup → App Manager and is assigned to agent profiles. If not, create one: New Lightning App → Navigation Style: Console. Add Omni-Channel, Knowledge, and case quick actions to the utility bar.'));
   }
 
-  // SC-2: No active Macros
-  if ((data.activeMacroCount || 0) === 0 && data.queues.length > 0) {
-    items.push(createDebtItem('serviceCloud', 'high',
-      'No Active Macros Configured in Service Console',
-      'Zero active macros means all repetitive agent actions (close case, send standard reply, update status) are performed manually, step by step. Macros are one of the primary AHT reduction tools in Service Cloud.',
-      'Create macros for the top 10 most common agent actions. Start with case closure, standard email replies, and status updates. Macros require a Console App with Quick Actions configured.',
+  const hasConsoleApp = (data.consoleApps || []).length > 0;
+
+  // SC-2: No active Macros — only meaningful when a console app exists
+  if ((data.activeMacroCount || 0) === 0 && hasConsoleApp) {
+    items.push(createDebtItem('serviceCloud', 'medium',
+      'No Active Macros Configured',
+      'A Service Console app is configured but no active macros exist. Macros automate repetitive agent actions (close case, send standard reply, update status field) and are one of the most accessible AHT reduction tools in Service Cloud.',
+      'Create macros for the top 10 most common agent actions in Setup → Macros. Start with case closure, standard acknowledgement emails, and status transitions. Macros require Quick Actions on the Case page layout.',
       { count: 0 }));
   }
 
-  // SC-3: No active Einstein Next Best Action strategy
-  if ((data.activeRecommendationStrategyCount || 0) === 0 && data.queues.length > 0) {
-    items.push(createDebtItem('serviceCloud', 'high',
+  // SC-3: No active Einstein Next Best Action strategy — only flag when console exists;
+  // NBA is an optional licensed feature so use low severity to avoid noise
+  if ((data.activeRecommendationStrategyCount || 0) === 0 && hasConsoleApp) {
+    items.push(createDebtItem('serviceCloud', 'low',
       'No Einstein Next Best Action Recommendation Strategies Configured',
-      'Einstein Next Best Action surfaces contextual recommendations to agents (entitlement checks, knowledge links, follow-up tasks) in the console. Zero active strategies means this capability is entirely unused.',
-      'Create Recommendation Strategies in Setup → Einstein → Next Best Action. Connect strategies to the Case record page in the Service Console via a Recommendation component on the Lightning page.',
+      'A Service Console app is configured but no active Einstein Next Best Action Recommendation Strategies exist. NBA surfaces contextual guidance to agents (knowledge article suggestions, entitlement checks, follow-up tasks) at the point of work.',
+      'If Einstein NBA is licensed, create Recommendation Strategies in Setup → Einstein → Next Best Action. Add a Recommendations component to the Case record page in the Service Console. If not licensed, evaluate whether NBA would reduce escalation rates for your top case categories.',
       { count: 0 }));
   }
 
