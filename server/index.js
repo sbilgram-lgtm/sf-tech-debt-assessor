@@ -1365,12 +1365,12 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       clickjackVulnerableSites: clickjackSites.records || [],
       xssUnprotectedNetworks: xssNetworks.records || [],
       contentSniffingUnprotectedNetworks: contentSniffNetworks.records || [],
-      guestCacheDisabledNetworks: (guestCacheNetworks.records || []).filter((n: any) => {
+      guestCacheDisabledNetworks: (guestCacheNetworks.records || []).filter((n) => {
         const t = (n.Template || '').toLowerCase();
         return !t.includes('lwr'); // GuestCacheMaxAge only applies to Aura sites
       }),
-      networkPageCounts: (networkPageCounts.records || []).map((r: any) => ({ networkId: r.NetworkId, count: r.expr0 })),
-      networkMemberCounts: (networkMemberCounts.records || []).map((r: any) => ({ networkId: r.NetworkId, count: r.expr0 }))
+      networkPageCounts: (networkPageCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 })),
+      networkMemberCounts: (networkMemberCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 }))
     });
   } catch (err) {
     console.error('Experience Cloud assessment error:', err);
