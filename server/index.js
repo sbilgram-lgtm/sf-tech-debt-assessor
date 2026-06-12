@@ -528,7 +528,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // E-2: Cases linked to multiple entitlements (CaseEntitlement junction)
     let multiEntitlementCases = { records: [] };
     try {
-      multiEntitlementCases = await safeQuery(conn, "SELECT CaseId, COUNT(Id) FROM CaseEntitlement GROUP BY CaseId HAVING COUNT(Id) > 1 LIMIT 200");
+      multiEntitlementCases = await safeQuery(conn, "SELECT CaseId, COUNT(Id) FROM CaseEntitlement GROUP BY CaseId HAVING COUNT(Id) > 1 LIMIT 2000");
     } catch(e) {}
 
     // E-3: BusinessHours with no weekend + no holiday exceptions
@@ -1016,7 +1016,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     // External Credentials count (modern Named Credential replacement)
     let externalCredentialCount = 0;
     try {
-      const ecRes = await safeToolingQuery(conn, "SELECT COUNT(Id) FROM ExternalCredential LIMIT 1");
+      const ecRes = await safeQuery(conn, "SELECT COUNT(Id) FROM ExternalCredential LIMIT 1");
       externalCredentialCount = (ecRes.records[0] || {}).expr0 || 0;
     } catch(e) {}
 
@@ -1132,15 +1132,15 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const iso = sixMonthsAgo.toISOString();
     const [allReports, staleReports, allDashboards, staleDashboards] = await Promise.all([
-      safeQuery(conn, "SELECT COUNT() FROM Report"),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Report"),
       safeQuery(conn, `SELECT Id, Name, LastRunDate, OwnerId FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null LIMIT 200`),
-      safeQuery(conn, "SELECT COUNT() FROM Dashboard"),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Dashboard"),
       safeQuery(conn, `SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`)
     ]);
     res.json({
-      totalReports: allReports.totalSize || 0,
+      totalReports: (allReports.records[0] || {}).expr0 || 0,
       staleReports: staleReports.records || [],
-      totalDashboards: allDashboards.totalSize || 0,
+      totalDashboards: (allDashboards.records[0] || {}).expr0 || 0,
       staleDashboards: staleDashboards.records || []
     });
   } catch (err) {
@@ -1167,8 +1167,8 @@ app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [platformEvents, cdcEntities] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100")
+      safeQuery(conn, "SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100"),
+      safeQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100")
     ]);
     const eventBusSubscribers = await safeQuery(conn, "SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100");
     res.json({
@@ -1320,7 +1320,7 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
     let guestCacheNetworks = { records: [] };
     try {
       guestCacheNetworks = await safeQuery(conn,
-        "SELECT Id, Name, Template, GuestCacheMaxAge FROM Network WHERE Status IN ('Live', 'Active') AND GuestCacheMaxAge = 0 LIMIT 100"
+        "SELECT Id, Name, Template, GuestCacheMaxAge FROM Network WHERE Status IN ('Live', 'Active') AND (GuestCacheMaxAge = 0 OR GuestCacheMaxAge = null) LIMIT 100"
       );
     } catch(e) {}
 
@@ -1740,7 +1740,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
     // Large static resources — oversized files slow Experience Cloud, LWC, and VF pages
     let largeStaticResources = { records: [] };
     try {
-      largeStaticResources = await safeToolingQuery(conn,
+      largeStaticResources = await safeQuery(conn,
         "SELECT Id, Name, BodyLength, ContentType, LastModifiedDate, NamespacePrefix " +
         "FROM StaticResource WHERE NamespacePrefix = null AND BodyLength > 512000 " +
         "ORDER BY BodyLength DESC LIMIT 50"
