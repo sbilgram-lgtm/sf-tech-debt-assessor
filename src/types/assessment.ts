@@ -278,6 +278,9 @@ export interface ExperienceCloudData {
   clickjackVulnerableSites: any[];
   xssUnprotectedNetworks: any[];
   contentSniffingUnprotectedNetworks: any[];
+  guestCacheDisabledNetworks: any[];
+  networkPageCounts: { networkId: string; count: number }[];
+  networkMemberCounts: { networkId: string; count: number }[];
 }
 
 export interface ConnectedAppSecurityData {
@@ -328,6 +331,7 @@ export interface PerformanceData {
   obsoleteFlowCount: number;
   flowsWithLoopsIds: string[];
   flowsWithDmlIds: string[];
+  largeStaticResources: any[];
 }
 
 export interface NotesAttachmentsData {

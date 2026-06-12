@@ -1316,6 +1316,30 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
 
     const wcagUpdateRes = await safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName LIKE '%Accessibility%' OR ApiName LIKE '%WCAG%' LIMIT 5");
 
+    // Guest page caching (Aura only — LWR uses platform CDN caching, not this field)
+    let guestCacheNetworks = { records: [] };
+    try {
+      guestCacheNetworks = await safeQuery(conn,
+        "SELECT Id, Name, Template, GuestCacheMaxAge FROM Network WHERE Status IN ('Live', 'Active') AND GuestCacheMaxAge = 0 LIMIT 100"
+      );
+    } catch(e) {}
+
+    // FlexiPage count per network/site — high page counts slow LWR bundle loading
+    let networkPageCounts = { records: [] };
+    try {
+      networkPageCounts = await safeToolingQuery(conn,
+        "SELECT NetworkId, COUNT(Id) FROM FlexiPage WHERE NamespacePrefix = null AND NetworkId != null GROUP BY NetworkId LIMIT 200"
+      );
+    } catch(e) {}
+
+    // Network member count per network — large member bases cause search indexing lag
+    let networkMemberCounts = { records: [] };
+    try {
+      networkMemberCounts = await safeQuery(conn,
+        "SELECT NetworkId, COUNT(Id) FROM NetworkMember GROUP BY NetworkId LIMIT 100"
+      );
+    } catch(e) {}
+
     let clickjackSites = { records: [] };
     try {
       clickjackSites = await safeQuery(conn, "SELECT Id, Name, ClickjackProtectionLevel FROM Site WHERE ClickjackProtectionLevel = 'AllowAll' AND Status = 'Active' LIMIT 50");
@@ -1340,7 +1364,13 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       wcagUpdates: wcagUpdateRes.records || [],
       clickjackVulnerableSites: clickjackSites.records || [],
       xssUnprotectedNetworks: xssNetworks.records || [],
-      contentSniffingUnprotectedNetworks: contentSniffNetworks.records || []
+      contentSniffingUnprotectedNetworks: contentSniffNetworks.records || [],
+      guestCacheDisabledNetworks: (guestCacheNetworks.records || []).filter((n: any) => {
+        const t = (n.Template || '').toLowerCase();
+        return !t.includes('lwr'); // GuestCacheMaxAge only applies to Aura sites
+      }),
+      networkPageCounts: (networkPageCounts.records || []).map((r: any) => ({ networkId: r.NetworkId, count: r.expr0 })),
+      networkMemberCounts: (networkMemberCounts.records || []).map((r: any) => ({ networkId: r.NetworkId, count: r.expr0 }))
     });
   } catch (err) {
     console.error('Experience Cloud assessment error:', err);
@@ -1707,6 +1737,16 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
     }
     const heavyEntities = Object.entries(pagesByEntity).filter(([_, count]) => count > 5).map(([eid, count]) => ({ eid, count }));
 
+    // Large static resources — oversized files slow Experience Cloud, LWC, and VF pages
+    let largeStaticResources = { records: [] };
+    try {
+      largeStaticResources = await safeToolingQuery(conn,
+        "SELECT Id, Name, BodyLength, ContentType, LastModifiedDate, NamespacePrefix " +
+        "FROM StaticResource WHERE NamespacePrefix = null AND BodyLength > 512000 " +
+        "ORDER BY BodyLength DESC LIMIT 50"
+      );
+    } catch(e) {}
+
     res.json({
       largeApexClasses: largeApexClasses.records || [],
       multiTriggerObjects,
@@ -1727,7 +1767,8 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       totalActiveFlowCount: (totalActiveFlowCount.records[0] || {}).expr0 || 0,
       obsoleteFlowCount: (obsoleteFlowCount.records[0] || {}).expr0 || 0,
       flowsWithLoopsIds: (flowsWithLoops.records || []).map(r => r.FlowVersionId),
-      flowsWithDmlIds: (flowsWithDml.records || []).map(r => r.FlowVersionId)
+      flowsWithDmlIds: (flowsWithDml.records || []).map(r => r.FlowVersionId),
+      largeStaticResources: largeStaticResources.records || []
     });
   } catch (err) {
     console.error('Performance assessment error:', err);

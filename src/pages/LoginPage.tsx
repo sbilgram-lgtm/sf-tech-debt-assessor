@@ -380,14 +380,14 @@ const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
   { icon: '🔒',  name: 'Sharing & Security',      checks: 24, group: 'Security & Access' },
   { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
-  { icon: '🌐',  name: 'Experience Cloud',        checks: 12, group: 'Security & Access' },
+  { icon: '🌐',  name: 'Experience Cloud',        checks: 15, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
   { icon: '💻',  name: 'Code Quality',            checks: 29, group: 'Code & Development' },
   { icon: '🧪',  name: 'Test Coverage',           checks: 4,  group: 'Code & Development' },
   { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
   { icon: '🎨',  name: 'OmniStudio',             checks: 26, group: 'Code & Development' },
   // ── Performance & Limits ───────────────────────────────────────
-  { icon: '🚀',  name: 'Performance',             checks: 21, group: 'Performance & Limits' },
+  { icon: '🚀',  name: 'Performance',             checks: 22, group: 'Performance & Limits' },
   { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },
   { icon: '⚡',  name: 'Platform Events',         checks: 3,  group: 'Performance & Limits' },
   // ── Configuration & Architecture ──────────────────────────────

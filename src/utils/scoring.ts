@@ -2713,6 +2713,50 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
       })) }));
   }
 
+  // ── Performance checks ────────────────────────────────────────────────────────
+
+  // PERF-EC-1: Guest page caching disabled (Aura only — LWR uses platform CDN, not this field)
+  const guestCacheDisabled = (data.guestCacheDisabledNetworks || []);
+  if (guestCacheDisabled.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${guestCacheDisabled.length} Aura Site${guestCacheDisabled.length !== 1 ? 's' : ''} with Guest Page Caching Disabled`,
+      `Guest page caching (GuestCacheMaxAge) is set to 0 on ${guestCacheDisabled.length} Aura-based site${guestCacheDisabled.length !== 1 ? 's' : ''}. Every unauthenticated page request hits Salesforce servers directly — no CDN edge caching occurs. This increases page load times for public visitors and consumes server capacity unnecessarily. LWR sites use platform CDN caching automatically and are not affected by this setting.`,
+      'Set Guest Cache Max Age to a suitable value (e.g., 600 seconds / 10 minutes) in Experience Builder → Administration → Caching for each affected Aura site. For mostly-static pages, higher values (3600+) significantly reduce load times.',
+      { records: guestCacheDisabled.map((n: any) => ({ name: n.Name, detail: `GuestCacheMaxAge = 0 · Aura template: ${n.Template || 'unknown'}` })) }
+    ));
+  }
+
+  // PERF-EC-2: High FlexiPage count per site — large page trees slow LWR JS bundle loading
+  const networkPageCounts = data.networkPageCounts || [];
+  const allNetworkMap = new Map((data.networks || []).map((n: any) => [n.Id, n]));
+  const highPageCountNetworks = networkPageCounts.filter((r: any) => r.count > 30);
+  if (highPageCountNetworks.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${highPageCountNetworks.length} Site${highPageCountNetworks.length !== 1 ? 's' : ''} with More Than 30 Experience Builder Pages`,
+      `Sites with large numbers of Experience Builder pages increase sitemap complexity, slow LWR JavaScript bundle generation, and make navigation governance difficult. Each page adds to the component graph that LWR must resolve at build time.`,
+      'Audit all pages in Experience Builder. Archive or delete pages that are unpublished, duplicated, or no longer in use. Consider splitting very large sites into multiple purpose-specific sites.',
+      { records: highPageCountNetworks.map((r: any) => {
+        const n = allNetworkMap.get(r.networkId);
+        return { name: n?.Name || r.networkId, detail: `${r.count} pages · ${n?.Template?.toLowerCase().includes('lwr') ? 'LWR' : 'Aura'} template` };
+      }) }
+    ));
+  }
+
+  // PERF-EC-3: Very large network member bases — search indexing and member-facing render lag
+  const networkMemberCounts = data.networkMemberCounts || [];
+  const largeNetworks = networkMemberCounts.filter((r: any) => r.count > 100000);
+  if (largeNetworks.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${largeNetworks.length} Experience Cloud Site${largeNetworks.length !== 1 ? 's' : ''} with Over 100,000 Members`,
+      `Sites with very large member counts experience slower Knowledge search indexing, longer member login times, and increased risk of SOQL row limit errors in member-facing Apex and Flows. Salesforce recommends specific architectural patterns for high-scale communities.`,
+      'Review member data model and sharing rules for large-scale sites. Use External Objects or Data Cloud for high-volume data rather than standard Salesforce objects. Enable search index optimization in Site Administration. Consider whether all members need full platform access vs. a lighter authenticated experience.',
+      { records: largeNetworks.map((r: any) => {
+        const n = allNetworkMap.get(r.networkId);
+        return { name: n?.Name || r.networkId, detail: `${r.count.toLocaleString()} members` };
+      }) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Experience Cloud', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -4021,6 +4065,21 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
       'Flows that contain both a Loop element and record DML elements (Create/Update/Delete Records) are likely performing DML inside a loop. This hits the 150 DML statement governor limit in bulk scenarios and causes Flow fault errors or record save failures. This is flagged by Salesforce Code Analyzer (Flow Scanner: Database Operations in Loops).',
       'Refactor the flow to collect records inside the loop into a collection variable, then perform a single Create/Update/Delete Records element outside the loop using the collection.',
       {}
+    ));
+  }
+
+  // Large static resources — oversized files slow Experience Cloud, LWC, and Visualforce pages
+  const largeStaticResources = data.largeStaticResources || [];
+  if (largeStaticResources.length > 0) {
+    const totalSizeKb = Math.round(largeStaticResources.reduce((sum: number, r: any) => sum + (r.BodyLength || 0), 0) / 1024);
+    items.push(createDebtItem('performance', 'medium',
+      `${largeStaticResources.length} Static Resource${largeStaticResources.length !== 1 ? 's' : ''} Over 500 KB`,
+      `${largeStaticResources.length} static resource${largeStaticResources.length !== 1 ? 's' : ''} exceed 500 KB uncompressed (${totalSizeKb.toLocaleString()} KB total). Oversized JS, CSS, and image resources loaded by Experience Cloud, LWC, or Visualforce pages increase Time to First Byte and First Contentful Paint. They are also subject to Salesforce static resource size limits (50 MB per resource, 250 MB org total).`,
+      'Audit each large static resource: compress images (WebP/AVIF), minify and bundle JS/CSS, remove unused vendor libraries, and split large archives. For Experience Cloud, prefer uploading images as CMS content rather than static resources. Use a CDN or external host for very large third-party libraries.',
+      { records: largeStaticResources.slice(0, 20).map((r: any) => ({
+        name: r.Name,
+        detail: `${Math.round(r.BodyLength / 1024)} KB · ${r.ContentType || 'unknown type'}`
+      })) }
     ));
   }
 
