@@ -306,6 +306,86 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 ---
 
+## Running with Docker
+
+The app is published as a Docker image to GitHub Container Registry on every push to `main`. This is the recommended option for running the app inside your own network without depending on Render.
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed (Mac, Windows, or Linux)
+- A Salesforce Connected App or External Client App with the callback URL set to `http://localhost:3001/auth/callback`
+
+### Quick start
+
+```bash
+docker pull ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
+
+docker run -d \
+  -p 3001:3001 \
+  -e SESSION_SECRET=change-this-to-a-random-string \
+  -e NODE_ENV=production \
+  --name sf-assessor \
+  ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
+```
+
+Then open **http://localhost:3001** in your browser.
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SESSION_SECRET` | Yes | Any long random string — used to sign the session cookie. Generate one with `openssl rand -hex 32` |
+| `NODE_ENV` | Yes | Set to `production` |
+| `PORT` | No | Defaults to `3001` |
+| `SF_LOGIN_URL` | No | Pre-fill the login URL (e.g. `https://test.salesforce.com` for sandboxes) |
+| `SF_CLIENT_ID` | No | Pre-fill the Client ID |
+| `SF_CLIENT_SECRET` | No | Pre-fill the Client Secret |
+| `SF_CALLBACK_URL` | No | Override the OAuth callback URL (default: `http://localhost:3001/auth/callback`) |
+
+### Using an env file
+
+Create a file called `.env.docker`:
+
+```
+SESSION_SECRET=your-random-string-here
+NODE_ENV=production
+```
+
+Then run:
+
+```bash
+docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
+  ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
+```
+
+### Stopping and removing the container
+
+```bash
+docker stop sf-assessor
+docker rm sf-assessor
+```
+
+### Updating to the latest image
+
+```bash
+docker stop sf-assessor && docker rm sf-assessor
+docker pull ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
+docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
+  ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
+```
+
+### Callback URL for Docker
+
+When registering the Connected App or External Client App for use with Docker, set the Callback URL to:
+
+```
+http://localhost:3001/auth/callback
+```
+
+If you are running Docker on a remote server (not your local machine), replace `localhost` with the server's IP address or hostname, e.g. `http://192.168.1.50:3001/auth/callback`.
+
+---
+
 ## Running locally (development)
 
 ### Prerequisites
