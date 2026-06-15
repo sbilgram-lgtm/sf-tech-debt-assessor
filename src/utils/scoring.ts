@@ -1500,8 +1500,17 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   const items: DebtItem[] = [];
 
   // Public OWD — any object with Public Read/Write or Public Read/Write/Transfer is critical
+  // Exclude objects whose OWD cannot be configured by admins:
+  //   - Managed package objects: namespace__Object pattern (QualifiedApiName has 3+ segments when split by '__')
+  //   - Non-configurable suffixes: __mdt (Custom Metadata), __x (External Objects), __e (Platform Events),
+  //     __b (Big Objects), __History, __Share, __Feed, __Tag, __ChangeEvent, __hd (History Deletion)
+  const NON_OWD_SUFFIXES = ['__mdt', '__x', '__e', '__b', '__History', '__Share', '__Feed', '__Tag', '__ChangeEvent', '__hd', '__DataCategorySelection'];
+  const isConfigurableOwd = (name: string) =>
+    !NON_OWD_SUFFIXES.some(s => name.endsWith(s)) && name.split('__').length < 3;
+
   const publicReadWrite = data.owdSettings.filter((obj: any) =>
-    obj.InternalSharingModel === 'ReadWrite' || obj.InternalSharingModel === 'ReadWriteTransfer'
+    (obj.InternalSharingModel === 'ReadWrite' || obj.InternalSharingModel === 'ReadWriteTransfer') &&
+    isConfigurableOwd(obj.QualifiedApiName || '')
   );
   if (publicReadWrite.length > 0) {
     items.push(createDebtItem(
@@ -1516,7 +1525,8 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
 
   // Public Read Only OWD (potential oversharing)
   const publicReadOnly = data.owdSettings.filter((obj: any) =>
-    obj.InternalSharingModel === 'Read'
+    obj.InternalSharingModel === 'Read' &&
+    isConfigurableOwd(obj.QualifiedApiName || '')
   );
   if (publicReadOnly.length > 5) {
     items.push(createDebtItem(
@@ -1639,20 +1649,25 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   // Salesforce challenges all UI users at login regardless of TwoFactorInfo records,
   // so the absence of a TwoFactorInfo record does not mean MFA is not in use.
   const orgMfaEnforced = !!(data as any).orgMfaEnforced;
+  const isSandboxOrg = !!(data as any).isSandbox;
   const enrolledIds = new Set(data.mfaEnrolledUserIds || []);
   const unenrolledUsers = allUsers.filter((u: any) => !enrolledIds.has(u.Id));
-  if (!orgMfaEnforced && allUsers.length > 0) {
+  if (!orgMfaEnforced && allUsers.length > 0 && unenrolledUsers.length > 0) {
     const unenrolledPct = Math.round((unenrolledUsers.length / allUsers.length) * 100);
-    if (unenrolledUsers.length > 0) {
-      items.push(createDebtItem(
-        'sharingSecurity',
-        unenrolledPct > 50 ? 'critical' : unenrolledPct > 20 ? 'high' : 'medium',
-        `${unenrolledUsers.length} Active Users Not Enrolled in MFA (${unenrolledPct}%)`,
-        `${unenrolledUsers.length} of ${allUsers.length} active standard users have no MFA method registered. Salesforce mandates MFA for all users.`,
-        'Enable MFA enforcement in Setup > Identity > MFA for UI Logins. Use Salesforce Authenticator or TOTP. Track enrollment via the Identity Verification report.',
-        { records: unenrolledUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'}` })) }
-      ));
-    }
+    // In sandboxes MFA is typically not enforced by Salesforce and enrollment state
+    // does not reflect production. When MFA is managed by SSO/IdP (Okta, Entra ID, etc.),
+    // TwoFactorInfo records are absent even though MFA is active — reduce severity in both cases.
+    const sandboxNote = isSandboxOrg
+      ? ' This is a sandbox org — MFA enrollment state here may not reflect production. If MFA is handled via SSO/Identity Provider, TwoFactorInfo records will be empty even when MFA is active.'
+      : ' Note: if MFA is enforced via SSO/Identity Provider (Okta, Entra ID, etc.), TwoFactorInfo records will be empty even when MFA is active — verify MFA is enforced at the IdP level.';
+    items.push(createDebtItem(
+      'sharingSecurity',
+      isSandboxOrg ? 'low' : (unenrolledPct > 50 ? 'critical' : unenrolledPct > 20 ? 'high' : 'medium'),
+      `${unenrolledUsers.length} Active Users Not Enrolled in MFA (${unenrolledPct}%)`,
+      `${unenrolledUsers.length} of ${allUsers.length} active standard users have no Salesforce MFA method (TwoFactorInfo) registered.${sandboxNote}`,
+      'Enable MFA enforcement in Setup > Identity > MFA for UI Logins. Use Salesforce Authenticator or TOTP. Track enrollment via the Identity Verification report.',
+      { records: unenrolledUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · Last login: ${u.LastLoginDate ? new Date(u.LastLoginDate).toLocaleDateString() : 'Never'}` })) }
+    ));
   }
 
   // Security Health Check score
@@ -2329,9 +2344,10 @@ export function assessPlatformEvents(data: PlatformEventsData): CategoryScore {
       { count: data.cdcEntities.length }));
   }
 
-  if (data.platformEvents.length === 0 && data.cdcEntities.length === 0) {
+  const managedPeCount = (data as any).managedPlatformEventCount || 0;
+  if (data.platformEvents.length === 0 && data.cdcEntities.length === 0 && managedPeCount === 0) {
     items.push(createDebtItem('platformEvents', 'low', 'No Platform Events or CDC Configured',
-      'Platform Events and Change Data Capture are not in use. This is informational — not a debt item unless integrations require real-time events.',
+      'No custom Platform Events, Change Data Capture entities, or managed-package Platform Event objects were detected. This is informational — not a debt item unless integrations require real-time events.',
       'Consider Platform Events for loosely-coupled integrations as a modern alternative to polling APIs.'));
   }
 
@@ -2453,12 +2469,22 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
   const settings: Record<string, string> = {};
   (data.einsteinSettings || []).forEach((s: any) => { settings[s.SettingName] = s.SettingValue; });
 
-  const einsteinEnabled = settings['EinsteinGptEnabled'] === 'true' || settings['AgentforceEnabled'] === 'true';
+  // Detect Einstein/Agentforce via multiple signals — OrganizationSetting returns no rows
+  // in many orgs, so also check BotDefinition, BotTopicDefinition, and PromptTemplate
+  // as reliable indicators that Einstein/Agentforce is in active use.
+  const agentTopicCountEin = data.agentTopicCount || 0;
+  const botsCountEin = ((data.bots as any[]) || []).length;
+  const promptCountEin = (data.promptTemplates || []).length;
+  const einsteinEnabled = settings['EinsteinGptEnabled'] === 'true' ||
+    settings['AgentforceEnabled'] === 'true' ||
+    agentTopicCountEin > 0 ||
+    botsCountEin > 0 ||
+    promptCountEin > 0;
   const predictionBuilderEnabled = settings['EinsteinPredictionBuilderEnabled'] === 'true';
   if (!einsteinEnabled) {
     items.push(createDebtItem('einsteinAI', 'low',
       'Einstein Generative AI / Agentforce Not Enabled',
-      'Einstein Generative AI and Agentforce are not enabled in this org.',
+      'No Einstein Generative AI settings, Agentforce agents, bot definitions, or prompt templates were found in this org.',
       'Enable Einstein Generative AI in Setup if the org has the required licenses. Evaluate Agentforce for automation use cases.'));
   }
 

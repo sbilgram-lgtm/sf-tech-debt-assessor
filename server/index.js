@@ -267,8 +267,8 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       "FROM ApexCodeCoverageAggregate"
     );
 
-    const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') LIMIT 30");
-    const hardcodedLoginUrls = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND (Name LIKE '%loginUrl%' OR Name LIKE '%LoginUrl%') LIMIT 20");
+    const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') LIMIT 30");
+    const hardcodedLoginUrls = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%loginUrl%' OR Name LIKE '%LoginUrl%') LIMIT 20");
 
     // Test quality checks — scan test class source bodies for anti-patterns
     const testClassBodies = (classes.records || []).filter(c => {
@@ -955,7 +955,8 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       permissionSetGroupCount: (psgCountRes.records[0] || {}).expr0 || 0,
       usersWithExcessivePermSets: usersWithExcessivePSRes.records || [],
       clonedSysAdminProfiles: clonedSysAdminRes.records || [],
-      transactionSecurityPolicies: txnSecurityRes.records || []
+      transactionSecurityPolicies: txnSecurityRes.records || [],
+      isSandbox: !!req.session.isSandbox
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -1003,7 +1004,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     } catch (e) { /* optional */ }
 
     const [retiredApiApex, deprecatedGraphQLComponents] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Active' AND ApiVersion <= 30 LIMIT 50"),
+      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Active' AND ApiVersion <= 30 AND NamespacePrefix = null LIMIT 50"),
       safeQuery(conn, "SELECT Id, DeveloperName FROM LightningComponentBundle WHERE IsExposed = true LIMIT 200")
     ]);
 
@@ -1115,8 +1116,8 @@ app.get('/api/assess/duplicate-rules', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [duplicateRules, matchingRules] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule LIMIT 100"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM MatchingRule LIMIT 100")
+      safeQuery(conn, "SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule LIMIT 100"),
+      safeQuery(conn, "SELECT Id, DeveloperName, Description FROM MatchingRule LIMIT 100")
     ]);
     res.json({ duplicateRules: duplicateRules.records || [], matchingRules: matchingRules.records || [] });
   } catch (err) {
@@ -1166,15 +1167,17 @@ app.get('/api/assess/email-templates', requireAuth, async (req, res) => {
 app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const [platformEvents, cdcEntities] = await Promise.all([
+    const [platformEvents, cdcEntities, eventBusSubscribers, managedEventResult] = await Promise.all([
       safeQuery(conn, "SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100"),
-      safeQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100")
+      safeQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100"),
+      safeQuery(conn, "SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100"),
+      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE QualifiedApiName LIKE '%__e' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
-    const eventBusSubscribers = await safeQuery(conn, "SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100");
     res.json({
       platformEvents: platformEvents.records || [],
       cdcEntities: cdcEntities.records || [],
-      eventBusSubscribers: eventBusSubscribers.records || []
+      eventBusSubscribers: eventBusSubscribers.records || [],
+      managedPlatformEventCount: (managedEventResult.records[0] || {}).expr0 || 0
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1704,7 +1707,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, DeveloperName, ApiVersion, LastModifiedDate FROM AuraDefinitionBundle WHERE NamespacePrefix = null LIMIT 500"
       ),
       safeToolingQuery(conn,
-        "SELECT Id, DeveloperName, Type, EntityDefinitionId FROM FlexiPage WHERE NamespacePrefix = null LIMIT 500"
+        "SELECT Id, DeveloperName, Type, EntityDefinitionId FROM FlexiPage WHERE NamespacePrefix = null AND Type = 'RecordPage' LIMIT 500"
       ),
       safeQuery(conn,
         "SELECT Id, EventType, LogDate, LogFileLength FROM EventLogFile WHERE LogDate = LAST_N_DAYS:7 LIMIT 10"
