@@ -1,7 +1,20 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
+*Last updated: June 15, 2026*
 
 A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **315 checks in 22 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+
+## What's New — June 15, 2026
+
+Accuracy improvements across 7 checks based on customer feedback:
+
+- **OWD (Sharing & Security):** Managed package objects, Custom Metadata Types (`__mdt`), External Objects (`__x`), Platform Event objects (`__e`), History objects, and other non-configurable types are now excluded from the Public Read/Write count — only objects whose OWD an admin can actually change are flagged.
+- **MFA check:** Sandbox orgs now show this as Low severity (not Critical) since Salesforce does not enforce MFA enrollment in sandboxes. Added clarification for orgs using SSO/IdP-managed MFA (Okta, Entra ID) where TwoFactorInfo records are absent even when MFA is active.
+- **Retired API versions:** Salesforce-owned Experience Cloud controllers (SiteRegisterController, ChangePasswordController, etc.) are now excluded — only customer-owned Apex classes are flagged.
+- **Duplicate & Matching Rules:** Salesforce's standard shipped rules now correctly appear, eliminating the false "No Rules Configured" finding.
+- **Platform Events & CDC:** Managed-package Platform Events (e.g. Marketing Cloud `et4ae5__`) are now detected, preventing a false "None Configured" finding.
+- **Performance — Lightning Pages:** Non-record pages (AppPage, HomePage, UtilityBar) no longer pool as "Unknown" in the multi-page-per-object check.
+- **Einstein & AI:** Detection now uses BotDefinition, BotTopicDefinition, and PromptTemplate as reliable signals, eliminating the false "Not Enabled" finding for orgs with active Agentforce.
 
 ## Data & Privacy
 
