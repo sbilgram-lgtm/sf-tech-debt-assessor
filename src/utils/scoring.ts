@@ -1099,14 +1099,14 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
 
   // ── Service Console ──────────────────────────────────────────────────────────
 
-  // SC-1: No Console App visible — AppDefinition returns apps visible to the authenticated user;
-  // if the console app exists but is not assigned to the running user's profile it will not appear.
+  // SC-1: No Console App — queries AppDefinition via standard SOQL (not Tooling API)
+  // so all Console apps in the org are returned regardless of profile assignment.
   // Guard on queues.length > 0 as a proxy for active Service Cloud usage.
   if ((data.consoleApps || []).length === 0 && data.queues.length > 0) {
     items.push(createDebtItem('serviceCloud', 'high',
       'No Lightning Service Console App Detected',
-      'No Lightning App with Console navigation was found for the authenticated user. Agents may be using standard tab navigation for case management, losing split-view, workspace tabs, the utility bar (Omni-Channel widget, macros, telephony), and keyboard shortcuts. Note: if a console app exists but is not assigned to the running user\'s profile, it will not appear in this check.',
-      'Confirm whether a console app exists in Setup → App Manager and is assigned to agent profiles. If not, create one: New Lightning App → Navigation Style: Console. Add Omni-Channel, Knowledge, and case quick actions to the utility bar.'));
+      'No Lightning App with Console navigation style was found in this org. Agents may be using standard tab navigation for case management, losing split-view, workspace tabs, the utility bar (Omni-Channel widget, macros, telephony), and keyboard shortcuts.',
+      'Create a Lightning App with Navigation Style = Console in Setup → App Manager. Add Omni-Channel, Knowledge, and case quick actions to the utility bar. Assign the app to agent profiles.'));
   }
 
   const hasConsoleApp = (data.consoleApps || []).length > 0;

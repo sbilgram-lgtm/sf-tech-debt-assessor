@@ -413,7 +413,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
 
     // Service Console
     const [consoleApps, macros, recommendationStrategies, callCenters, softphoneLayouts] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, NavType FROM AppDefinition WHERE NavType = 'Console' LIMIT 10").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, DeveloperName, NavType FROM AppDefinition WHERE NavType = 'Console' LIMIT 10").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM Macro WHERE IsActive = true").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM RecommendationStrategy WHERE IsActive = true").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM CallCenter").catch(() => ({ records: [{ expr0: 0 }] })),
