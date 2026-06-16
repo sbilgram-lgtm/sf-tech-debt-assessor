@@ -352,8 +352,8 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
 
     // Knowledge counts — jsforce v1 always returns aggregate as expr0 (named aliases not supported)
     const [publishedArticles, staleArticles, draftStalled, dataCategoryGroups, articlesNoValidation] = await Promise.all([
-      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US'").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND LastModifiedDate < LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND LastModifiedDate < LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Draft' AND LastModifiedDate < LAST_N_DAYS:180").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM DataCategoryGroup").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND ValidationStatus = null").catch(() => ({ records: [{ expr0: 0 }] }))
@@ -423,8 +423,8 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // Uncategorized articles (published with no data category assignment)
     let uncategorizedArticleCount = 0;
     try {
-      const allPublished = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US'");
-      const categorized = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND Id IN (SELECT ParentId FROM KnowledgeArticleVersionDataCategorySelection)");
+      const allPublished = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true");
+      const categorized = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND Id IN (SELECT ParentId FROM KnowledgeArticleVersionDataCategorySelection)");
       const total = (allPublished.records[0] || {}).expr0 || 0;
       const cat = (categorized.records[0] || {}).expr0 || 0;
       uncategorizedArticleCount = Math.max(0, total - cat);
@@ -558,7 +558,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // K-1: Published articles still visible in legacy CSP/PRM channels
     let legacyChannelArticles = { records: [{ expr0: 0 }] };
     try {
-      legacyChannelArticles = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND IsVisibleInCsp = true");
+      legacyChannelArticles = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND IsVisibleInCsp = true");
     } catch(e) {}
 
     // K-2: Promoted search terms count (zero = Knowledge search not optimised)
@@ -574,20 +574,20 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // K-3: Duplicate article titles
     let duplicateArticleTitles = { records: [] };
     try {
-      duplicateArticleTitles = await safeQuery(conn, "SELECT Title, COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' GROUP BY Title HAVING COUNT(Id) > 1 ORDER BY COUNT(Id) DESC LIMIT 100");
+      duplicateArticleTitles = await safeQuery(conn, "SELECT Title, COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true GROUP BY Title HAVING COUNT(Id) > 1 ORDER BY COUNT(Id) DESC LIMIT 100");
     } catch(e) {}
 
     // K-4: Published articles with no Summary
     let articlesNoSummary = { records: [{ expr0: 0 }] };
     try {
-      articlesNoSummary = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND Summary = null");
+      articlesNoSummary = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND Summary = null");
     } catch(e) {}
 
     // K-5: Published articles with no linked CaseArticle (no deflection evidence)
     let articlesNoCaseLink = { records: [{ expr0: 0 }] };
     let totalCaseArticles = { records: [{ expr0: 0 }] };
     try {
-      articlesNoCaseLink = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND Language = 'en_US' AND KnowledgeArticleId NOT IN (SELECT KnowledgeArticleId FROM CaseArticle)");
+      articlesNoCaseLink = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND KnowledgeArticleId NOT IN (SELECT KnowledgeArticleId FROM CaseArticle)");
       totalCaseArticles = await safeQuery(conn, "SELECT COUNT(Id) FROM CaseArticle");
     } catch(e) {}
 
