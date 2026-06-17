@@ -1,6 +1,6 @@
 """
 Generates an executive PowerPoint presentation for SF Tech Debt Assessor.
-Saves to ~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-06-10.pptx
+Saves to ~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-06-17.pptx
 """
 
 from pptx import Presentation
@@ -98,7 +98,6 @@ def footer(slide, num):
 # SLIDE 1 — Title
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
-# Salesforce-gradient background
 add_rect(slide, 0, 0, 13.33, 7.5, fill=NAVY)
 add_rect(slide, 0, 5.8, 13.33, 1.7, fill=SF_BLUE)
 
@@ -106,7 +105,7 @@ add_text(slide, "SF Tech Debt Assessor", 0.6, 1.4, 12, 1.1,
          size=44, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 add_text(slide, "Automated Salesforce Org Health Assessment", 0.6, 2.6, 12, 0.6,
          size=22, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
-add_text(slide, "22 Categories  ·  311 Checks  ·  Read-Only OAuth", 0.6, 3.2, 12, 0.5,
+add_text(slide, "22 Categories  ·  315 Checks  ·  Read-Only OAuth", 0.6, 3.2, 12, 0.5,
          size=15, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER, italic=True)
 add_text(slide, "Steven Bilgram, Success Architect  |  2026",
          0.6, 6.05, 12, 0.5,
@@ -156,15 +155,15 @@ footer(slide, 3)
 
 add_text(slide,
          "A web app that connects directly to any Salesforce org via OAuth and automatically "
-         "runs a scored technical debt assessment across 22 categories and 311 checks — producing a "
+         "runs a scored technical debt assessment across 22 categories and 315 checks — producing a "
          "stakeholder-ready report, drill-down record detail, and a phased remediation roadmap.",
          0.4, 1.3, 12.5, 0.9, size=14, color=NAVY)
 
 steps = [
-    ("1", "Connect",  "Authenticate via OAuth\nusing your org credentials"),
-    ("2", "Assess",   "22-category scan across\n311 checks runs automatically"),
-    ("3", "Review",   "Scored report with\ndrill-down to affected records"),
-    ("4", "Export",   "PDF · Excel · CSV ·\nRemediation Roadmap"),
+    ("1", "Register",  "Set up a Connected App\nor External Client App\n(one-time, ~5 min)"),
+    ("2", "Connect",   "Authenticate via OAuth\nusing your org credentials"),
+    ("3", "Assess",    "22-category scan across\n315 checks runs automatically"),
+    ("4", "Export",    "PDF · Excel · CSV ·\nRemediation Roadmap"),
 ]
 
 for i, (num, title, body) in enumerate(steps):
@@ -186,13 +185,102 @@ add_text(slide, "Deployed at: sf-tech-debt-assessor.onrender.com",
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 4 — 21 Assessment Categories (with check counts)
+# SLIDE 4 — Setup Steps
+# ══════════════════════════════════════════════════════════════════
+slide = prs.slides.add_slide(BLANK)
+add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
+header_band(slide, "Setup Steps",
+            "Register the app once per org — takes ~5 minutes")
+footer(slide, 4)
+
+# ── Left column: how to tell which path, then Option A ───────────
+add_rect(slide, 0.3, 1.3, 6.1, 0.42, fill=SF_BLUE)
+add_text(slide, "Which setup applies to your org?", 0.5, 1.33, 5.8, 0.36,
+         size=12, bold=True, color=WHITE)
+
+add_bullet_box(slide, [
+    "Go to Setup and search for External Client Apps.",
+    "If it appears → use Option A (Spring '25+ orgs).",
+    "If it doesn't appear → use Option B (older orgs).",
+], 0.3, 1.76, 6.1, 0.85, size=11, color=DARK_GREY)
+
+# Option A box
+add_rect(slide, 0.3, 2.7, 6.1, 2.1, fill=WHITE, line=SF_BLUE)
+add_rect(slide, 0.3, 2.7, 6.1, 0.38, fill=SF_BLUE)
+add_text(slide, "Option A — External Client App (Spring '25+)", 0.5, 2.73, 5.8, 0.34,
+         size=11.5, bold=True, color=WHITE)
+add_bullet_box(slide, [
+    "Setup → External Client Apps → New",
+    "Enable OAuth  ·  Disable PKCE",
+    "Callback URL: sf-tech-debt-assessor.onrender.com/auth/callback",
+    "Scopes: api  +  refresh_token",
+    "Save → wait ~10 min → View Consumer Details for Key & Secret",
+], 0.48, 3.12, 5.75, 1.55, size=10.5, color=NAVY)
+
+# Option B box
+add_rect(slide, 0.3, 4.88, 6.1, 2.0, fill=WHITE, line=GREEN)
+add_rect(slide, 0.3, 4.88, 6.1, 0.38, fill=GREEN)
+add_text(slide, "Option B — Connected App (older orgs)", 0.5, 4.91, 5.8, 0.34,
+         size=11.5, bold=True, color=WHITE)
+add_bullet_box(slide, [
+    "Setup → App Manager → New Connected App",
+    "Enable OAuth Settings  ·  Disable PKCE",
+    "Callback URL: sf-tech-debt-assessor.onrender.com/auth/callback",
+    "Scopes: api  +  refresh_token",
+    "Save → wait ~10 min → Manage Consumer Details for Key & Secret",
+], 0.48, 5.3, 5.75, 1.45, size=10.5, color=NAVY)
+
+# ── Right column: org URL formats + troubleshooting ──────────────
+add_rect(slide, 6.9, 1.3, 6.1, 0.42, fill=NAVY)
+add_text(slide, "Org URL formats", 7.1, 1.33, 5.8, 0.36,
+         size=12, bold=True, color=WHITE)
+
+url_lines = [
+    "Production:   https://yourorg.my.salesforce.com",
+    "Sandbox:      https://yourorg--sandboxname.sandbox.my.salesforce.com",
+    "Trailhead:    https://yourorg-dev-ed.trailblaze.my.salesforce.com",
+    "",
+    "Do NOT use .lightning.force.com URLs.",
+    "Copy the My Domain URL from Setup → Company Settings → My Domain.",
+]
+add_bullet_box(slide, url_lines, 6.9, 1.76, 6.1, 1.55, size=10.5, color=DARK_GREY)
+
+# Required permissions box
+add_rect(slide, 6.9, 3.38, 6.1, 1.35, fill=WHITE, line=PURPLE)
+add_rect(slide, 6.9, 3.38, 6.1, 0.38, fill=PURPLE)
+add_text(slide, "Required user permissions", 7.1, 3.41, 5.8, 0.34,
+         size=11.5, bold=True, color=WHITE)
+add_bullet_box(slide, [
+    "API Enabled",
+    "View Setup and Configuration",
+    "Modify Metadata Through Metadata API Functions",
+    "(System Administrator profile covers all of the above)",
+], 7.08, 3.8, 5.75, 0.88, size=10.5, color=NAVY)
+
+# Troubleshooting box
+add_rect(slide, 6.9, 4.82, 6.1, 2.06, fill=WHITE, line=AMBER)
+add_rect(slide, 6.9, 4.82, 6.1, 0.38, fill=AMBER)
+add_text(slide, "Common errors", 7.1, 4.85, 5.8, 0.34,
+         size=11.5, bold=True, color=WHITE)
+add_bullet_box(slide, [
+    "redirect_uri_mismatch → Callback URL doesn't match exactly.",
+    "  Update it, save, wait ~10 min, retry.",
+    "",
+    "missing required code challenge → PKCE is still enabled.",
+    "  Uncheck 'Require PKCE' in the app settings, save, retry.",
+    "",
+    "App sleeping? First load takes ~30 sec on Render free tier.",
+], 7.08, 5.25, 5.75, 1.55, size=10, color=NAVY)
+
+
+# ══════════════════════════════════════════════════════════════════
+# SLIDE 5 — What It Assesses (22 categories)
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "What It Assesses",
-            "22 categories · 311 checks covering the full Salesforce technical stack")
-footer(slide, 4)
+            "22 categories · 315 checks covering the full Salesforce technical stack")
+footer(slide, 5)
 
 categories = [
     ("Configuration",             13),
@@ -211,11 +299,11 @@ categories = [
     ("Custom Metadata & Settings", 3),
     ("Record Types & Page Layouts",4),
     ("Einstein & AI Usage",        9),
-    ("Experience Cloud",          12),
+    ("Experience Cloud",          15),
     ("Connected App Security",    12),
     ("LWC & Components",          39),
     ("OmniStudio",                26),
-    ("Performance",               21),
+    ("Performance",               22),
     ("Notes & Attachments",       12),
 ]
 
@@ -235,17 +323,17 @@ for i, (cat, count) in enumerate(categories):
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 5 — UX & Experience Highlights (NEW)
+# SLIDE 6 — UX & Experience Highlights
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "User Experience",
             "Designed for consultants, admins, and customers — minimal setup, instant insight")
-footer(slide, 5)
+footer(slide, 6)
 
 ux_features = [
     (SF_BLUE,  "Branded Split-Screen Landing Page",
-     "Salesforce blue gradient hero panel with headline, stats bar, and 21-category grid "
+     "Salesforce blue gradient hero panel with headline, stats bar, and 22-category grid "
      "displayed alongside the OAuth credential form — value proposition visible at the moment of login."),
     (PURPLE,   "Category Detail Modals",
      "Click any category card on the landing page to instantly see all checks for that "
@@ -279,12 +367,12 @@ for i, (color, title, body) in enumerate(ux_features):
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 6 — Value Proposition
+# SLIDE 7 — Value Proposition
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "Value Proposition", "What changes for every persona who uses the tool")
-footer(slide, 6)
+footer(slide, 7)
 
 personas = [
     (SF_BLUE, "Consultant / SA",
@@ -315,12 +403,12 @@ for i, (color, persona, desc) in enumerate(personas):
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 7 — Quantified Impact
+# SLIDE 8 — Quantified Impact
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "Quantified Impact", "Measured against the manual assessment baseline")
-footer(slide, 7)
+footer(slide, 8)
 
 metrics = [
     (GREEN,   "6–8 hrs",    "Saved per\nassessment"),
@@ -344,12 +432,12 @@ for i, (color, value, label) in enumerate(metrics):
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 8 — Key Outputs
+# SLIDE 9 — Key Outputs
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "Key Outputs", "Every assessment produces four ready-to-use artifacts")
-footer(slide, 8)
+footer(slide, 9)
 
 outputs = [
     (SF_BLUE, "Export PDF",
@@ -384,7 +472,7 @@ for i, (color, title, body) in enumerate(outputs):
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 9 — Call to Action
+# SLIDE 10 — Call to Action
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=NAVY)
@@ -394,12 +482,12 @@ add_text(slide, "Ready to See It in Action?", 0.6, 1.1, 12, 0.9,
          size=36, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 add_text(slide,
          "SF Tech Debt Assessor is live and available today.\n"
-         "Connect any Salesforce org and run a full 22-category, 311-check assessment in under 5 minutes.",
+         "Connect any Salesforce org and run a full 22-category, 315-check assessment in under 5 minutes.",
          0.6, 2.1, 12, 0.9,
          size=16, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
 
 # Stat bar
-stats = [("22", "Categories"), ("311", "Checks"), ("100%", "Read-Only")]
+stats = [("22", "Categories"), ("315", "Checks"), ("100%", "Read-Only")]
 for i, (val, lbl) in enumerate(stats):
     x = 1.5 + i * 3.5
     add_rect(slide, x, 3.2, 3.0, 1.3, fill=RGBColor(0x07, 0x50, 0x9A))
@@ -420,7 +508,7 @@ add_text(slide, "Built by Steven Bilgram, Success Architect",
 
 # ── Save ─────────────────────────────────────────────────────────
 out = os.path.expanduser(
-    "~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-06-10.pptx"
+    "~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-06-17.pptx"
 )
 prs.save(out)
 print(f"Saved: {out}")
