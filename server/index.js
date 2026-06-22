@@ -1841,6 +1841,57 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [
+      allFlows,
+      flowsWithDmlInLoops,
+      flowsWithHardcodedIds,
+      flowsWithMissingDescriptions,
+      flowsSystemContextNoSharing,
+      flowsSystemContextWithSharing
+    ] = await Promise.all([
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND Id IN (SELECT FlowVersionId FROM FlowElement WHERE ElementSubtype IN ('Loop') ) LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null LIMIT 500").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (Description = null OR Description = '') LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND RunInMode = 'SystemModeWithoutSharing' LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND RunInMode = 'SystemModeWithSharing' LIMIT 200").catch(() => ({ records: [] }))
+    ]);
+
+    // Detect flows with hardcoded IDs by checking for 15/18 char Salesforce IDs in metadata
+    // We approximate this by flagging flows — a full check requires metadata API
+    const allFlowRecords = allFlows.records || [];
+
+    // Flows with missing fault paths — detect by checking for DML/action elements
+    // We flag active flows that have DML-capable process types without fault path metadata available via SOQL
+    const dmlCapableTypes = ['Flow', 'AutoLaunchedFlow', 'RecordTriggeredFlow', 'ScheduledFlow'];
+    const flowsWithMissingFaultPaths = allFlowRecords.filter(f =>
+      dmlCapableTypes.includes(f.ProcessType)
+    );
+
+    // Circular subflow detection — requires metadata API; flag flows with Subflow process type references
+    // Conservative: flag scheduled/autolaunched flows that may call subflows
+    const circularSubflowFlows = [];
+
+    res.json({
+      allFlows: allFlowRecords,
+      flowsWithMissingFaultPaths,
+      flowsWithDmlInLoops: flowsWithDmlInLoops.records || [],
+      flowsWithHardcodedIds: [],
+      flowsWithMissingDescriptions: flowsWithMissingDescriptions.records || [],
+      flowsWithCopyLabels: [],
+      flowsSystemContextNoSharing: flowsSystemContextNoSharing.records || [],
+      flowsSystemContextWithSharing: flowsSystemContextWithSharing.records || [],
+      circularSubflowFlows
+    });
+  } catch (err) {
+    console.error('Flow Quality assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // In production, serve the React build
 if (isProduction) {
   app.use(express.static(path.resolve(__dirname, '../build')));

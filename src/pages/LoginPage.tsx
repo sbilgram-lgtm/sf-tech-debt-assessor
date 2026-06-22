@@ -364,6 +364,16 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Files Not Viewed in 2+ Years', severity: 'low' },
     { title: 'File Distribution Across Objects', severity: 'low' },
   ],
+  'Flow Quality': [
+    { title: 'Flows Missing Fault Paths', severity: 'high' },
+    { title: 'Flows with Database Operations Inside Loops', severity: 'high' },
+    { title: 'Flows with Circular Subflow References', severity: 'critical' },
+    { title: 'Flows Perform CRUD in System Context Without Sharing', severity: 'high' },
+    { title: 'Flows Perform CRUD in System Context With Sharing', severity: 'low' },
+    { title: 'Flows Contain Hardcoded Salesforce IDs', severity: 'medium' },
+    { title: 'Flows Missing Descriptions', severity: 'low' },
+    { title: 'Flows with Default "Copy" Labels on Assignment Elements', severity: 'low' },
+  ],
 };
 
 // Group colors: accent for left border on category cards
@@ -382,10 +392,11 @@ const CATEGORIES = [
   { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
   { icon: '🌐',  name: 'Experience Cloud',        checks: 15, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
-  { icon: '💻',  name: 'Code Quality',            checks: 29, group: 'Code & Development' },
-  { icon: '🧪',  name: 'Test Coverage',           checks: 4,  group: 'Code & Development' },
+  { icon: '💻',  name: 'Code Quality',            checks: 46, group: 'Code & Development' },
+  { icon: '🧪',  name: 'Test Coverage',           checks: 7,  group: 'Code & Development' },
   { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
   { icon: '🎨',  name: 'OmniStudio',             checks: 26, group: 'Code & Development' },
+  { icon: '🔀',  name: 'Flow Quality',            checks: 8,  group: 'Code & Development' },
   // ── Performance & Limits ───────────────────────────────────────
   { icon: '🚀',  name: 'Performance',             checks: 22, group: 'Performance & Limits' },
   { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },

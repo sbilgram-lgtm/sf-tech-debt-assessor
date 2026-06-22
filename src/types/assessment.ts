@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments' | 'flowQuality';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -361,4 +361,16 @@ export interface LwcData {
   htmlResources: any[];
   cssResources: any[];
   vfPages: any[];
+}
+
+export interface FlowQualityData {
+  allFlows: any[];
+  flowsWithMissingFaultPaths: any[];
+  flowsWithDmlInLoops: any[];
+  flowsWithHardcodedIds: any[];
+  flowsWithMissingDescriptions: any[];
+  flowsWithCopyLabels: any[];
+  flowsSystemContextNoSharing: any[];
+  flowsSystemContextWithSharing: any[];
+  circularSubflowFlows: any[];
 }

@@ -24,7 +24,8 @@ import {
   LwcData,
   OmniStudioData,
   PerformanceData,
-  NotesAttachmentsData
+  NotesAttachmentsData,
+  FlowQualityData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -692,6 +693,286 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       'SOQL queries without a WHERE clause or LIMIT can scan entire object tables. In small sandboxes these work fine but cause governor limit errors (50,000 row query limit) in production orgs with large data volumes. This is flagged by Salesforce Code Analyzer (PMD: AvoidNonRestrictiveQueries).',
       'Add WHERE conditions to filter to the relevant record set, or add LIMIT clauses where a full scan is intentional. For bulk operations, use batch Apex with appropriate query scope.',
       { records: nonRestrictiveSOQL.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'SOQL without WHERE or LIMIT — full table scan risk at scale' })) }
+    ));
+  }
+
+  // CQ-30: ApexBadCrypto — hardwired IVs/keys in Crypto calls
+  const badCrypto = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /Crypto\.(encrypt|decrypt|generateMac|sign|verify)\s*\([^)]*['"][A-Za-z0-9+/=]{8,}['"]/gi.test(body);
+  });
+  if (badCrypto.length > 0) {
+    items.push(createDebtItem('code', 'critical',
+      `${badCrypto.length} Classes May Use Hardwired IVs or Keys in Crypto Calls`,
+      'Using hardwired or static IVs and keys in Crypto.encrypt/decrypt/generateMac calls is a critical security vulnerability. Static keys can be extracted from source code and static IVs make encryption deterministic, defeating its purpose. This is flagged by PMD (ApexBadCrypto).',
+      'Generate random IVs using Crypto.generateAesKey() or Crypto.getRandomInteger(). Store encryption keys in Custom Settings or Named Credentials, never in code.',
+      { records: badCrypto.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Possible hardwired IV or key in Crypto call — ApexBadCrypto' })) }
+    ));
+  }
+
+  // CQ-31: ApexCRUDViolation — SOQL/DML without CRUD permission checks
+  const crudViolations = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const hasDmlOrSoql = /\b(insert|update|delete|upsert)\s+\w/gi.test(body) || /\[SELECT\b/gi.test(body);
+    const hasCrudCheck = /\.isAccessible\(\)|\.isCreateable\(\)|\.isUpdateable\(\)|\.isDeletable\(\)|WITH\s+USER_MODE|WITH\s+SECURITY_ENFORCED|Schema\.sObjectType\./gi.test(body);
+    return hasDmlOrSoql && !hasCrudCheck;
+  });
+  if (crudViolations.length > 0) {
+    items.push(createDebtItem('code', 'critical',
+      `${crudViolations.length} Classes May Have CRUD Permission Violations`,
+      'Apex classes that perform DML or SOQL without checking object-level CRUD permissions bypass the running user\'s access controls. This is flagged by PMD (ApexCRUDViolation) and Salesforce AppExchange security review.',
+      'Add CRUD checks before DML operations using SObjectType.isCreateable(), isUpdateable(), isDeletable(). Use WITH USER_MODE or WITH SECURITY_ENFORCED on SOQL. Use Schema.stripInaccessible() before DML.',
+      { records: crudViolations.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'DML/SOQL without CRUD permission checks — ApexCRUDViolation' })) }
+    ));
+  }
+
+  // CQ-32: ApexDangerousMethods
+  const dangerousMethods = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /Database\.executeAnonymous\s*\(/gi.test(body);
+  });
+  if (dangerousMethods.length > 0) {
+    items.push(createDebtItem('code', 'critical',
+      `${dangerousMethods.length} Classes Call Dangerous Methods`,
+      'Calls to methods flagged by PMD (ApexDangerousMethods) are considered high-risk by Salesforce AppExchange security review. Database.executeAnonymous() in particular can execute arbitrary Apex code dynamically.',
+      'Remove dangerous method calls. Replace with standard Salesforce APIs. Review each class with your security team before deployment.',
+      { records: dangerousMethods.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Dangerous method call — ApexDangerousMethods' })) }
+    ));
+  }
+
+  // CQ-33: ApexOpenRedirect — redirects to user-controlled locations
+  const openRedirects = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /new\s+PageReference\s*\(\s*\w+\.get\s*\(/gi.test(body) ||
+           /new\s+PageReference\s*\(\s*ApexPages\.currentPage\(\)\.getParameters/gi.test(body);
+  });
+  if (openRedirects.length > 0) {
+    items.push(createDebtItem('code', 'critical',
+      `${openRedirects.length} Classes May Have Open Redirect Vulnerabilities`,
+      'Apex classes that construct PageReference objects from user-controlled input allow attackers to redirect users to malicious sites after a legitimate Salesforce interaction. This is flagged by PMD (ApexOpenRedirect).',
+      'Validate all redirect URLs against an allowlist of known-safe domains before constructing PageReference objects. Never pass user-supplied URL parameters directly to PageReference.',
+      { records: openRedirects.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Possible open redirect — user-controlled PageReference' })) }
+    ));
+  }
+
+  // CQ-34: ApexSuggestUsingNamedCred — hardcoded credentials in callouts
+  const hardcodedCreds = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /req\.setHeader\s*\(\s*'Authorization'/gi.test(body) ||
+           /'Authorization'\s*,\s*'Basic\s/gi.test(body) ||
+           /'Authorization'\s*,\s*'Bearer\s/gi.test(body);
+  });
+  if (hardcodedCreds.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${hardcodedCreds.length} Classes May Have Hardcoded Credentials in HTTP Callouts`,
+      'Setting Authorization headers with inline Basic or Bearer token values hardcodes credentials into Apex code. These can be extracted from source control or debug logs. This is flagged by PMD (ApexSuggestUsingNamedCred).',
+      'Replace hardcoded Authorization headers with Named Credentials. Named Credentials store credentials securely and are never exposed in Apex source code or debug logs.',
+      { records: hardcodedCreds.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Hardcoded Authorization header — use Named Credentials instead' })) }
+    ));
+  }
+
+  // CQ-35: ApexXSSFromURLParam — URL params not escaped before use
+  const xssUrlParam = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /ApexPages\.currentPage\(\)\.getParameters\(\)\.get\s*\(/gi.test(body) &&
+           !/String\.escapeSingleQuotes|HTMLENCODE|JSINHTMLENCODE|URLENCODE/gi.test(body);
+  });
+  if (xssUrlParam.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${xssUrlParam.length} Classes May Use URL Parameters Without Escaping`,
+      'Apex classes that read URL parameters and use them without escaping are vulnerable to Cross-Site Scripting (XSS). User-controlled values rendered in Visualforce or passed to addError() without escaping can inject malicious scripts. This is flagged by PMD (ApexXSSFromURLParam).',
+      'Escape all URL parameter values before use. Use String.escapeSingleQuotes() for SOQL, HTMLENCODE() for Visualforce output, and JSINHTMLENCODE() for JavaScript contexts.',
+      { records: xssUrlParam.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'URL parameter used without escaping — XSS risk' })) }
+    ));
+  }
+
+  // CQ-36: CyclomaticComplexity — high decision-point complexity
+  const complexClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const decisions = (body.match(/\b(if|else if|for|while|case|catch|&&|\|\|)\b/gi) || []).length;
+    return decisions > 20;
+  });
+  if (complexClasses.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${complexClasses.length} Apex Classes Have High Cyclomatic Complexity`,
+      'Classes with many conditional branches, loops, and exception handlers are difficult to understand, test, and maintain. High complexity directly correlates with bug rate and maintenance cost. This is flagged by PMD (CyclomaticComplexity).',
+      'Refactor complex methods by extracting branches into private helper methods. Aim for cyclomatic complexity below 10 per method. Use early returns and guard clauses to reduce nesting depth.',
+      { records: complexClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'High cyclomatic complexity — many decision branches' })) }
+    ));
+  }
+
+  // CQ-37: ExcessiveParameterList
+  const excessiveParams = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /\w+\s*\(\s*(\w[\w<>,\[\] ]+\s+\w+\s*,\s*){5,}/gi.test(body);
+  });
+  if (excessiveParams.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${excessiveParams.length} Apex Classes Have Methods with Excessive Parameter Counts`,
+      'Methods with 6 or more parameters are hard to call correctly and maintain. Long parameter lists often indicate a class has too many responsibilities or parameters should be grouped into a wrapper object. This is flagged by PMD (ExcessiveParameterList).',
+      'Group related parameters into inner classes or wrapper objects. Consider the Builder pattern for complex object construction.',
+      { records: excessiveParams.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Method with 6+ parameters — ExcessiveParameterList' })) }
+    ));
+  }
+
+  // CQ-38: AvoidDeeplyNestedIfStmts
+  const deeplyNested = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /if\s*\([^{]*\)\s*\{[^{}]*if\s*\([^{]*\)\s*\{[^{}]*if\s*\([^{]*\)\s*\{[^{}]*if\s*\(/gi.test(body);
+  });
+  if (deeplyNested.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${deeplyNested.length} Apex Classes Have Deeply Nested If Statements`,
+      'If statements nested 4 or more levels deep are extremely difficult to read and error-prone. Deep nesting is a strong signal that the logic needs refactoring. This is flagged by PMD (AvoidDeeplyNestedIfStmts).',
+      'Flatten nested conditionals using early returns, guard clauses, or by extracting inner logic into private methods.',
+      { records: deeplyNested.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'If statements nested 4+ levels deep' })) }
+    ));
+  }
+
+  // CQ-39: InaccessibleAuraEnabledGetter
+  const inaccessibleAura = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    return /@AuraEnabled\b/gi.test(body) &&
+           /private\s+\w[\w<>[\] ]*\s+get\s*\{|protected\s+\w[\w<>[\] ]*\s+get\s*\{/gi.test(body);
+  });
+  if (inaccessibleAura.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${inaccessibleAura.length} Classes Have @AuraEnabled Properties with Inaccessible Getters`,
+      '@AuraEnabled properties used by LWC or Aura components must have public getters. Private or protected getters on @AuraEnabled properties cause runtime errors when the component tries to read the property. This is flagged by PMD (InaccessibleAuraEnabledGetter).',
+      'Change all @AuraEnabled property getters to public access. Review all @AuraEnabled annotations to ensure the full property declaration uses the correct access modifier.',
+      { records: inaccessibleAura.slice(0, 30).map((c: any) => ({ name: c.Name, detail: '@AuraEnabled property with private/protected getter' })) }
+    ));
+  }
+
+  // CQ-40: OverrideBothEqualsAndHashcode
+  const equalsNoHashcode = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const hasEquals = /\bpublic\s+Boolean\s+equals\s*\(/gi.test(body);
+    const hasHashCode = /\bpublic\s+Integer\s+hashCode\s*\(\s*\)/gi.test(body);
+    return hasEquals !== hasHashCode;
+  });
+  if (equalsNoHashcode.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${equalsNoHashcode.length} Classes Override equals() Without hashCode() or Vice Versa`,
+      'Classes that override equals() but not hashCode() (or vice versa) break the equals/hashCode contract. Objects used as Map keys or in Sets will behave incorrectly — equal objects may hash to different buckets, causing silent data loss. This is flagged by PMD (OverrideBothEqualsAndHashcode).',
+      'Always override both equals() and hashCode() together. Implement hashCode() to return a consistent hash based on the same fields used in equals().',
+      { records: equalsNoHashcode.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'equals() without hashCode() or vice versa — broken Map/Set contract' })) }
+    ));
+  }
+
+  // CQ-41: TypeShadowsBuiltInNamespace
+  const shadowsBuiltIn = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /\bclass\s+(String|Integer|Boolean|List|Map|Set|Date|DateTime|Decimal|Double|Id|Long|Object|Blob|Exception)\b/gi.test(body);
+  });
+  if (shadowsBuiltIn.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${shadowsBuiltIn.length} Classes Have Names That Shadow Built-In Apex Types`,
+      'Declaring a class with the same name as a built-in Apex type (String, Integer, Boolean, etc.) causes name collisions that are difficult to diagnose. This is flagged by PMD (TypeShadowsBuiltInNamespace).',
+      'Rename custom classes to avoid conflict with Salesforce built-in type names. Prefix custom utility classes with your org namespace or a descriptive qualifier.',
+      { records: shadowsBuiltIn.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Class name shadows a built-in Apex type' })) }
+    ));
+  }
+
+  // CQ-42: ApexNullPointerException (Graph Engine)
+  const nullRisk = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const soqlSingle = (body.match(/(\w+)\s*=\s*\[SELECT[\s\S]*?LIMIT\s+1\s*\]/gi) || []);
+    return soqlSingle.some((q: string) => {
+      const varMatch = q.match(/^(\w+)\s*=/);
+      if (!varMatch) return false;
+      const varName = varMatch[1];
+      const nullCheck = new RegExp(`if\\s*\\(\\s*${varName}\\s*!=\\s*null|if\\s*\\(\\s*null\\s*!=\\s*${varName}`, 'gi');
+      return !nullCheck.test(body);
+    });
+  });
+  if (nullRisk.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${nullRisk.length} Classes May Dereference SOQL Results Without Null Checks`,
+      'SOQL queries with LIMIT 1 return null when no record matches. Classes that use the result without null checking will throw NullPointerException at runtime. This is flagged by Salesforce Graph Engine (ApexNullPointerException).',
+      'Add null checks after every SOQL query that may return no results: if (result != null) { ... }',
+      { records: nullRisk.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'SOQL LIMIT 1 result used without null check' })) }
+    ));
+  }
+
+  // CQ-43: MissingNullCheckOnSoqlVariable (Graph Engine)
+  const soqlNullVar = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const soqlWithVar = (body.match(/\[SELECT[\s\S]*?WHERE[\s\S]*?:\s*\w+[\s\S]*?\]/gi) || []);
+    return soqlWithVar.some((q: string) => {
+      const bindVars = (q.match(/:\s*(\w+)/g) || []);
+      return bindVars.some((v: string) => {
+        const varName = v.replace(/^:\s*/, '').trim();
+        const nullCheck = new RegExp(`if\\s*\\(\\s*${varName}\\s*!=\\s*null|if\\s*\\(\\s*null\\s*!=\\s*${varName}`, 'gi');
+        return !nullCheck.test(body);
+      });
+    });
+  });
+  if (soqlNullVar.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${soqlNullVar.length} Classes Use SOQL Bind Variables Without Null Checks`,
+      'SOQL queries that bind a null variable in a WHERE clause (WHERE Id = :nullVar) return all records instead of an empty list, causing a full table scan and potential governor limit violations. This is flagged by Salesforce Graph Engine (MissingNullCheckOnSoqlVariable).',
+      'Add null checks for all variables used as SOQL bind variables before executing the query. Return early or substitute a safe default if the variable is null.',
+      { records: soqlNullVar.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'SOQL bind variable without null check — full table scan risk' })) }
+    ));
+  }
+
+  // CQ-44: AvoidMultipleMassSchemaLookups (Graph Engine)
+  const multiSchemaLookups = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    const matches = (body.match(/Schema\.getGlobalDescribe\s*\(\s*\)|Schema\.describeSObjects\s*\(/gi) || []).length;
+    return matches >= 2;
+  });
+  if (multiSchemaLookups.length > 0) {
+    items.push(createDebtItem('code', 'high',
+      `${multiSchemaLookups.length} Classes Call Mass Schema Lookups Multiple Times`,
+      'Multiple calls to Schema.getGlobalDescribe() or Schema.describeSObjects() in a single class are flagged by Salesforce Graph Engine (AvoidMultipleMassSchemaLookups). These calls load all object metadata into memory — calling them more than once per execution path compounds the performance cost significantly.',
+      'Cache the result in a static variable. Call Schema.getGlobalDescribe() or describeSObjects() once per transaction and reuse the cached result throughout.',
+      { records: multiSchemaLookups.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Multiple mass schema lookups — AvoidMultipleMassSchemaLookups' })) }
+    ));
+  }
+
+  // CQ-45: UnimplementedType (Graph Engine)
+  const unimplementedTypes = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /\b(abstract\s+class|interface)\b/gi.test(body) && !/\bglobal\b/gi.test(body);
+  });
+  if (unimplementedTypes.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${unimplementedTypes.length} Non-Global Abstract Classes or Interfaces Detected`,
+      'Non-global abstract classes and interfaces with no concrete implementations may represent dead code. Unused abstractions add maintenance overhead. This is flagged by Salesforce Graph Engine (UnimplementedType).',
+      'Review each abstract class and interface to confirm it has at least one active implementation. Delete those that are unused.',
+      { records: unimplementedTypes.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Abstract class or interface — verify active implementations exist' })) }
+    ));
+  }
+
+  // CQ-46: UnusedLocalVariable (PMD)
+  const debugNoLevel = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /System\.debug\s*\(\s*(?!LoggingLevel)[^)]/gi.test(body);
+  });
+  if (debugNoLevel.length > 0) {
+    items.push(createDebtItem('code', 'low',
+      `${debugNoLevel.length} Classes Use System.debug() Without a LoggingLevel`,
+      'Single-argument System.debug() calls default to DEBUG level, appearing in all debug logs regardless of configured logging level. Using a LoggingLevel parameter allows fine-grained control. This is flagged by PMD (DebugsShouldUseLoggingLevel).',
+      'Replace System.debug(msg) with System.debug(LoggingLevel.DEBUG, msg) or an appropriate level (INFO, WARN, ERROR).',
+      { records: debugNoLevel.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'System.debug() without LoggingLevel parameter' })) }
     ));
   }
 
@@ -2066,6 +2347,52 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
       'Triggers lacking a dedicated test class are often tested indirectly and incompletely.',
       'Create a dedicated test class per trigger that covers all trigger contexts (insert, update, delete, bulk).',
       { records: triggersWithoutTest.map((name:string) => ({ name })) }
+    ));
+  }
+
+  // TC-5: ApexAssertionsShouldIncludeMessage (PMD)
+  const assertsNoMessage = data.testClasses.filter((c: any) => {
+    const body = c.Body || '';
+    return /System\.(assertEquals|assertNotEquals|assert)\s*\(\s*[^,)]+\s*,\s*[^,)]+\s*\)/gi.test(body) &&
+           !/System\.(assertEquals|assertNotEquals|assert)\s*\(\s*[^,)]+\s*,\s*[^,)]+\s*,\s*['"`]/gi.test(body);
+  });
+  if (assertsNoMessage.length > 0) {
+    items.push(createDebtItem(
+      'testCoverage', 'low',
+      `${assertsNoMessage.length} Test Class${assertsNoMessage.length !== 1 ? 'es' : ''} Have Assert Statements Without a Message`,
+      'Assert statements without a message parameter make test failures cryptic — the only output is "Assertion failed" with no context. This is flagged by PMD (ApexAssertionsShouldIncludeMessage).',
+      'Add a descriptive message to each assert: System.assertEquals(expected, actual, \'Description of what was expected\').',
+      { records: assertsNoMessage.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Assert statements missing message parameter' })) }
+    ));
+  }
+
+  // TC-6: ApexUnitTestClassShouldHaveRunAs (PMD)
+  const noRunAs = data.testClasses.filter((c: any) => {
+    const body = c.Body || '';
+    return !(/System\.runAs\s*\(/gi.test(body));
+  });
+  if (noRunAs.length > 0) {
+    items.push(createDebtItem(
+      'testCoverage', 'medium',
+      `${noRunAs.length} Test Class${noRunAs.length !== 1 ? 'es' : ''} Do Not Use System.runAs()`,
+      'Test classes that never use System.runAs() only test code under the System Administrator context. Multi-user scenarios, sharing rules, and permission-based behaviour are untested. This is flagged by PMD (ApexUnitTestClassShouldHaveRunAs).',
+      'Add at least one test method per class that uses System.runAs(testUser) with a user that has restricted permissions. This validates that sharing rules and FLS are enforced correctly.',
+      { records: noRunAs.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'No System.runAs() — multi-user scenarios untested' })) }
+    ));
+  }
+
+  // TC-7: ApexUnitTestMethodShouldHaveIsTestAnnotation (PMD)
+  const testMethodKeyword = data.testClasses.filter((c: any) => {
+    const body = c.Body || '';
+    return /\btestMethod\b/gi.test(body);
+  });
+  if (testMethodKeyword.length > 0) {
+    items.push(createDebtItem(
+      'testCoverage', 'low',
+      `${testMethodKeyword.length} Test Class${testMethodKeyword.length !== 1 ? 'es' : ''} Use the Deprecated testMethod Keyword`,
+      'The testMethod modifier is a legacy keyword deprecated in favor of the @isTest annotation. It is no longer supported in API v28+ test execution contexts and may be removed in a future release. This is flagged by PMD (ApexUnitTestMethodShouldHaveIsTestAnnotation).',
+      'Replace all instances of "static testMethod void" with "@isTest static void" in test classes.',
+      { records: testMethodKeyword.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'testMethod keyword — deprecated, replace with @isTest annotation' })) }
     ));
   }
 
@@ -4268,6 +4595,110 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
     score: Math.max(0, maxScore - deductions),
     maxScore,
     percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100),
+    items
+  };
+}
+
+export function assessFlowQuality(data: FlowQualityData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  // Missing Fault Paths — elements that can fail with no error handling
+  if (data.flowsWithMissingFaultPaths.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'high',
+      `${data.flowsWithMissingFaultPaths.length} Flow${data.flowsWithMissingFaultPaths.length !== 1 ? 's' : ''} Missing Fault Paths`,
+      'Flows with DML, subflow, or action elements that have no fault path leave exceptions unhandled. When these elements fail at runtime, users see a generic "An internal server error has occurred" message with no recovery path.',
+      'Add a Fault connector to every DML, Action, and Subflow element. Route fault paths to a screen that displays a meaningful error message or to an Apex action that logs the failure.',
+      { records: data.flowsWithMissingFaultPaths.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no fault path on failable element` })) }
+    ));
+  }
+
+  // Database Operations Inside Loops
+  if (data.flowsWithDmlInLoops.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'high',
+      `${data.flowsWithDmlInLoops.length} Flow${data.flowsWithDmlInLoops.length !== 1 ? 's' : ''} with Database Operations Inside Loops`,
+      'Get/Create/Update/Delete Records elements inside Flow loops execute one DML or SOQL statement per iteration. Flows processing large data sets will hit Salesforce governor limits (150 DML / 100 SOQL per transaction).',
+      'Move record operations outside loops. Collect records in a Loop and use a single Create/Update/Delete Records element after the loop exits with the full collection.',
+      { records: data.flowsWithDmlInLoops.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — DML inside loop` })) }
+    ));
+  }
+
+  // Circular Subflow References — causes runtime error
+  if (data.circularSubflowFlows.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'critical',
+      `${data.circularSubflowFlows.length} Flow${data.circularSubflowFlows.length !== 1 ? 's' : ''} with Circular Subflow References`,
+      'A flow that calls a subflow that eventually calls the original flow creates an infinite loop. Salesforce does not permit circular subflow references at runtime — these flows will throw an error when executed.',
+      'Audit subflow chains. Extract shared logic into a dedicated utility flow that is not itself a caller of the flows that reference it.',
+      { records: data.circularSubflowFlows.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — circular subflow reference` })) }
+    ));
+  }
+
+  // CRUD in System Context Without Sharing
+  if (data.flowsSystemContextNoSharing.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'high',
+      `${data.flowsSystemContextNoSharing.length} Flow${data.flowsSystemContextNoSharing.length !== 1 ? 's' : ''} Perform CRUD in System Context Without Sharing`,
+      'Flows running in System Context Without Sharing bypass record-level security entirely. If user-controlled data influences which records are queried or modified, this enables privilege escalation — users can read or write records they should not have access to.',
+      'Change the flow\'s Run As context to "User" or "System Context With Sharing" wherever possible. Reserve "System Context Without Sharing" for internal automation that never surfaces user-controlled values in record filters.',
+      { records: data.flowsSystemContextNoSharing.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — CRUD in System Context Without Sharing` })) }
+    ));
+  }
+
+  // CRUD in System Context With Sharing
+  if (data.flowsSystemContextWithSharing.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'low',
+      `${data.flowsSystemContextWithSharing.length} Flow${data.flowsSystemContextWithSharing.length !== 1 ? 's' : ''} Perform CRUD in System Context With Sharing`,
+      'Flows running in System Context With Sharing respect record visibility but still run with elevated system privileges for field access. Review these flows to confirm the elevated context is intentional.',
+      'Review each flow to confirm System Context With Sharing is required. Where flows only need user-level access, switch the Run As context to "User" for least-privilege operation.',
+      { records: data.flowsSystemContextWithSharing.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — CRUD in System Context With Sharing` })) }
+    ));
+  }
+
+  // Hardcoded Salesforce IDs in Flows
+  if (data.flowsWithHardcodedIds.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'medium',
+      `${data.flowsWithHardcodedIds.length} Flow${data.flowsWithHardcodedIds.length !== 1 ? 's' : ''} Contain Hardcoded Salesforce IDs`,
+      'Org-specific record IDs hardcoded into flows will break when the flow is deployed to another org or when records are recreated (e.g., sandbox refresh, data migration). This is a Flow Scanner best practice violation.',
+      'Replace hardcoded IDs with flow variables, Custom Labels, or Custom Metadata Types. Use Get Records elements to look up records dynamically by name or external ID rather than hardcoding the Salesforce ID.',
+      { records: data.flowsWithHardcodedIds.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — contains hardcoded Salesforce ID` })) }
+    ));
+  }
+
+  // Missing Descriptions on Flows
+  if (data.flowsWithMissingDescriptions.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'low',
+      `${data.flowsWithMissingDescriptions.length} Flow${data.flowsWithMissingDescriptions.length !== 1 ? 's' : ''} Missing Descriptions`,
+      'Flows without descriptions make it difficult to understand their purpose, triggering conditions, and business rules — especially for admins who did not build them.',
+      'Add a description to every flow explaining what it does, when it triggers, and any key business rules it enforces.',
+      { records: data.flowsWithMissingDescriptions.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no description` })) }
+    ));
+  }
+
+  // Default Copy Labels on Assignment Elements
+  if (data.flowsWithCopyLabels.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'low',
+      `${data.flowsWithCopyLabels.length} Flow${data.flowsWithCopyLabels.length !== 1 ? 's' : ''} Contain Assignment Elements with Default "Copy" Labels`,
+      'Assignment elements with auto-generated "Copy" labels (e.g., "Copy_1_of_MyAssignment") indicate elements were duplicated without being renamed. These make flows hard to read and debug.',
+      'Rename all assignment elements with descriptive labels that reflect the business action being performed.',
+      { records: data.flowsWithCopyLabels.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — "Copy" labels on assignment elements` })) }
+    ));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  const score = Math.max(0, maxScore - deductions);
+
+  return {
+    category: 'Flow Quality',
+    score,
+    maxScore,
+    percentage: Math.round((score / maxScore) * 100),
     items
   };
 }

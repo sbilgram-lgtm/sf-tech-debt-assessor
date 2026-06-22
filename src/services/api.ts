@@ -113,3 +113,7 @@ export async function getPerformanceData() {
 export async function getNotesAttachmentsData() {
   return fetchApi('/api/assess/notes-attachments');
 }
+
+export async function getFlowQualityData() {
+  return fetchApi('/api/assess/flow-quality');
+}
