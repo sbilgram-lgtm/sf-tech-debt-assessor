@@ -2,10 +2,14 @@
 *By Steven Bilgram, Success Architect*
 *Last updated: June 22, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **315 checks in 22 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **343 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## What's New — June 22, 2026
 
+- **41 new checks added across 3 categories** — total checks grows from 315 → 343
+  - Code Quality: 29 → 46 checks (17 new PMD/Graph Engine security + design rules)
+  - Test Coverage: 4 → 7 checks (3 new PMD test quality rules)
+  - Flow Quality: brand new category with 8 checks (Flow Scanner rules)
 - Docker support: app is published to GitHub Container Registry on every push to `main`
 - Connected App setup now documents both Render and local Docker callback URLs
 - Clarified that External Client Apps (Spring '25+ orgs) support Render only — local Docker requires a Connected App
@@ -180,12 +184,12 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | Category | Checks | What it checks |
 |---|---|---|
 | **Configuration** | 13 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules |
-| **Code Quality** | 29 | See detail table below |
+| **Code Quality** | 46 | See detail table below |
 | **Data Model** | 4 | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | 69 | See detail table below |
 | **Sharing & Security** | 24 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, Outbound Messages with retired Session ID auth ⚠️ Feb 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets |
 | **Integrations** | 9 | Named vs External Credentials, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
-| **Test Coverage** | 4 | Zero-coverage classes, below-75% components, test class ratio |
+| **Test Coverage** | 7 | Zero-coverage classes, below-75% components, test class ratio, assert messages, runAs usage, deprecated testMethod keyword |
 | **Org Limits** | 5 | All org limits — flags anything ≥50% consumed; Apex class count approaching ~5,000 limit; custom object count approaching ~900 limit |
 | **Duplicate & Matching Rules** | 4 | Missing rules, inactive rules, undocumented rules |
 | **Reports & Dashboards** | 3 | Stale reports/dashboards, report proliferation |
@@ -201,10 +205,11 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **OmniStudio** | 26 | See detail table below |
 | **Performance** | 22 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, flows with DML in loops, total active flows (>300), obsolete flow versions (>200), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
+| **Flow Quality** | 8 | See detail table below |
 
 ---
 
-### Code Quality — All 29 Checks
+### Code Quality — All 46 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -237,6 +242,23 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 27 | HTTP (not HTTPS) callout endpoints — unencrypted transmission (PMD: ApexInsecureEndpoint) | High |
 | 28 | `System.debug` statements in production code — CPU overhead (PMD: AvoidDebugStatements) | Medium |
 | 29 | SOQL queries without `WHERE` or `LIMIT` — full table scan risk (PMD: AvoidNonRestrictiveQueries) | High |
+| 30 | Hardwired IVs or keys in `Crypto.encrypt/decrypt` calls (PMD: ApexBadCrypto) | Critical |
+| 31 | DML / SOQL without CRUD permission checks (PMD: ApexCRUDViolation) | Critical |
+| 32 | `Database.executeAnonymous()` usage — arbitrary code execution risk (PMD: ApexDangerousMethods) | Critical |
+| 33 | `PageReference` constructed from user-controlled input — open redirect (PMD: ApexOpenRedirect) | Critical |
+| 34 | Hardcoded `Authorization` headers in HTTP callouts — use Named Credentials (PMD: ApexSuggestUsingNamedCred) | High |
+| 35 | URL parameters used without escaping — XSS risk (PMD: ApexXSSFromURLParam) | High |
+| 36 | High cyclomatic complexity — too many decision branches (PMD: CyclomaticComplexity) | High |
+| 37 | Methods with 6+ parameters — use wrapper objects (PMD: ExcessiveParameterList) | Medium |
+| 38 | If statements nested 4+ levels deep (PMD: AvoidDeeplyNestedIfStmts) | Medium |
+| 39 | `@AuraEnabled` properties with private/protected getters — runtime error (PMD: InaccessibleAuraEnabledGetter) | High |
+| 40 | `equals()` overridden without `hashCode()` or vice versa — broken Map/Set contract (PMD: OverrideBothEqualsAndHashcode) | High |
+| 41 | Class names shadow built-in Apex types (PMD: TypeShadowsBuiltInNamespace) | High |
+| 42 | SOQL `LIMIT 1` result used without null check — NullPointerException risk (Graph Engine: ApexNullPointerException) | High |
+| 43 | SOQL bind variables without null checks — full table scan risk (Graph Engine: MissingNullCheckOnSoqlVariable) | High |
+| 44 | Multiple calls to `Schema.getGlobalDescribe()` / `describeSObjects()` (Graph Engine: AvoidMultipleMassSchemaLookups) | High |
+| 45 | Non-global abstract classes or interfaces with no concrete implementation (Graph Engine: UnimplementedType) | Medium |
+| 46 | `System.debug()` without `LoggingLevel` parameter (PMD: DebugsShouldUseLoggingLevel) | Low |
 
 ---
 
@@ -340,6 +362,35 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 | 24 | Over-reliance on standard Extract vs Turbo Extract DataTransforms | DataRaptors | Medium |
 | 25 | Active OmniScripts still on Aura runtime (LWC not enabled) | OmniScripts | High |
 | 26 | Active Integration Procedures with no active OmniScripts referencing them | Integration Procedures | Low |
+
+---
+
+### Test Coverage — All 7 Checks
+
+| # | Check | Severity |
+|---|---|---|
+| 1 | Low test class ratio (< 30% of production components) | High |
+| 2 | Classes / triggers with zero test coverage | Critical |
+| 3 | Components below 75% test coverage | High |
+| 4 | Triggers without a dedicated test class (by naming convention) | Medium |
+| 5 | Assert statements without a message parameter — failures are cryptic (PMD: ApexAssertionsShouldIncludeMessage) | Low |
+| 6 | Test classes that never call `System.runAs()` — multi-user scenarios untested (PMD: ApexUnitTestClassShouldHaveRunAs) | Medium |
+| 7 | Test methods using the deprecated `testMethod` keyword — replace with `@isTest` (PMD: ApexUnitTestMethodShouldHaveIsTestAnnotation) | Low |
+
+---
+
+### Flow Quality — All 8 Checks
+
+| # | Check | Severity |
+|---|---|---|
+| 1 | Active flows missing fault paths on failable elements (DML, Actions, Subflows) | High |
+| 2 | Active flows with database operations inside loops — governor limit risk | High |
+| 3 | Flows with circular subflow references — runtime error | Critical |
+| 4 | Flows running in System Context Without Sharing — privilege escalation risk | High |
+| 5 | Flows running in System Context With Sharing — elevated privileges, review intent | Low |
+| 6 | Flows containing hardcoded Salesforce IDs — breaks on deployment (Flow Scanner) | Medium |
+| 7 | Active flows with no description | Low |
+| 8 | Flows with assignment elements using default "Copy" labels — readability issue | Low |
 
 ---
 
