@@ -264,6 +264,9 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Active Sites with Clickjack Protection Disabled (AllowAll)', severity: 'critical' },
     { title: 'Live Sites with Browser XSS Protection Disabled', severity: 'medium' },
     { title: 'Live Sites with Content Sniffing Protection Disabled', severity: 'medium' },
+    { title: 'Aura Sites with Guest Page Caching Disabled (GuestCacheMaxAge = 0)', severity: 'high' },
+    { title: 'Sites with More Than 30 Experience Builder Pages', severity: 'medium' },
+    { title: 'Experience Cloud Sites with Over 100,000 Members', severity: 'medium' },
   ],
   'Connected App Security': [
     { title: 'Connected Apps Without Session Timeout', severity: 'high' },
@@ -284,6 +287,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'LWC Bundles on Outdated API Versions (< v57)', severity: 'medium' },
     { title: 'LWC Bundles on Retired API Versions (≤ v30)', severity: 'critical' },
     { title: 'Aura Components vs LWC — Migration Debt', severity: 'medium' },
+    { title: 'Aura Components with No LWC Migration Started (zero LWC bundles)', severity: 'high' },
     { title: 'Aura Components with Custom RENDERER', severity: 'medium' },
     { title: 'Aura Application/Component Events Defined (>5)', severity: 'low' },
     { title: 'LWC Bundles Without Jest Test Files', severity: 'medium' },
@@ -369,6 +373,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Obsolete Flow Versions Exceeds 200', severity: 'low' },
     { title: 'Apex Classes Exceed 5,000 Lines', severity: 'high' },
     { title: 'Active Flows with DML Elements Inside Loops', severity: 'high' },
+    { title: 'Large Static Resources Over 500 KB', severity: 'medium' },
   ],
   'Notes & Attachments': [
     { title: 'Legacy Note Records Found', severity: 'high' },
