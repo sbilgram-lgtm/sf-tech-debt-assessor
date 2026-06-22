@@ -1,12 +1,19 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: June 15, 2026*
+*Last updated: June 22, 2026*
 
 A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **315 checks in 22 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
-## What's New — June 15, 2026
+## What's New — June 22, 2026
 
-Accuracy improvements across 7 checks based on customer feedback:
+- Docker support: app is published to GitHub Container Registry on every push to `main`
+- Connected App setup now documents both Render and local Docker callback URLs
+- Clarified that External Client Apps (Spring '25+ orgs) support Render only — local Docker requires a Connected App
+- Apple Silicon (M1/M2/M3) Mac users must build the image locally (GHCR image is amd64 only)
+
+## What's New — June 15–16, 2026
+
+Accuracy improvements across 11 checks based on customer feedback:
 
 - **OWD (Sharing & Security):** Managed package objects, Custom Metadata Types (`__mdt`), External Objects (`__x`), Platform Event objects (`__e`), History objects, and other non-configurable types are now excluded from the Public Read/Write count — only objects whose OWD an admin can actually change are flagged.
 - **MFA check:** Sandbox orgs now show this as Low severity (not Critical) since Salesforce does not enforce MFA enrollment in sandboxes. Added clarification for orgs using SSO/IdP-managed MFA (Okta, Entra ID) where TwoFactorInfo records are absent even when MFA is active.
@@ -15,6 +22,12 @@ Accuracy improvements across 7 checks based on customer feedback:
 - **Platform Events & CDC:** Managed-package Platform Events (e.g. Marketing Cloud `et4ae5__`) are now detected, preventing a false "None Configured" finding.
 - **Performance — Lightning Pages:** Non-record pages (AppPage, HomePage, UtilityBar) no longer pool as "Unknown" in the multi-page-per-object check.
 - **Einstein & AI:** Detection now uses BotDefinition, BotTopicDefinition, and PromptTemplate as reliable signals, eliminating the false "Not Enabled" finding for orgs with active Agentforce.
+- **Service Console detection:** Switched from Tooling API to standard SOQL — returns all Console apps regardless of profile assignment.
+- **Knowledge checks:** Removed English-only language filter — now counts articles across all languages.
+- **Sharing Security API:** `isSandbox` flag now exposed to scoring layer.
+- **SOAP login / hardcoded URL Apex queries:** `NamespacePrefix = null` filter added to exclude managed classes.
+
+---
 
 ## Data & Privacy
 
@@ -29,11 +42,13 @@ All metadata is **ephemeral** — nothing is written to a database or stored ser
 
 Nothing is written back to Salesforce. No external database is used. Assessment results exist only in the browser tab while the session is active.
 
+---
+
 ## Using the hosted app
 
 > Share this URL with colleagues: **https://sf-tech-debt-assessor.onrender.com**
 
-Each user needs to register the app in the org they want to assess. Takes about 5 minutes. The steps differ slightly depending on the org type — check which applies before you start.
+Each user needs to register the app in the org they want to assess. Takes about 15 minutes. The steps differ slightly depending on the org type — check which applies before you start.
 
 ---
 
@@ -41,60 +56,70 @@ Each user needs to register the app in the org they want to assess. Takes about 
 
 Do this once per Salesforce org you want to assess.
 
-### How to tell which setup your org uses
+### Which setup type do I need?
 
-- **External Client App** — newer orgs (Spring '25+). Go to Setup and search for **"External Client Apps"**. If it appears in the menu, use Option A.
-- **Connected App** — older orgs. Go to Setup → **App Manager**. If you see a **"New Connected App"** button, use Option B.
+| Org Type | Setup Type | Supports Render | Supports Local Docker |
+|---|---|---|---|
+| Production / Sandbox / Developer Edition | Connected App | ✅ | ✅ |
+| Trailhead Playground / Spring '25+ orgs | External Client App | ✅ | ❌ |
+
+> **How to tell:** Go to Setup and search **App Manager**. If you see a **"New Connected App"** button, use the Connected App instructions. If you only see External Client Apps, use those instructions — but note local Docker will not be available.
 
 ---
 
-### Option A — External Client App (newer orgs, Spring '25+)
+### Option A — Connected App (Production, Sandbox, Developer Edition)
+
+Supports both the hosted Render version and local Docker.
+
+1. Log in as an Administrator → **Setup → App Manager → New Connected App**
+2. Fill in:
+   - **Connected App Name:** SF Tech Debt Assessor
+   - **API Name:** SF_Tech_Debt_Assessor (auto-fills)
+   - **Contact Email:** your email address
+3. Check **Enable OAuth Settings**
+4. In the **Callback URL** field, enter the URLs for the options you want to use — one per line:
+   - Hosted Render version: `https://sf-tech-debt-assessor.onrender.com/auth/callback`
+   - Local Docker: `http://localhost:3001/auth/callback`
+   - You can include both — Salesforce will use whichever matches
+5. Under **Selected OAuth Scopes**, add:
+   - `Access and manage your data (api)`
+   - `Perform requests on your behalf at any time (refresh_token, offline_access)`
+6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** — this must be disabled
+7. Click **Save** → then **Continue**
+8. **Wait 10 minutes** — Salesforce needs time to activate the app
+
+**Get your credentials:**
+1. Go back to **App Manager**, find your app, click the dropdown arrow → **View**
+2. Click **Manage Consumer Details** (you may need to verify your identity)
+3. Copy the **Consumer Key** → this is your **Client ID**
+4. Copy the **Consumer Secret** → this is your **Client Secret**
+
+---
+
+### Option B — External Client App (Spring '25+ / Trailhead Playground orgs)
+
+> **Note:** External Client Apps only support the hosted Render version. Local Docker requires HTTPS and is not supported with `http://localhost`.
 
 1. Log in as an Administrator → **Setup → External Client Apps → New**
 2. Fill in:
    - **Label:** SF Tech Debt Assessor
-   - **API Name:** SF_Tech_Debt_Assessor
-   - **Contact Email:** your email
+   - **Name:** SF_Tech_Debt_Assessor (auto-fills)
+   - **Contact Email:** your email address
 3. Under **OAuth Settings**, check **Enable OAuth**
 4. Set **Callback URL** to:
    ```
    https://sf-tech-debt-assessor.onrender.com/auth/callback
    ```
 5. Under **OAuth Scopes**, add:
-   - Access and manage your data (api)
-   - Perform requests on your behalf at any time (refresh_token, offline_access)
+   - `Access and manage your data (api)`
+   - `Perform requests on your behalf at any time (refresh_token, offline_access)`
 6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** if it appears — leave it disabled
 7. Click **Save** — wait ~10 minutes for Salesforce to activate it
-8. Go back to the External Client App → **View Consumer Details** to retrieve:
-   - **Consumer Key** → this is your Client ID
-   - **Consumer Secret** → this is your Client Secret
+8. Go back to the External Client App → click the app name → copy:
+   - **Client ID** → your Client ID
+   - **Client Secret** → your Client Secret
 
 ---
-
-### Option B — Connected App (older orgs)
-
-1. Log in as an Administrator → **Setup → App Manager → New Connected App**
-2. Fill in:
-   - **Connected App Name:** SF Tech Debt Assessor
-   - **API Name:** SF_Tech_Debt_Assessor
-   - **Contact Email:** your email
-3. Check **Enable OAuth Settings**
-4. Set **Callback URL** to:
-   ```
-   https://sf-tech-debt-assessor.onrender.com/auth/callback
-   ```
-5. Under **Selected OAuth Scopes**, add:
-   - Access and manage your data (api)
-   - Perform requests on your behalf at any time (refresh_token, offline_access)
-6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** — this must be disabled
-7. Click **Save** — wait ~10 minutes for Salesforce to activate the Connected App
-8. Go back to the Connected App and click **Manage Consumer Details** to retrieve:
-   - **Consumer Key** → this is your Client ID
-   - **Consumer Secret** → this is your Client Secret
-
-> **Important:** If you see a `redirect_uri_mismatch` error when connecting, the Callback URL in your app doesn't match. Update it to exactly `https://sf-tech-debt-assessor.onrender.com/auth/callback`, save, and wait ~10 minutes.
->
-> **Important:** If you see a `missing required code challenge` error, PKCE is still enabled on your app. Go back into Setup and uncheck "Require Proof Key for Code Exchange (PKCE)", then save and retry.
 
 ### Permissions required
 
@@ -106,27 +131,45 @@ The user who authenticates must have:
 
 ---
 
+> **Troubleshooting common errors:**
+>
+> | Error | Fix |
+> |---|---|
+> | "Authentication failed" | Double-check Client ID and Client Secret — copy/paste directly, no extra spaces |
+> | "redirect_uri_mismatch" | The Callback URL in your app doesn't match exactly. Check it's entered as shown above, then save and wait 10 minutes |
+> | "invalid_client_id" | Wait the full 10 minutes after creating the app, then try again |
+> | "missing required code challenge" | PKCE is still enabled — go back to your app in Setup and uncheck it |
+
+---
+
 ## Running an assessment
 
-1. Open **https://sf-tech-debt-assessor.onrender.com**
-2. Enter your org credentials on the landing page (auto-filled on return visits if you checked "Remember credentials"):
-   - **Org / Sandbox URL** — your org's My Domain URL. To find it:
-     - In Salesforce, go to **Setup → Company Settings → My Domain**
-     - Copy the value shown under **Current My Domain URL** — it will look like `https://mycompany.my.salesforce.com` (production) or `https://mycompany--uat.sandbox.my.salesforce.com` (sandbox)
-     - Alternatively, look at the URL in your browser when logged in to Salesforce — use everything up to and including `.salesforce.com` or `.cloudforce.com`
-     - Do **not** include any path after the domain (e.g. `/lightning/page/home`)
+1. Open **https://sf-tech-debt-assessor.onrender.com** (or `http://localhost:3001` for Docker)
+   > The hosted site may take 30 seconds to wake up if it hasn't been used recently
+2. Enter your credentials:
+   - **Org / Sandbox URL** — your org's My Domain URL (see examples below)
    - **Client ID** — Consumer Key from the app setup above
    - **Client Secret** — Consumer Secret from the app setup above
-3. Click **Connect to Salesforce**, log in to Salesforce, and click **Allow**
+3. Click **Connect to Salesforce**, log in, and click **Allow**
 4. The assessment starts automatically — a progress indicator shows each category as it scans
 5. Click any category panel to expand its findings
 6. Click **Show affected records** on any issue to see the specific records, rules, or users causing the deduction
 7. Export results (all exports include Org Name, Org ID, Type, Instance, and URL):
-   - **Export PDF** — full report with category scores, findings, recommendations, and affected records per issue. Ideal for customer presentations.
-   - **Export Excel** — one tab per category plus a Summary tab. Each tab lists findings with affected records. Opens directly in Excel.
-   - **Export CSV** — flat file with one row per affected record across all categories. Ideal for importing into a project tracker or remediation backlog.
-   - **Remediation Roadmap** — opens a full-screen display grouped into four phases (Critical → High → Medium → Low), then by category within each phase. Each item shows the title, description, recommended action, and affected record count. Use the **Print / Save as PDF** button in the toolbar to export the roadmap as a PDF.
-8. Use **Re-run** in the top toolbar to run a fresh assessment at any time.
+   - **Export PDF** — full report with category scores, findings, recommendations, and affected records per issue
+   - **Export Excel** — one tab per category plus a Summary tab
+   - **Export CSV** — flat file, one row per affected record — ideal for importing into a project tracker
+   - **Remediation Roadmap** — full-screen phased roadmap (Critical → High → Medium → Low). Use **Print / Save as PDF** to export
+
+**Org URL format examples:**
+
+| Org Type | Example URL |
+|---|---|
+| Production | `https://yourcompany.my.salesforce.com` |
+| Sandbox | `https://yourcompany--sandboxname.sandbox.my.salesforce.com` |
+| Developer Edition | `https://yourname-dev-ed.develop.my.salesforce.com` |
+| Trailhead Playground | `https://yourname-dev-ed.trailblaze.my.salesforce.com` |
+
+> **Tip:** Find your org URL in Salesforce → Setup → Company Settings → My Domain. Use everything up to and including `.salesforce.com` with no trailing slash.
 
 ---
 
@@ -323,13 +366,16 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 The app is published as a Docker image to GitHub Container Registry on every push to `main`. This is the recommended option for running the app inside your own network without depending on Render.
 
+> **Important:** Local Docker requires a **Connected App** (not an External Client App). External Client Apps require HTTPS and do not support `http://localhost` callback URLs.
+
 ### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed (Mac, Windows, or Linux)
-- A Salesforce Connected App or External Client App with the callback URL set to `http://localhost:3001/auth/callback`
+- A Salesforce **Connected App** with `http://localhost:3001/auth/callback` in the Callback URL list
 
 ### Quick start
 
+**Windows / Linux / Intel Mac:**
 ```bash
 docker pull ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
 
@@ -339,6 +385,20 @@ docker run -d \
   -e NODE_ENV=production \
   --name sf-assessor \
   ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
+```
+
+**Apple Silicon Mac (M1/M2/M3) — build locally:**
+```bash
+git clone https://github.com/sbilgram-lgtm/sf-tech-debt-assessor
+cd sf-tech-debt-assessor
+docker build -t sf-tech-debt-assessor .
+
+docker run -d \
+  -p 3001:3001 \
+  -e SESSION_SECRET=change-this-to-a-random-string \
+  -e NODE_ENV=production \
+  --name sf-assessor \
+  sf-tech-debt-assessor
 ```
 
 Then open **http://localhost:3001** in your browser.
@@ -371,11 +431,17 @@ docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
   ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
 ```
 
-### Stopping and removing the container
+### Managing the container
 
 ```bash
+# Stop
 docker stop sf-assessor
-docker rm sf-assessor
+
+# Start again
+docker start sf-assessor
+
+# Remove
+docker stop sf-assessor && docker rm sf-assessor
 ```
 
 ### Updating to the latest image
@@ -387,15 +453,14 @@ docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
   ghcr.io/sbilgram-lgtm/sf-tech-debt-assessor:latest
 ```
 
-### Callback URL for Docker
+### Docker troubleshooting
 
-When registering the Connected App or External Client App for use with Docker, set the Callback URL to:
-
-```
-http://localhost:3001/auth/callback
-```
-
-If you are running Docker on a remote server (not your local machine), replace `localhost` with the server's IP address or hostname, e.g. `http://192.168.1.50:3001/auth/callback`.
+| Error | Fix |
+|---|---|
+| "no matching manifest for linux/arm64" | You're on an Apple Silicon Mac — follow the "Build locally" instructions above |
+| "port is already allocated" | Port 3001 is in use. Stop the existing container or change `-p 3001:3001` to `-p 3002:3001` and open `http://localhost:3002` |
+| "Authentication failed" | Confirm you created a Connected App (not External Client App) with `http://localhost:3001/auth/callback` |
+| Container exits immediately | Check logs: `docker logs sf-assessor` |
 
 ---
 
@@ -403,7 +468,7 @@ If you are running Docker on a remote server (not your local machine), replace `
 
 ### Prerequisites
 - Node.js 18+
-- A Salesforce Connected App or External Client App with callback URL `http://localhost:3000/auth/callback`
+- A Salesforce Connected App with callback URL `http://localhost:3000/auth/callback`
 
 ### Steps
 
