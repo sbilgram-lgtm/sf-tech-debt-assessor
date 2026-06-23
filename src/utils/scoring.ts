@@ -1872,34 +1872,67 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     return STANDARD_OWD_OBJECTS.has(name); // standard object — only if in the known-configurable list
   };
 
-  const publicReadWrite = data.owdSettings.filter((obj: any) =>
-    (obj.InternalSharingModel === 'ReadWrite' || obj.InternalSharingModel === 'ReadWriteTransfer') &&
-    isConfigurableOwd(obj.QualifiedApiName || '')
+  const configurable = data.owdSettings.filter((obj: any) => isConfigurableOwd(obj.QualifiedApiName || ''));
+
+  // ── Internal OWD ──────────────────────────────────────────────────────────────
+  const internalPRW = configurable.filter((obj: any) =>
+    obj.InternalSharingModel === 'ReadWrite' || obj.InternalSharingModel === 'ReadWriteTransfer'
   );
-  if (publicReadWrite.length > 0) {
+  if (internalPRW.length > 0) {
     items.push(createDebtItem(
       'sharingSecurity',
       'critical',
-      `${publicReadWrite.length} Objects with Public Read/Write OWD`,
-      'Objects with Public Read/Write sharing expose all records to all users, violating least-privilege.',
-      'Change OWD to Private or Public Read Only, then use sharing rules to open up access as needed.',
-      { records: publicReadWrite.map((o:any) => ({ name: o.QualifiedApiName, detail: o.InternalSharingModel })) }
+      `${internalPRW.length} Objects with Internal Public Read/Write OWD`,
+      'Objects with Internal Public Read/Write OWD expose all records to every internal user, violating least-privilege. Any internal user can read and edit every record on these objects regardless of role or profile.',
+      'Change Internal OWD to Private or Public Read Only in Setup → Security → Sharing Settings. Use sharing rules or role hierarchy to re-open access as needed.',
+      { records: internalPRW.map((o: any) => ({ name: o.QualifiedApiName, detail: `Internal: ${o.InternalSharingModel}` })) }
     ));
   }
 
-  // Public Read Only OWD (potential oversharing)
-  const publicReadOnly = data.owdSettings.filter((obj: any) =>
-    obj.InternalSharingModel === 'Read' &&
-    isConfigurableOwd(obj.QualifiedApiName || '')
-  );
-  if (publicReadOnly.length > 5) {
+  const internalReadOnly = configurable.filter((obj: any) => obj.InternalSharingModel === 'Read');
+  if (internalReadOnly.length > 5) {
     items.push(createDebtItem(
       'sharingSecurity',
       'medium',
-      `${publicReadOnly.length} Objects with Public Read Only OWD`,
-      'Public Read Only OWD may expose sensitive records. Evaluate whether all users need visibility.',
-      'Review each object and tighten OWD to Private where record-level access control is needed.',
-      { records: publicReadOnly.map((o:any) => ({ name: o.QualifiedApiName })) }
+      `${internalReadOnly.length} Objects with Internal Public Read Only OWD`,
+      'Public Read Only OWD means every internal user can view all records on these objects. Evaluate whether broad read access is appropriate for each object.',
+      'Review each object and tighten Internal OWD to Private where record-level visibility control is needed.',
+      { records: internalReadOnly.map((o: any) => ({ name: o.QualifiedApiName, detail: `Internal: ${o.InternalSharingModel}` })) }
+    ));
+  }
+
+  // ── External OWD (Experience Cloud guest and community users) ─────────────────
+  // ExternalSharingModel is only meaningful when the org has active Experience Cloud sites.
+  // An object can have Private internal OWD but Public Read/Write external — exposing all
+  // records to unauthenticated guest users. This is a distinct and often higher-risk issue.
+  const hasExperienceCloud = (data.guestAccessObjects || []).length > 0;
+  const externalPRW = configurable.filter((obj: any) =>
+    (obj.ExternalSharingModel === 'ReadWrite' || obj.ExternalSharingModel === 'ReadWriteTransfer') &&
+    obj.ExternalSharingModel !== obj.InternalSharingModel  // only flag if external is MORE permissive
+  );
+  if (externalPRW.length > 0 && hasExperienceCloud) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'critical',
+      `${externalPRW.length} Objects with External Public Read/Write OWD`,
+      'External OWD controls access for Experience Cloud guest users and community members. These objects allow unauthenticated or community users to read and edit all records — a critical data exposure risk for any org with active Experience Cloud sites.',
+      'Change External OWD to Private in Setup → Security → Sharing Settings for all objects that should not be accessible to guest or community users.',
+      { records: externalPRW.map((o: any) => ({ name: o.QualifiedApiName, detail: `External: ${o.ExternalSharingModel} / Internal: ${o.InternalSharingModel}` })) }
+    ));
+  }
+
+  const externalReadOnly = configurable.filter((obj: any) =>
+    obj.ExternalSharingModel === 'Read' &&
+    obj.InternalSharingModel !== 'ReadWrite' && obj.InternalSharingModel !== 'ReadWriteTransfer' && obj.InternalSharingModel !== 'Read'
+  );
+  if (externalReadOnly.length > 0 && hasExperienceCloud) {
+    items.push(createDebtItem(
+      'sharingSecurity',
+      'high',
+      `${externalReadOnly.length} Objects with External Public Read Only OWD`,
+      'These objects allow Experience Cloud guest or community users to read all records. While less severe than Read/Write, unauthenticated access to these objects may expose sensitive data to the public.',
+      'Review each object in Setup → Security → Sharing Settings. Set External OWD to Private for objects containing sensitive data, and use sharing sets or guest user sharing rules to grant specific access.',
+      { records: externalReadOnly.map((o: any) => ({ name: o.QualifiedApiName, detail: `External: ${o.ExternalSharingModel} / Internal: ${o.InternalSharingModel}` })) }
     ));
   }
 
