@@ -1044,6 +1044,36 @@ export function assessDataModel(data: DataModelData): CategoryScore {
     ));
   }
 
+  // Custom field limit check — flag objects above 80% of their per-object field limit
+  // Standard objects: 500 field limit → 80% = 400
+  // Custom objects (__c): 800 field limit → 80% = 640
+  // TableEnumOrId is the object API name for standard objects, object ID for custom objects.
+  // Build a lookup from custom object Id → DeveloperName so we can display names.
+  const customObjIdToName = new Map<string, string>(
+    (data.objects || []).map((o: any) => [o.Id, o.DeveloperName + '__c'])
+  );
+  const fieldLimitObjects: { name: string; count: number; limit: number; pct: number }[] = [];
+  for (const [tableId, count] of Array.from(fieldsByObject.entries())) {
+    const isCustomObject = customObjIdToName.has(tableId);
+    const limit = isCustomObject ? 800 : 500;
+    const pct = Math.round((count / limit) * 100);
+    if (pct >= 80) {
+      const name = isCustomObject ? (customObjIdToName.get(tableId) || tableId) : tableId;
+      fieldLimitObjects.push({ name, count, limit, pct });
+    }
+  }
+  fieldLimitObjects.sort((a, b) => b.pct - a.pct);
+  if (fieldLimitObjects.length > 0) {
+    items.push(createDebtItem(
+      'dataModel',
+      fieldLimitObjects.some(o => o.pct >= 90) ? 'high' : 'medium',
+      `${fieldLimitObjects.length} Object${fieldLimitObjects.length !== 1 ? 's' : ''} Above 80% Custom Field Limit`,
+      `${fieldLimitObjects.length} object${fieldLimitObjects.length !== 1 ? 's' : ''} have used over 80% of their custom field limit (500 for standard objects, 800 for custom objects). Approaching the limit blocks new field creation on that object.`,
+      'Audit and remove unused fields on affected objects. Consider restructuring data into related child objects or using Custom Metadata Types for configuration data.',
+      { records: fieldLimitObjects.map(o => ({ name: o.name, detail: `${o.count} / ${o.limit} fields used (${o.pct}%)` })) }
+    ));
+  }
+
   // Check total custom objects count
   if (data.objects.length > 200) {
     items.push(createDebtItem(
