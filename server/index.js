@@ -1134,13 +1134,15 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
       return { name, max, remaining, used, usedPct };
     }).filter(l => l.max > 0);
 
-    const [apexClassCountResult, customObjectCountResult] = await Promise.all([
-      safeQuery(conn, "SELECT COUNT(Id) FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE IsCustomizable = true AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] }))
-    ]);
-
+    const apexClassCountResult = await safeQuery(conn, "SELECT COUNT(Id) FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] }));
     const apexClassCount = (apexClassCountResult.records[0] || {}).expr0 || 0;
-    const customObjectCount = (customObjectCountResult.records[0] || {}).expr0 || 0;
+
+    // Use the limits API value for custom objects — more accurate than a query
+    // (EntityDefinition with IsCustomizable=true over-counts by including standard objects)
+    const customObjectLimitEntry = (limitsRaw.CustomObjects || limitsRaw.CustomObjectsCount);
+    const customObjectCount = customObjectLimitEntry
+      ? (customObjectLimitEntry.Max || 0) - (customObjectLimitEntry.Remaining !== undefined ? customObjectLimitEntry.Remaining : customObjectLimitEntry.Max || 0)
+      : 0;
 
     res.json({ limits, apexClassCount, customObjectCount });
   } catch (err) {
