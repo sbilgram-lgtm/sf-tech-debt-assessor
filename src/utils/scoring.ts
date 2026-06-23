@@ -1357,12 +1357,16 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       { records: data.liveChatDeployments.map((d: any) => ({ name: d.DeveloperName, detail: 'Legacy LiveAgent deployment — no Embedded Service Config' })) }));
   }
 
-  // MSG-3: Legacy LiveChat only, no MessagingChannel (MIAW not adopted)
-  if ((data.liveChatButtons || []).length > 0 && (data.messagingChannels || []).length === 0) {
+  // MSG-3: Legacy LiveChat only, MIAW not adopted
+  // MIAW is detected via EmbeddedServiceMessagingChannel (the actual MIAW object) OR
+  // EmbeddedServiceConfig (covers older MIAW deployments). MessagingChannel covers
+  // SMS/WhatsApp/Facebook — those are NOT MIAW and must not suppress this finding.
+  const hasMiaw = (data.miawChannels || []).length > 0 || (data.embeddedServiceConfigs || []).length > 0;
+  if ((data.liveChatButtons || []).length > 0 && !hasMiaw) {
     items.push(createDebtItem('serviceCloud', 'high',
       'Legacy Live Chat Active but Messaging for In-App and Web (MIAW) Not Adopted',
-      'The org uses Legacy Live Chat exclusively with no Messaging Channels configured. Messaging for In-App and Web (MIAW) is the strategic successor — it provides asynchronous messaging, bot integration, and unified conversation history.',
-      'Begin the transition to Messaging for In-App and Web. Create Messaging Channels in Setup → Messaging → Messaging Settings. Legacy Live Chat is on a deprecation trajectory.',
+      'The org uses Legacy Live Chat exclusively with no Messaging for In-App and Web (MIAW) deployment detected. MIAW is the strategic successor — it provides asynchronous messaging, bot integration, and unified conversation history.',
+      'Begin the transition to Messaging for In-App and Web. Create an Embedded Service Messaging deployment in Setup → Messaging Settings. Legacy Live Chat is on a deprecation trajectory.',
       { count: data.liveChatButtons.length }));
   }
 

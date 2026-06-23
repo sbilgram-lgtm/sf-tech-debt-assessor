@@ -404,11 +404,13 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     } catch(e) {}
 
     // Live Chat / Messaging
-    const [liveChatButtons, liveChatDeployments, messagingChannels, embeddedServiceConfigs] = await Promise.all([
+    const [liveChatButtons, liveChatDeployments, messagingChannels, embeddedServiceConfigs, miawChannels] = await Promise.all([
       safeQuery(conn, "SELECT Id, DeveloperName, RoutingType, QueueId, IsActive FROM LiveChatButton WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, DeveloperName, IsActive FROM LiveChatDeployment WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, DeveloperName, MessagingPlatformType, IsActive FROM MessagingChannel WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, DeveloperName, IsActive FROM EmbeddedServiceConfig WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, DeveloperName, IsActive FROM EmbeddedServiceConfig WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
+      // EmbeddedServiceMessagingChannel is the actual MIAW object (Messaging for In-App and Web)
+      safeQuery(conn, "SELECT Id, DeveloperName FROM EmbeddedServiceMessagingChannel WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
     // Service Console
@@ -702,6 +704,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       liveChatDeployments: liveChatDeployments.records || [],
       messagingChannels: messagingChannels.records || [],
       embeddedServiceConfigs: embeddedServiceConfigs.records || [],
+      miawChannels: miawChannels.records || [],
       consoleApps: consoleApps.records || [],
       activeMacroCount: (macros.records[0] || {}).expr0 || 0,
       activeRecommendationStrategyCount: (recommendationStrategies.records[0] || {}).expr0 || 0,

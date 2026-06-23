@@ -96,6 +96,7 @@ export interface ServiceCloudData {
   liveChatDeployments: any[];
   messagingChannels: any[];
   embeddedServiceConfigs: any[];
+  miawChannels: any[];
   // Service Console
   consoleApps: any[];
   activeMacroCount: number;
