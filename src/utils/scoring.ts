@@ -1793,6 +1793,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   // excluded because they are managed and their OWD is set by the package author.
   const STANDARD_OWD_OBJECTS = new Set([
     'Account', 'Asset', 'Campaign', 'Case', 'CaseComment', 'Contact', 'Contract',
+    'Document',
     'Entitlement', 'Idea', 'IdeaComment',
     'Lead', 'LiveChatTranscript',
     'Macro', 'MessagingSession',
@@ -1802,6 +1803,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     'ReturnOrder', 'ReturnOrderLineItem',
     'ServiceAppointment', 'ServiceContract', 'ServiceResource', 'ServiceTerritory', 'Shift',
     'Solution',
+    'User',
     'WorkOrder', 'WorkOrderLineItem',
   ]);
 

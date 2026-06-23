@@ -851,6 +851,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
         "FROM PermissionSetAssignment " +
         "WHERE PermissionSet.PermissionsModifyAllData = true " +
         "AND Assignee.IsActive = true AND Assignee.UserType = 'Standard' " +
+        "AND Assignee.Profile.Name != 'System Administrator' " +
         "AND PermissionSet.IsOwnedByProfile = false LIMIT 500"
       );
     } catch (e) { /* may not have access */ }
