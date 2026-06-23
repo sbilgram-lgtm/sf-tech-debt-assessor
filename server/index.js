@@ -338,7 +338,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
   try {
     const [caseRecordTypes, queues, unverifiedOWAs] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, IsActive, Description FROM RecordType WHERE SobjectType = 'Case'"),
-      safeQuery(conn, "SELECT Id, Name, Type FROM Group WHERE Type = 'Queue'"),
+      safeQuery(conn, "SELECT Id, Name, DeveloperName, Type FROM Group WHERE Type = 'Queue' LIMIT 2000"),
       safeQuery(conn, "SELECT Id, Address, IsVerified FROM OrgWideEmailAddress WHERE IsVerified = false LIMIT 20")
     ]);
 

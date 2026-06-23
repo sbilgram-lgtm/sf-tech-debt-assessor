@@ -1097,15 +1097,19 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     ));
   }
 
-  // Check for excessive queues
-  if (data.queues.length > 50) {
+  // Check for excessive queues — exclude managed-package queues (DeveloperName contains __ indicating a namespace prefix)
+  const adminQueues = (data.queues || []).filter((q: any) => {
+    const dev: string = q.DeveloperName || q.Name || '';
+    return !dev.includes('__');
+  });
+  if (adminQueues.length > 50) {
     items.push(createDebtItem(
       'serviceCloud',
       'medium',
-      `${data.queues.length} Queues Configured`,
+      `${adminQueues.length} Queues Configured`,
       'Excessive queues can indicate routing complexity that is hard to manage.',
       'Review queue usage and consolidate underutilized queues. Consider Omni-Channel routing.',
-      { count: data.queues.length }
+      { count: adminQueues.length }
     ));
   }
 
