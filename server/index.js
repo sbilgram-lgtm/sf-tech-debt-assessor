@@ -267,7 +267,7 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       "FROM ApexCodeCoverageAggregate"
     );
 
-    const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') LIMIT 30");
+    const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') AND Name NOT IN ('CommunitiesLoginController','LightningLoginFormController','LightningLoginFormControllerTest','SiteLoginController','SiteRegisterController','ChangePasswordController','ForgotPasswordController','CommunitiesSelfRegController','CommunitiesSelfRegConfirmController','MyProfilePageController','CommunitiesLandingController','SiteSampleController') LIMIT 50");
     const hardcodedLoginUrls = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%loginUrl%' OR Name LIKE '%LoginUrl%') LIMIT 20");
 
     // Test quality checks — scan test class source bodies for anti-patterns
@@ -1715,7 +1715,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, CronJobDetail.Name, State, NextFireTime FROM CronTrigger WHERE State = 'WAITING' LIMIT 100"
       ),
       safeQuery(conn,
-        "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE JobType = 'BatchApex' AND Status IN ('Processing','Holding') LIMIT 100"
+        "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE JobType = 'BatchApex' AND Status = 'Processing' LIMIT 100"
       ),
       safeToolingQuery(conn,
         "SELECT Id, TracedEntityId, LogType, ExpirationDate FROM TraceFlag WHERE ExpirationDate > TODAY LIMIT 100"
