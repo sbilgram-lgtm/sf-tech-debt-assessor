@@ -98,6 +98,7 @@ export interface ServiceCloudData {
   embeddedServiceConfigs: any[];
   miawChannels: any[];
   // Service Console
+  appDefQueryWorked: boolean;
   consoleApps: any[];
   activeMacroCount: number;
   activeRecommendationStrategyCount: number;

@@ -414,7 +414,12 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     ]);
 
     // Service Console
-    const [consoleApps, macros, recommendationStrategies, callCenters, softphoneLayouts] = await Promise.all([
+    // Fetch ALL AppDefinition records visible to the running user (not just Console type).
+    // AppDefinition is profile-filtered regardless of SOQL vs Tooling API — we can only see
+    // apps assigned to our profile. We use the full set to distinguish "no Console apps exist"
+    // from "AppDefinition returned nothing (query failed or profile has no apps)".
+    const [allAppDefs, consoleApps, macros, recommendationStrategies, callCenters, softphoneLayouts] = await Promise.all([
+      safeQuery(conn, "SELECT Id FROM AppDefinition LIMIT 1").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, DeveloperName, NavType FROM AppDefinition WHERE NavType = 'Console' LIMIT 10").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM Macro WHERE IsActive = true").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM RecommendationStrategy WHERE IsActive = true").catch(() => ({ records: [{ expr0: 0 }] })),
@@ -705,6 +710,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       messagingChannels: messagingChannels.records || [],
       embeddedServiceConfigs: embeddedServiceConfigs.records || [],
       miawChannels: miawChannels.records || [],
+      appDefQueryWorked: (allAppDefs.records || []).length > 0,
       consoleApps: consoleApps.records || [],
       activeMacroCount: (macros.records[0] || {}).expr0 || 0,
       activeRecommendationStrategyCount: (recommendationStrategies.records[0] || {}).expr0 || 0,
