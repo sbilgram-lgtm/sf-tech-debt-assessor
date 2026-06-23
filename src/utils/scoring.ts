@@ -1148,7 +1148,16 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   // ── Omnichannel ──────────────────────────────────────────────────────────────
 
   // OC-1: No ServiceChannels despite queues existing
-  if ((data.serviceChannels || []).length === 0 && data.queues.length > 0) {
+  // ServiceChannel uses safeQuery with .catch(() => ({ records: [] })) — a permissions error
+  // or disabled Omni-Channel feature returns silently empty. Suppress if Live Chat buttons or
+  // MIAW/ESW deployments exist: those require Omni-Channel service channels to function, so
+  // empty serviceChannels in that context almost certainly means the query failed, not that
+  // channels are absent.
+  const hasOmniSignals =
+    (data.liveChatButtons || []).length > 0 ||
+    (data.miawChannels || []).length > 0 ||
+    (data.embeddedServiceConfigs || []).length > 0;
+  if ((data.serviceChannels || []).length === 0 && data.queues.length > 0 && !hasOmniSignals) {
     items.push(createDebtItem('serviceCloud', 'medium',
       'No Omni-Channel Service Channels Configured',
       'Queues exist but no Omni-Channel Service Channels are configured. Work is routed manually with no capacity management, queue metrics, or supervisor visibility.',
@@ -1396,9 +1405,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   // These signals mean a Console app almost certainly exists — we just can't see it.
   const hasConsoleSignals =
     (data.serviceChannels || []).length > 0 ||
-    (data.liveChatButtons || []).length > 0 ||
-    (data.miawChannels || []).length > 0 ||
-    (data.embeddedServiceConfigs || []).length > 0;
+    hasOmniSignals;
 
   if ((data.consoleApps || []).length === 0 && data.queues.length > 0 && data.appDefQueryWorked && !hasConsoleSignals) {
     items.push(createDebtItem('serviceCloud', 'high',
