@@ -1889,14 +1889,15 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   const staleUsers: any[] = apiUsers.staleUsers || [];
   const broadPermUsers: any[] = apiUsers.broadPermUsers || [];
 
-  // Users with Modify All Data — highest risk
+  // Users with Modify All Data (excluding System Administrator profile — that's expected)
+  // Includes users who have MAD via a non-SysAdmin profile OR via a permission set
   if (broadPermUsers.length > 0) {
     items.push(createDebtItem(
       'sharingSecurity',
       'critical',
-      `${broadPermUsers.length} Active Users with Modify All Data`,
-      'Modify All Data grants unrestricted write access to every record in the org. This is a critical over-privilege.',
-      'Revoke Modify All Data from all non-admin profiles. Use granular object permissions instead.',
+      `${broadPermUsers.length} Non-Admin Users with Modify All Data`,
+      'Modify All Data grants unrestricted write access to every record in the org. Non-admin users (via profile or permission set) should never hold this permission.',
+      'Remove Modify All Data from all non-System-Administrator profiles and permission sets. Use granular object-level permissions instead.',
       { records: broadPermUsers.map((u:any) => ({ name: u.Name, detail: `${u.Username} · ${u.Profile?.Name}` })) }
     ));
   }

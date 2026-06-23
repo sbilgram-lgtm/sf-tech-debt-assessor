@@ -836,12 +836,40 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       `ORDER BY LastLoginDate ASC NULLS FIRST LIMIT 200`
     );
 
-    // Users with Modify All Data or View All Data permission via profile
+    // Users with Modify All Data — via profile OR permission set, excluding System Administrator
+    // (SysAdmins are expected to have this; non-SysAdmin users with MAD are the real risk)
     const broadPermUsers = await safeQuery(conn,
       "SELECT Id, Name, Username, Email, Profile.Name FROM User " +
       "WHERE IsActive = true AND Profile.PermissionsModifyAllData = true " +
-      "AND UserType = 'Standard' LIMIT 100"
+      "AND UserType = 'Standard' AND Profile.Name != 'System Administrator' LIMIT 500"
     );
+    // Also find users who have MAD via a permission set (not counted above)
+    let madViaPermSet = { records: [] };
+    try {
+      madViaPermSet = await safeQuery(conn,
+        "SELECT AssigneeId, Assignee.Name, Assignee.Username, Assignee.Email, Assignee.Profile.Name " +
+        "FROM PermissionSetAssignment " +
+        "WHERE PermissionSet.PermissionsModifyAllData = true " +
+        "AND Assignee.IsActive = true AND Assignee.UserType = 'Standard' " +
+        "AND PermissionSet.IsOwnedByProfile = false LIMIT 500"
+      );
+    } catch (e) { /* may not have access */ }
+    // Merge both sources, dedup by user Id
+    const broadPermMap = new Map();
+    for (const u of (broadPermUsers.records || [])) broadPermMap.set(u.Id, { ...u, source: 'profile' });
+    for (const r of (madViaPermSet.records || [])) {
+      if (!broadPermMap.has(r.AssigneeId)) {
+        broadPermMap.set(r.AssigneeId, {
+          Id: r.AssigneeId,
+          Name: r.Assignee?.Name,
+          Username: r.Assignee?.Username,
+          Email: r.Assignee?.Email,
+          Profile: r.Assignee?.Profile,
+          source: 'permset'
+        });
+      }
+    }
+    const broadPermMerged = Array.from(broadPermMap.values());
 
     // Login IP ranges — profiles with no IP restrictions
     let loginIpRanges = { records: [] };
@@ -938,7 +966,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
         all: apiUsers.records || [],
         integrationUsers: integrationUsers.records || [],
         staleUsers: staleUsers.records || [],
-        broadPermUsers: broadPermUsers.records || []
+        broadPermUsers: broadPermMerged
       },
       loginIpRanges: loginIpRanges.records || [],
       mfaEnrolledUserIds: (mfaEnrolledUsers.records || []).map(r => r.UserId),
