@@ -2468,7 +2468,6 @@ const LIMIT_LABELS: Record<string, string> = {
   ActiveScratchOrgs: 'Active Scratch Orgs',
   AnalyticsExternalDataSizeMB: 'Analytics External Data (MB)',
   CustomObjects: 'Custom Objects',
-  CustomFields: 'Custom Fields (Org-Wide)',
   ConcurrentAsyncGetReportInstances: 'Concurrent Async Report Instances',
   ConcurrentEinsteinDataInsightsStoryCreation: 'Concurrent Einstein Insights Story Creation',
   ConcurrentEinsteinDiscoveryStoryCreation: 'Concurrent Einstein Discovery Story Creation',
