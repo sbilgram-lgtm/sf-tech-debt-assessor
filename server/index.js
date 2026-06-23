@@ -769,7 +769,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     try {
       owdSettings = await safeToolingQuery(conn,
         "SELECT QualifiedApiName, InternalSharingModel, ExternalSharingModel " +
-        "FROM EntityDefinition WHERE IsCustomizable = true AND IsQueryable = true"
+        "FROM EntityDefinition WHERE IsCustomizable = true AND IsQueryable = true AND IsLayoutable = true"
       );
     } catch (e) { /* may not be available in all orgs */ }
 

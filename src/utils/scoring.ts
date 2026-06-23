@@ -1780,14 +1780,37 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
 export function assessSharingSecurity(data: SharingSecurityData): CategoryScore {
   const items: DebtItem[] = [];
 
-  // Public OWD — any object with Public Read/Write or Public Read/Write/Transfer is critical
-  // Exclude objects whose OWD cannot be configured by admins:
-  //   - Managed package objects: namespace__Object pattern (QualifiedApiName has 3+ segments when split by '__')
-  //   - Non-configurable suffixes: __mdt (Custom Metadata), __x (External Objects), __e (Platform Events),
-  //     __b (Big Objects), __History, __Share, __Feed, __Tag, __ChangeEvent, __hd (History Deletion)
-  const NON_OWD_SUFFIXES = ['__mdt', '__x', '__e', '__b', '__History', '__Share', '__Feed', '__Tag', '__ChangeEvent', '__hd', '__DataCategorySelection'];
-  const isConfigurableOwd = (name: string) =>
-    !NON_OWD_SUFFIXES.some(s => name.endsWith(s)) && name.split('__').length < 3;
+  // Public OWD — objects with Public Read/Write or Public Read/Write/Transfer that admins can actually
+  // change in Setup → Security → Sharing Settings.
+  //
+  // Standard objects: Salesforce controls OWD for most of them (Task, Event, ContentDocument, FeedItem,
+  // EmailMessage, etc. are PRW by design and cannot be changed). Only count standard objects from the
+  // known-configurable whitelist that appears in the Sharing Settings UI.
+  //
+  // Custom objects (Object__c, no namespace prefix): OWD is always admin-configurable.
+  //
+  // Managed-package custom objects (Namespace__Object__c — 3 segments when split by '__'):
+  // excluded because they are managed and their OWD is set by the package author.
+  const STANDARD_OWD_OBJECTS = new Set([
+    'Account', 'Asset', 'Campaign', 'Case', 'CaseComment', 'Contact', 'Contract',
+    'Entitlement', 'Idea', 'IdeaComment',
+    'Lead', 'LiveChatTranscript',
+    'Macro', 'MessagingSession',
+    'Opportunity', 'Order', 'OrderItem',
+    'Pricebook2', 'Product2',
+    'Question', 'Quote', 'QuoteLineItem', 'Reply',
+    'ReturnOrder', 'ReturnOrderLineItem',
+    'ServiceAppointment', 'ServiceContract', 'ServiceResource', 'ServiceTerritory', 'Shift',
+    'Solution',
+    'WorkOrder', 'WorkOrderLineItem',
+  ]);
+
+  const isConfigurableOwd = (name: string): boolean => {
+    const parts = name.split('__');
+    if (parts.length >= 3) return false; // managed package object (Namespace__Object__c or similar)
+    if (name.endsWith('__c')) return true; // first-party custom object — always configurable
+    return STANDARD_OWD_OBJECTS.has(name); // standard object — only if in the known-configurable list
+  };
 
   const publicReadWrite = data.owdSettings.filter((obj: any) =>
     (obj.InternalSharingModel === 'ReadWrite' || obj.InternalSharingModel === 'ReadWriteTransfer') &&
