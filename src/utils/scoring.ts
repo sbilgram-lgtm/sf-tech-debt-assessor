@@ -1385,12 +1385,22 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   // ── Service Console ──────────────────────────────────────────────────────────
 
   // SC-1: No Console App
-  // AppDefinition is profile-filtered (both standard SOQL and Tooling API only return apps
-  // visible to the running user's profile). We guard on appDefQueryWorked — if the query
-  // returned at least one app of any type, we know AppDefinition is accessible and a zero
-  // Console result genuinely means no Console app exists. If the query returned nothing at
-  // all, we cannot distinguish "no apps" from "profile has no apps assigned" and suppress.
-  if ((data.consoleApps || []).length === 0 && data.queues.length > 0 && data.appDefQueryWorked) {
+  // AppDefinition is profile-filtered — both standard SOQL and Tooling API return only apps
+  // visible to the running user's profile. A Console app assigned to agent profiles but not
+  // the assessing admin's profile will not appear, producing a false positive.
+  //
+  // Suppress entirely if strong Console-adjacent signals exist:
+  //   - Omni-Channel ServiceChannels configured (requires Console to be useful)
+  //   - Active Live Chat buttons (agents need Console for the chat widget)
+  //   - MIAW channels deployed (ESW messaging requires Console)
+  // These signals mean a Console app almost certainly exists — we just can't see it.
+  const hasConsoleSignals =
+    (data.serviceChannels || []).length > 0 ||
+    (data.liveChatButtons || []).length > 0 ||
+    (data.miawChannels || []).length > 0 ||
+    (data.embeddedServiceConfigs || []).length > 0;
+
+  if ((data.consoleApps || []).length === 0 && data.queues.length > 0 && data.appDefQueryWorked && !hasConsoleSignals) {
     items.push(createDebtItem('serviceCloud', 'high',
       'No Lightning Service Console App Detected',
       'No Lightning App with Console navigation style was found in this org. Agents may be using standard tab navigation for case management, losing split-view, workspace tabs, the utility bar (Omni-Channel widget, macros, telephony), and keyboard shortcuts.',
