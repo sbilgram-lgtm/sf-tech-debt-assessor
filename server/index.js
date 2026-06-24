@@ -184,14 +184,14 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
   try {
     const flows = await safeToolingQuery(conn,
       "SELECT Id, Definition.DeveloperName, MasterLabel, ProcessType, Status, Description, LastModifiedDate " +
-      "FROM Flow WHERE Status = 'Active'"
+      "FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null"
     );
     const workflowRules = await safeToolingQuery(conn,
       "SELECT Id, Name, TableEnumOrId, CreatedDate, LastModifiedDate " +
-      "FROM WorkflowRule"
+      "FROM WorkflowRule WHERE Active = true AND NamespacePrefix = null"
     );
     const processBuilders = flows.records.filter(f =>
-      f.ProcessType === 'CustomEvent' || f.ProcessType === 'InvocableProcess'
+      f.ProcessType === 'Workflow' || f.ProcessType === 'CustomEvent' || f.ProcessType === 'InvocableProcess'
     );
     const actualFlows = flows.records.filter(f =>
       f.ProcessType === 'AutoLaunchedFlow' || f.ProcessType === 'Flow' ||
@@ -199,16 +199,16 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
     );
 
     const [approvalProcesses, einsteinFlowActions, webToCaseSettingsRes, caseAutoResponseRulesRes] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 50"),
+      safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 200"),
       safeToolingQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
       safeQuery(conn, "SELECT EnableWebToCase, CaseCaptchaEnabledFlag FROM WebToCaseSettings LIMIT 1").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, Name, Active FROM AutoResponseRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
     const [sControlsRes, activePushTopicsRes, pendingTimeQueueRes, loginFlowsRes] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, Name FROM Scontrol LIMIT 50").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, Name FROM Scontrol WHERE NamespacePrefix = null LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, Name, ApiVersion, Query FROM PushTopic WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM ProcessInstance WHERE Status = 'Pending' AND CreatedDate = LAST_N_DAYS:30").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM ProcessInstance WHERE Status = 'Pending'").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT Id, FlowDefinitionView.ApiName, EntityType FROM LoginFlow LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
@@ -255,7 +255,7 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const classes = await safeToolingQuery(conn,
       "SELECT Id, Name, Body, ApiVersion, LengthWithoutComments, " +
       "LastModifiedDate, NamespacePrefix " +
-      "FROM ApexClass WHERE NamespacePrefix = null"
+      "FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'"
     );
     const triggers = await safeToolingQuery(conn,
       "SELECT Id, Name, Body, TableEnumOrId, ApiVersion, " +
@@ -267,8 +267,14 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       "FROM ApexCodeCoverageAggregate"
     );
 
-    const soapLoginApex = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%login%' OR Name LIKE '%Login%' OR Name LIKE '%SOAP%' OR Name LIKE '%Soap%') AND Name NOT IN ('CommunitiesLoginController','LightningLoginFormController','LightningLoginFormControllerTest','SiteLoginController','SiteRegisterController','ChangePasswordController','ForgotPasswordController','CommunitiesSelfRegController','CommunitiesSelfRegConfirmController','MyProfilePageController','CommunitiesLandingController','SiteSampleController') LIMIT 50");
-    const hardcodedLoginUrls = await safeQuery(conn, "SELECT Id, Name FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null AND (Name LIKE '%loginUrl%' OR Name LIKE '%LoginUrl%') LIMIT 20");
+    const soapLoginApex = (classes.records || []).filter(c => {
+      const body = c.Body || '';
+      return /\.login\s*\(|ConnectorConfig|login\.salesforce\.com/i.test(body);
+    });
+    const hardcodedLoginUrls = (classes.records || []).filter(c => {
+      const body = c.Body || '';
+      return /login\.salesforce\.com|test\.salesforce\.com/i.test(body);
+    });
 
     // Test quality checks — scan test class source bodies for anti-patterns
     const testClassBodies = (classes.records || []).filter(c => {
@@ -277,8 +283,8 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     });
     const seeAllDataClasses = testClassBodies.filter(c => /SeeAllData\s*=\s*true/i.test(c.Body || ''));
     const noAssertClasses = testClassBodies.filter(c => {
-      const body = c.Body || '';
-      return !/System\.assert|Assert\./i.test(body);
+      const strippedBody = (c.Body || '').replace(/\/\/.*$/gm, '');
+      return !/System\.assert|Assert\./i.test(strippedBody);
     });
     const noStartStopTestClasses = testClassBodies.filter(c => {
       const body = c.Body || '';
@@ -287,15 +293,15 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const noTestSetupClasses = testClassBodies.filter(c => {
       const body = c.Body || '';
       // Flag classes that insert test data but don't use @TestSetup
-      return /Database\.insert|insert\s+new\s+\w/i.test(body) && !/@TestSetup/i.test(body);
+      return /Database\.insert|\binsert\s+\w/i.test(body) && !/@TestSetup/i.test(body);
     });
 
     res.json({
       classes: classes.records || [],
       triggers: triggers.records || [],
       coverage: testCoverage.records || [],
-      soapLoginApex: soapLoginApex.records || [],
-      hardcodedLoginUrls: hardcodedLoginUrls.records || [],
+      soapLoginApex: soapLoginApex,
+      hardcodedLoginUrls: hardcodedLoginUrls,
       seeAllDataClasses,
       noAssertClasses,
       noStartStopTestClasses,
@@ -313,7 +319,9 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
   try {
     const objects = await safeToolingQuery(conn,
       "SELECT Id, DeveloperName, Description, NamespacePrefix, LastModifiedDate " +
-      "FROM CustomObject WHERE NamespacePrefix = null"
+      "FROM CustomObject WHERE NamespacePrefix = null AND CustomSettingsType = null " +
+      "AND (NOT QualifiedApiName LIKE '%__mdt') AND (NOT QualifiedApiName LIKE '%__e') " +
+      "AND (NOT QualifiedApiName LIKE '%__x') AND (NOT QualifiedApiName LIKE '%__b')"
     );
     const fields = await safeToolingQuery(conn,
       "SELECT Id, DeveloperName, TableEnumOrId, Description, NamespacePrefix, " +
@@ -321,9 +329,19 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
       "FROM CustomField WHERE NamespacePrefix = null"
     );
 
+    // Aggregate field counts per object — avoids 2000-record truncation for the 80% limit check
+    const fieldCountsResult = await safeToolingQuery(conn,
+      "SELECT TableEnumOrId, COUNT(Id) fieldCount FROM CustomField WHERE NamespacePrefix = null GROUP BY TableEnumOrId LIMIT 2000"
+    ).catch(() => ({ records: [] }));
+    const fieldsByObject = {};
+    for (const row of (fieldCountsResult.records || [])) {
+      fieldsByObject[row.TableEnumOrId] = row.fieldCount;
+    }
+
     res.json({
       objects: objects.records || [],
       fields: fields.records || [],
+      fieldsByObject,
       fieldUsage: []
     });
   } catch (err) {
@@ -343,21 +361,33 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     ]);
 
     const [assignmentRules, escalationRules, serviceChannels, routingConfigurations, presenceConfigurations] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, Name FROM AssignmentRule LIMIT 50").catch(() => ({ records: [] })),
-      safeToolingQuery(conn, "SELECT Id, Name FROM EscalationRule LIMIT 50").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, Name FROM AssignmentRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, Name FROM EscalationRule WHERE Active = true LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, DeveloperName, RelatedEntityType, IsEnabled FROM ServiceChannel LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, CapacityType, RoutingModel, PushTimeout FROM RoutingConfiguration LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, Capacity FROM PresenceConfiguration LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
+    // Canary query — succeeds only if Knowledge is enabled and licensed.
+    // safeQuery returns empty on error, so check totalSize !== undefined to distinguish
+    // "Knowledge off (query errored)" from "Knowledge on but 0 articles".
+    const knowledgeCanary = await new Promise((resolve) => {
+      conn.query("SELECT Id FROM KnowledgeArticleVersion LIMIT 1", (err, result) => {
+        resolve(err ? null : result);
+      });
+    });
+    const knowledgeEnabled = knowledgeCanary !== null;
+
     // Knowledge counts — jsforce v1 always returns aggregate as expr0 (named aliases not supported)
-    const [publishedArticles, staleArticles, draftStalled, dataCategoryGroups, articlesNoValidation] = await Promise.all([
-      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND LastModifiedDate < LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Draft' AND LastModifiedDate < LAST_N_DAYS:180").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM DataCategoryGroup").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND ValidationStatus = null").catch(() => ({ records: [{ expr0: 0 }] }))
-    ]);
+    const [publishedArticles, staleArticles, draftStalled, dataCategoryGroups, articlesNoValidation] = knowledgeEnabled
+      ? await Promise.all([
+          safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true").catch(() => ({ records: [{ expr0: 0 }] })),
+          safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND LastModifiedDate < LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] })),
+          safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Draft' AND IsLatestVersion = true AND LastModifiedDate < LAST_N_DAYS:180").catch(() => ({ records: [{ expr0: 0 }] })),
+          safeQuery(conn, "SELECT COUNT(Id) FROM DataCategoryGroup").catch(() => ({ records: [{ expr0: 0 }] })),
+          safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND ValidationStatus = null").catch(() => ({ records: [{ expr0: 0 }] }))
+        ])
+      : [{ records: [{ expr0: 0 }] }, { records: [{ expr0: 0 }] }, { records: [{ expr0: 0 }] }, { records: [{ expr0: 0 }] }, { records: [{ expr0: 0 }] }];
 
     // Entitlements
     const [entitlementProcesses, serviceContractsRaw, entitlementTemplates] = await Promise.all([
@@ -369,13 +399,22 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // Entitlement processes without business hours
     const entitlementProcessesWithoutBusinessHours = (entitlementProcesses.records || []).filter((ep) => !ep.BusinessHoursId);
 
-    // Entitlement processes without milestone actions — check EntitlementProcessMilestone
+    // Entitlement processes without milestone actions — check MilestoneAction (not EntitlementProcessMilestone)
+    // First get which processes have milestones at all, then which of those have MilestoneAction records
     let epMilestones = { records: [] };
+    let milestoneActions = { records: [] };
     try {
-      epMilestones = await safeQuery(conn, "SELECT Id, SlaProcessId, Name FROM EntitlementProcessMilestone LIMIT 200");
+      epMilestones = await safeQuery(conn, "SELECT Id, SlaProcessId, Name FROM EntitlementProcessMilestone LIMIT 2000");
+    } catch(e) {}
+    try {
+      milestoneActions = await safeQuery(conn, "SELECT Id, SlaProcessId FROM MilestoneAction LIMIT 2000").catch(() => ({ records: [] }));
     } catch(e) {}
     const epIdsWithMilestones = new Set((epMilestones.records || []).map(m => m.SlaProcessId));
-    const entitlementProcessesWithoutMilestoneActions = (entitlementProcesses.records || []).filter(ep => !epIdsWithMilestones.has(ep.Id));
+    const epIdsWithMilestoneActions = new Set((milestoneActions.records || []).map(m => m.SlaProcessId));
+    // Flag processes that have milestones but none of those milestones have any MilestoneAction
+    const entitlementProcessesWithoutMilestoneActions = (entitlementProcesses.records || []).filter(ep =>
+      epIdsWithMilestones.has(ep.Id) && !epIdsWithMilestoneActions.has(ep.Id)
+    );
 
     // Open cases with entitlement but no SLA start date
     let openCasesEntitlementNoSla = { records: [{ expr0: 0 }] };
@@ -394,7 +433,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // Email-to-Case
     const [emailRoutingAddresses, emailServicesAddresses] = await Promise.all([
       safeQuery(conn, "SELECT Id, RoutingName, EmailAddress, TlsMode, OwnerId, IsVerified FROM CaseEmailRoutingAddress LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, LocalPart, AuthorizedSenders FROM EmailServicesAddress LIMIT 50").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, LocalPart, AuthorizedSenders FROM EmailServicesAddress WHERE Function.IsActive = true LIMIT 200").catch(() => ({ records: [] }))
     ]);
 
     let emailThreadingGapCount = 0;
@@ -469,7 +508,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     let closedCasesWithComments = { records: [{ expr0: 0 }] };
     try {
       closedCasesTotal = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90");
-      closedCasesWithComments = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90 AND Id IN (SELECT ParentId FROM CaseComment WHERE CreatedDate = LAST_N_DAYS:90)");
+      closedCasesWithComments = await safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND ClosedDate = LAST_N_DAYS:90 AND Id IN (SELECT ParentId FROM CaseComment)");
     } catch(e) {}
 
     // Quick Text records — zero or stale
@@ -690,6 +729,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       serviceChannels: serviceChannels.records || [],
       routingConfigurations: routingConfigurations.records || [],
       presenceConfigurations: presenceConfigurations.records || [],
+      knowledgeEnabled,
       publishedArticleCount: (publishedArticles.records[0] || {}).expr0 || 0,
       staleArticleCount: (staleArticles.records[0] || {}).expr0 || 0,
       draftStalledCount: (draftStalled.records[0] || {}).expr0 || 0,
@@ -885,7 +925,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     let loginIpRanges = { records: [] };
     try {
       loginIpRanges = await safeToolingQuery(conn,
-        "SELECT Id, ProfileId, StartAddress, EndAddress FROM ProfileIpRange LIMIT 500"
+        "SELECT Id, ProfileId, StartAddress, EndAddress FROM ProfileIpRange LIMIT 2000"
       );
     } catch (e) { /* optional */ }
 
@@ -916,9 +956,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
 
     // Active OAuth access tokens (Connected App sessions)
     const activeOauthTokens = await safeQuery(conn,
-      "SELECT Id, UserId, User.Name, User.Username, AppName, LastUsedDate, UseCount " +
-      "FROM AuthSession WHERE SessionType = 'OAuth2' " +
-      "ORDER BY LastUsedDate DESC NULLS LAST LIMIT 200"
+      "SELECT Id, AppName, UserId, User.Name, User.Username, LastUsedDate, UseCount FROM OauthToken ORDER BY LastUsedDate DESC NULLS LAST LIMIT 500"
     );
 
     // Sessions with low assurance level (no MFA step-up)
@@ -943,10 +981,10 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     );
 
     const [privilegedUsersRes, asyncSharingUpdateRes, outboundMsgRes, caseGuestProfilesRes] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name FROM PermissionSet WHERE (PermissionsModifyAllData = true OR PermissionsViewAllData = true OR PermissionsAuthorApex = true OR PermissionsCustomizeApplication = true) AND IsCustom = true LIMIT 20"),
+      safeQuery(conn, "SELECT Id, Name FROM PermissionSet WHERE (PermissionsModifyAllData = true OR PermissionsViewAllData = true OR PermissionsAuthorApex = true OR PermissionsCustomizeApplication = true) AND IsCustom = true LIMIT 200"),
       safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName = 'AsyncSharingRecalculation' LIMIT 1"),
-      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20"),
-      safeQuery(conn, "SELECT Id, Name, PermissionsReadCases, PermissionsEditCases, Parent.Name, Parent.IsOwnedByProfile FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.IsOwnedByProfile = true AND PermissionsReadCases = true LIMIT 20").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE NamespacePrefix = null LIMIT 200"),
+      safeQuery(conn, "SELECT Id, PermissionsRead, PermissionsEdit, Parent.Name, Parent.UserType FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.UserType = 'GuestUser' AND PermissionsRead = true LIMIT 100").catch(() => ({ records: [] }))
     ]);
 
     // PSG count — how many Permission Set Groups exist
@@ -1020,7 +1058,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     try {
       namedCredentials = await safeToolingQuery(conn,
         "SELECT Id, DeveloperName, Endpoint, PrincipalType " +
-        "FROM NamedCredential"
+        "FROM NamedCredential WHERE NamespacePrefix = null"
       );
     } catch (e) { /* optional */ }
 
@@ -1029,7 +1067,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     try {
       remoteSites = await safeToolingQuery(conn,
         "SELECT Id, EndpointUrl, IsActive, DisableProtocolSecurity " +
-        "FROM RemoteProxy"
+        "FROM RemoteProxy WHERE NamespacePrefix = null"
       );
     } catch (e) { /* optional */ }
 
@@ -1037,12 +1075,12 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     let apexCallouts = { records: [] };
     try {
       apexCallouts = await safeToolingQuery(conn,
-        "SELECT Id, Name, Body FROM ApexClass WHERE NamespacePrefix = null"
+        "SELECT Id, Name, Body FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'"
       );
     } catch (e) { /* optional */ }
 
     const [retiredApiApex, deprecatedGraphQLComponents] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Active' AND ApiVersion <= 30 AND NamespacePrefix = null LIMIT 50"),
+      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Active' AND ApiVersion <= 30 AND NamespacePrefix = null LIMIT 500"),
       safeQuery(conn, "SELECT Id, DeveloperName FROM LightningComponentBundle WHERE IsExposed = true LIMIT 200")
     ]);
 
@@ -1054,9 +1092,11 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
 
     // External Credentials count (modern Named Credential replacement)
     let externalCredentialCount = 0;
+    let externalCredentialQueryWorked = false;
     try {
       const ecRes = await safeQuery(conn, "SELECT COUNT(Id) FROM ExternalCredential LIMIT 1");
       externalCredentialCount = (ecRes.records[0] || {}).expr0 || 0;
+      externalCredentialQueryWorked = true;
     } catch(e) {}
 
     // Dedicated integration users (API-only profile users still active)
@@ -1075,6 +1115,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       retiredApiApexClasses: retiredApiApex.records || [],
       activePushTopics: integrationPushTopics.records || [],
       externalCredentialCount,
+      externalCredentialQueryWorked,
       dedicatedIntegrationUserCount: (dedicatedIntegrationUsers.records[0] || {}).expr0 || 0
     });
   } catch (err) {
@@ -1088,28 +1129,37 @@ app.get('/api/assess/test-coverage', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const classes = await safeToolingQuery(conn,
-      "SELECT Id, Name, ApiVersion, LengthWithoutComments, NamespacePrefix " +
-      "FROM ApexClass WHERE NamespacePrefix = null"
+      "SELECT Id, Name, Body, IsTest, ApiVersion, LengthWithoutComments, NamespacePrefix " +
+      "FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'"
     );
     const triggers = await safeToolingQuery(conn,
       "SELECT Id, Name, ApiVersion, TableEnumOrId, NamespacePrefix " +
-      "FROM ApexTrigger WHERE NamespacePrefix = null"
+      "FROM ApexTrigger WHERE NamespacePrefix = null AND Status = 'Active'"
     );
 
-    // Separate test classes from non-test
+    // Use canonical IsTest field — more accurate than name heuristic
     const allClasses = classes.records || [];
-    const testClasses = allClasses.filter(c => /test/i.test(c.Name));
-    const nonTestClasses = allClasses.filter(c => !/test/i.test(c.Name));
+    const testClasses = allClasses.filter(c => c.IsTest === true);
+    const nonTestClasses = allClasses.filter(c => c.IsTest !== true);
 
     const coverage = await safeToolingQuery(conn,
       "SELECT ApexClassOrTriggerId, ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered " +
       "FROM ApexCodeCoverageAggregate"
     );
 
+    // Filter coverage to only org-owned production components server-side.
+    // ApexCodeCoverageAggregate returns records for managed packages and test classes —
+    // restricting here prevents inflated counts on the client.
+    const orgClassIds = new Set(nonTestClasses.map(c => c.Id));
+    const orgTriggerIds = new Set((triggers.records || []).map(t => t.Id));
+    const orgCoverage = (coverage.records || []).filter(c =>
+      orgClassIds.has(c.ApexClassOrTriggerId) || orgTriggerIds.has(c.ApexClassOrTriggerId)
+    );
+
     res.json({
       apexClasses: nonTestClasses,
       apexTriggers: triggers.records || [],
-      coverage: coverage.records || [],
+      coverage: orgCoverage,
       testClasses
     });
   } catch (err) {
@@ -1156,8 +1206,8 @@ app.get('/api/assess/duplicate-rules', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [duplicateRules, matchingRules] = await Promise.all([
-      safeQuery(conn, "SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule LIMIT 100"),
-      safeQuery(conn, "SELECT Id, DeveloperName, Description FROM MatchingRule LIMIT 100")
+      safeQuery(conn, "SELECT Id, DeveloperName, IsActive, Description FROM DuplicateRule WHERE NamespacePrefix = null LIMIT 100"),
+      safeQuery(conn, "SELECT Id, DeveloperName, Description FROM MatchingRule WHERE NamespacePrefix = null LIMIT 100")
     ]);
     res.json({ duplicateRules: duplicateRules.records || [], matchingRules: matchingRules.records || [] });
   } catch (err) {
@@ -1172,17 +1222,21 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const iso = sixMonthsAgo.toISOString();
-    const [allReports, staleReports, allDashboards, staleDashboards] = await Promise.all([
+    const [allReports, staleReports, staleReportsCount, allDashboards, staleDashboards, staleDashboardsCount] = await Promise.all([
       safeQuery(conn, "SELECT COUNT(Id) FROM Report"),
       safeQuery(conn, `SELECT Id, Name, LastRunDate, OwnerId FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null LIMIT 200`),
+      safeQuery(conn, `SELECT COUNT(Id) FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null`),
       safeQuery(conn, "SELECT COUNT(Id) FROM Dashboard"),
-      safeQuery(conn, `SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`)
+      safeQuery(conn, `SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`),
+      safeQuery(conn, `SELECT COUNT(Id) FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null`)
     ]);
     res.json({
       totalReports: (allReports.records[0] || {}).expr0 || 0,
       staleReports: staleReports.records || [],
+      staleReportsCount: (staleReportsCount.records[0] || {}).expr0 || (staleReports.records || []).length,
       totalDashboards: (allDashboards.records[0] || {}).expr0 || 0,
-      staleDashboards: staleDashboards.records || []
+      staleDashboards: staleDashboards.records || [],
+      staleDashboardsCount: (staleDashboardsCount.records[0] || {}).expr0 || (staleDashboards.records || []).length
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1194,8 +1248,8 @@ app.get('/api/assess/email-templates', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [classicTemplates, lightningTemplates] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, TemplateType, LastModifiedDate FROM EmailTemplate WHERE TemplateType != 'custom3' LIMIT 500"),
-      safeQuery(conn, "SELECT Id, Name, LastModifiedDate FROM EmailTemplate WHERE TemplateType = 'custom3' LIMIT 500")
+      safeQuery(conn, "SELECT Id, Name, TemplateType, LastModifiedDate FROM EmailTemplate WHERE TemplateType != 'custom3' AND isActive = true LIMIT 500"),
+      safeQuery(conn, "SELECT Id, Name, LastModifiedDate FROM EmailTemplate WHERE TemplateType = 'custom3' AND isActive = true LIMIT 500")
     ]);
     res.json({ classicTemplates: classicTemplates.records || [], lightningTemplates: lightningTemplates.records || [] });
   } catch (err) {
@@ -1211,7 +1265,7 @@ app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100"),
       safeQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100"),
       safeQuery(conn, "SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100"),
-      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE QualifiedApiName LIKE '%__e' LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE QualifiedApiName LIKE '%__e' AND IsCustomizable = true").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
     res.json({
       platformEvents: platformEvents.records || [],
@@ -1242,7 +1296,7 @@ app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [customSettings, customMetadataTypes] = await Promise.all([
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, CustomSettingsType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') LIMIT 100"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, CustomSettingsType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') AND NamespacePrefix = null LIMIT 100"),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE QualifiedApiName LIKE '%__mdt' AND NamespacePrefix = null LIMIT 100")
     ]);
     res.json({ customSettings: customSettings.records || [], customMetadataTypes: customMetadataTypes.records || [] });
@@ -1256,7 +1310,7 @@ app.get('/api/assess/record-types-layouts', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const [recordTypes, pageLayouts] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE DeveloperName != 'Master' LIMIT 500"),
+      safeQuery(conn, "SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE DeveloperName != 'Master' AND NamespacePrefix = null LIMIT 500"),
       safeToolingQuery(conn, "SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500")
     ]);
     res.json({ recordTypes: recordTypes.records || [], pageLayouts: pageLayouts.records || [] });
@@ -1357,7 +1411,12 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       } catch(e2) { customDomains = { records: [] }; }
     }
 
-    const wcagUpdateRes = await safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName LIKE '%Accessibility%' OR ApiName LIKE '%WCAG%' LIMIT 5");
+    // Explicit error tracking — safeQuery silently returns [] on failure, so we need to know if it worked
+    const wcagUpdateRes = await new Promise((resolve) => {
+      conn.query("SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName LIKE '%Accessibility%' OR ApiName LIKE '%WCAG%' LIMIT 5", (err, result) => {
+        resolve(err ? { records: [], _failed: true } : result);
+      });
+    });
 
     // Guest page caching (Aura only — LWR uses platform CDN caching, not this field)
     let guestCacheNetworks = { records: [] };
@@ -1403,7 +1462,8 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       networks: networks.records || [],
       networkMembers: networkMembers.records || [],
       customDomains: customDomains.records || [],
-      wcagUpdatesActive: (wcagUpdateRes.records || []).length > 0,
+      // null = query failed (can't distinguish enabled vs disabled); false = query worked, not enabled; true = enabled
+      wcagUpdatesActive: wcagUpdateRes._failed ? null : (wcagUpdateRes.records || []).length > 0,
       wcagUpdates: wcagUpdateRes.records || [],
       clickjackVulnerableSites: clickjackSites.records || [],
       xssUnprotectedNetworks: xssNetworks.records || [],
@@ -1450,7 +1510,7 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
     );
 
     const [activeOutboundMsgs, expiredCerts, externalClientApps, ctiConnectedAppsRes] = await Promise.all([
-      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE IsActive = true LIMIT 20"),
+      safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE NamespacePrefix = null LIMIT 200"),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, ValidFrom, ExpirationDate FROM Certificate WHERE ExpirationDate != null LIMIT 50"),
       safeQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM ExternalClientApplication LIMIT 50"),
       safeQuery(conn, "SELECT Id, Name, MobileSessionTimeout FROM ConnectedApplication WHERE Name LIKE '%CTI%' OR Name LIKE '%Telephony%' OR Name LIKE '%OpenCTI%' OR Name LIKE '%Voice%' LIMIT 20").catch(() => ({ records: [] }))
@@ -1887,44 +1947,41 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
     const [
       allFlows,
       flowsWithDmlInLoops,
-      flowsWithHardcodedIds,
       flowsWithMissingDescriptions,
       flowsSystemContextNoSharing,
-      flowsSystemContextWithSharing
+      flowsSystemContextWithSharing,
+      processBuilderFlows,
+      obsoleteFlowCountResult
     ] = await Promise.all([
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND Id IN (SELECT FlowVersionId FROM FlowElement WHERE ElementSubtype IN ('Loop') ) LIMIT 200").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null LIMIT 500").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (Description = null OR Description = '') LIMIT 200").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND RunInMode = 'SystemModeWithoutSharing' LIMIT 200").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND RunInMode = 'SystemModeWithSharing' LIMIT 200").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
+      // FlowElement is Tooling API only — must use safeToolingQuery here.
+      // Requires both a Loop element and a record op element in the same flow (heuristic).
+      safeToolingQuery(conn,
+        "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow " +
+        "WHERE Status = 'Active' AND NamespacePrefix = null " +
+        "AND Id IN (SELECT FlowVersionId FROM FlowElement WHERE Type = 'Loop') " +
+        "AND Id IN (SELECT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete','RecordLookup')) " +
+        "LIMIT 200"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND (Description = null OR Description = '') LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithoutSharing' LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithSharing' LIMIT 200").catch(() => ({ records: [] })),
+      // Process Builder flows (ProcessType = 'Workflow') — legacy, should migrate to record-triggered flows
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND ProcessType = 'Workflow' LIMIT 200").catch(() => ({ records: [] })),
+      // Obsolete flow versions — deactivated versions that accumulate and cause clutter
+      safeQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete'").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
 
-    // Detect flows with hardcoded IDs by checking for 15/18 char Salesforce IDs in metadata
-    // We approximate this by flagging flows — a full check requires metadata API
-    const allFlowRecords = allFlows.records || [];
-
-    // Flows with missing fault paths — detect by checking for DML/action elements
-    // We flag active flows that have DML-capable process types without fault path metadata available via SOQL
-    const dmlCapableTypes = ['Flow', 'AutoLaunchedFlow', 'RecordTriggeredFlow', 'ScheduledFlow'];
-    const flowsWithMissingFaultPaths = allFlowRecords.filter(f =>
-      dmlCapableTypes.includes(f.ProcessType)
-    );
-
-    // Circular subflow detection — requires metadata API; flag flows with Subflow process type references
-    // Conservative: flag scheduled/autolaunched flows that may call subflows
-    const circularSubflowFlows = [];
+    const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;
 
     res.json({
-      allFlows: allFlowRecords,
-      flowsWithMissingFaultPaths,
+      allFlows: allFlows.records || [],
       flowsWithDmlInLoops: flowsWithDmlInLoops.records || [],
-      flowsWithHardcodedIds: [],
       flowsWithMissingDescriptions: flowsWithMissingDescriptions.records || [],
-      flowsWithCopyLabels: [],
       flowsSystemContextNoSharing: flowsSystemContextNoSharing.records || [],
       flowsSystemContextWithSharing: flowsSystemContextWithSharing.records || [],
-      circularSubflowFlows
+      processBuilderFlows: processBuilderFlows.records || [],
+      obsoleteFlowCount
     });
   } catch (err) {
     console.error('Flow Quality assessment error:', err);

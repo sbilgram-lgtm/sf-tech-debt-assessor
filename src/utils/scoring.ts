@@ -125,7 +125,7 @@ export function assessConfiguration(
   }
 
   // Classic Approval Processes — superseded by Flow Approval Processes (Spring '26)
-  const activeApprovals = (automation.approvalProcesses || []).filter((a: any) => a.IsActive);
+  const activeApprovals = automation.approvalProcesses || [];
   if (activeApprovals.length > 0) {
     items.push(createDebtItem(
       'configuration',
@@ -200,13 +200,13 @@ export function assessConfiguration(
     ));
   }
 
-  // Time-based Workflow Rules — pending queue items indicate live usage
+  // Pending Approval Process Instances — approvals awaiting a decision
   if ((automation.pendingTimeQueueCount || 0) > 0) {
     items.push(createDebtItem(
       'configuration', 'medium',
-      `${automation.pendingTimeQueueCount} Pending Time-Based Workflow Action${automation.pendingTimeQueueCount !== 1 ? 's' : ''} in Queue`,
-      'Time-based Workflow Rule actions are still queued and will fire. This confirms Workflow Rules are in active use — their retirement will abort these actions.',
-      'Accelerate migration of Workflow Rules with pending time-based actions to Flows. Scheduled Paths in record-triggered flows are the direct replacement.',
+      `${automation.pendingTimeQueueCount} Pending Approval Process Instance${automation.pendingTimeQueueCount !== 1 ? 's' : ''} Awaiting Decision`,
+      `${automation.pendingTimeQueueCount} approval process instance${automation.pendingTimeQueueCount !== 1 ? 's' : ''} are currently pending a decision. A high count may indicate bottlenecks, abandoned approvals, or approvers who are unavailable. Pending instances will be orphaned if the underlying Classic Approval Process is retired.`,
+      'Review pending approval instances for stale or stuck approvals. Reassign or reject approvals blocked by unavailable approvers. Migrate Classic Approval Processes to Flow Approval Processes to maintain approval continuity.',
       { count: automation.pendingTimeQueueCount }
     ));
   }
@@ -256,8 +256,10 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // Check for low test coverage
-  const lowCoverage = apex.coverage.filter((c: any) => {
+  // Check for low test coverage — restrict to org-owned classes/triggers only (exclude managed packages)
+  const orgApexIds = new Set([...(apex.classes || []).map((c: any) => c.Id), ...(apex.triggers || []).map((t: any) => t.Id)]);
+  const orgApexCoverage = (apex.coverage || []).filter((c: any) => orgApexIds.has(c.ApexClassOrTriggerId));
+  const lowCoverage = orgApexCoverage.filter((c: any) => {
     const total = (c.NumLinesCovered || 0) + (c.NumLinesUncovered || 0);
     if (total === 0) return false;
     return (c.NumLinesCovered / total) < 0.75;
@@ -1025,12 +1027,29 @@ export function assessDataModel(data: DataModelData): CategoryScore {
     ));
   }
 
-  // Check for field sprawl (objects with too many custom fields)
+  // Build a lookup from custom object Id → DeveloperName__c for name display
+  // (must be available before bloatedObjects check so IDs can be resolved to names)
+  const customObjIdToName = new Map<string, string>(
+    (data.objects || []).map((o: any) => [o.Id, o.DeveloperName + '__c'])
+  );
+
+  // Build per-object field counts.
+  // Prefer the server-side aggregate (data.fieldsByObject) which is not subject to the 2000-record
+  // truncation of the full CustomField query. Fall back to counting from data.fields for orgs
+  // where the aggregate was not returned.
   const fieldsByObject = new Map<string, number>();
-  data.fields.forEach((f: any) => {
-    const obj = f.TableEnumOrId;
-    fieldsByObject.set(obj, (fieldsByObject.get(obj) || 0) + 1);
-  });
+  if (data.fieldsByObject && Object.keys(data.fieldsByObject).length > 0) {
+    for (const [tableId, count] of Object.entries(data.fieldsByObject)) {
+      fieldsByObject.set(tableId, count as number);
+    }
+  } else {
+    data.fields.forEach((f: any) => {
+      const obj = f.TableEnumOrId;
+      fieldsByObject.set(obj, (fieldsByObject.get(obj) || 0) + 1);
+    });
+  }
+
+  // Check for field sprawl (objects with too many custom fields)
   const bloatedObjects = Array.from(fieldsByObject.entries())
     .filter(([_, count]) => count > 100);
   if (bloatedObjects.length > 0) {
@@ -1040,7 +1059,10 @@ export function assessDataModel(data: DataModelData): CategoryScore {
       `${bloatedObjects.length} Objects with 100+ Custom Fields`,
       'Objects with excessive fields indicate possible data model issues or unused fields.',
       'Audit field usage, archive unused fields, and consider splitting into related objects.',
-      { records: bloatedObjects.map(([name, count]) => ({ name, detail: `${count} custom fields` })) }
+      { records: bloatedObjects.map(([tableId, count]) => ({
+          name: customObjIdToName.get(tableId) || tableId,
+          detail: `${count} custom fields`
+        })) }
     ));
   }
 
@@ -1048,10 +1070,6 @@ export function assessDataModel(data: DataModelData): CategoryScore {
   // Standard objects: 500 field limit → 80% = 400
   // Custom objects (__c): 800 field limit → 80% = 640
   // TableEnumOrId is the object API name for standard objects, object ID for custom objects.
-  // Build a lookup from custom object Id → DeveloperName so we can display names.
-  const customObjIdToName = new Map<string, string>(
-    (data.objects || []).map((o: any) => [o.Id, o.DeveloperName + '__c'])
-  );
   const fieldLimitObjects: { name: string; count: number; limit: number; pct: number }[] = [];
   for (const [tableId, count] of Array.from(fieldsByObject.entries())) {
     const isCustomObject = customObjIdToName.has(tableId);
@@ -1132,7 +1150,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     const dev: string = q.DeveloperName || q.Name || '';
     return !dev.includes('__');
   });
-  if (adminQueues.length > 50) {
+  if (adminQueues.length > 25) {
     items.push(createDebtItem(
       'serviceCloud',
       'medium',
@@ -1143,26 +1161,30 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     ));
   }
 
-  // Check for legacy assignment/escalation rules
-  if (data.assignmentRules.length > 0) {
+  // Check for missing case assignment rules — Salesforce allows only 1 active rule at a time,
+  // so > 1 is unreachable. Fire when no active rule exists and queues are present (implying
+  // routing is expected but not automated).
+  if (data.assignmentRules.length === 0 && (data.queues || []).length > 0) {
     items.push(createDebtItem(
       'serviceCloud',
       'medium',
-      `${data.assignmentRules.length} Case Assignment Rules`,
-      'Assignment Rules are legacy. Consider migrating to Flow-based or Omni-Channel routing.',
-      'Evaluate Omni-Channel for skills-based routing, or use Flow for assignment logic.',
-      { count: data.assignmentRules.length }
+      'No Active Case Assignment Rules',
+      'Cases may be manually assigned with no automated routing. With queues configured but no active Case Assignment Rule, new cases land in the default owner or assignee and rely entirely on manual triage.',
+      'Create and activate a Case Assignment Rule in Setup → Case Assignment Rules. Define rule entries that route cases to the appropriate queue based on origin, priority, product, or other criteria.',
+      { count: 0 }
     ));
   }
 
-  if (data.escalationRules.length > 0) {
+  // Check for missing escalation rules — fire when no active escalation rule exists and queues
+  // are present, indicating escalation is expected but not automated.
+  if (data.escalationRules.length === 0 && (data.queues || []).length > 0) {
     items.push(createDebtItem(
       'serviceCloud',
-      'low',
-      `${data.escalationRules.length} Escalation Rules`,
-      'Escalation Rules are functional but limited compared to Flow-based escalation.',
-      'Consider migrating to time-based flows for more flexible escalation logic.',
-      { count: data.escalationRules.length }
+      'medium',
+      'No Escalation Rules Configured',
+      'No active Escalation Rules are configured. Cases that breach response time thresholds will not be automatically escalated to senior agents or managers. High-priority cases may stall without visibility.',
+      'Configure Escalation Rules in Setup → Escalation Rules. Define escalation criteria based on case age, priority, or status, and specify the target queue or user to reassign to when a case escalates.',
+      { count: 0 }
     ));
   }
 
@@ -1249,7 +1271,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   // ── Knowledge ──────────────────────────────────────────────────────────────
 
   // KN-1: Knowledge enabled but zero published articles
-  if ((data.publishedArticleCount || 0) === 0 && data.queues.length > 0) {
+  if (data.knowledgeEnabled && (data.publishedArticleCount || 0) === 0) {
     items.push(createDebtItem('serviceCloud', 'medium',
       'Knowledge Enabled but No Published Articles Found',
       'No published Knowledge articles detected despite Service Cloud configuration. Article recommendations, Einstein Replies, and search deflection are all non-functional without published content.',
@@ -1311,13 +1333,13 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       { records: data.entitlementProcessesWithoutBusinessHours.map((ep: any) => ({ name: ep.Name, detail: 'No Business Hours — SLA runs 24/7' })) }));
   }
 
-  // ENT-2: Active Entitlement Processes without Milestone Actions
+  // ENT-2: Active Entitlement Processes that have milestones but no MilestoneAction records
   if ((data.entitlementProcessesWithoutMilestoneActions || []).length > 0) {
     items.push(createDebtItem('serviceCloud', 'critical',
-      `${data.entitlementProcessesWithoutMilestoneActions.length} Active Entitlement Process${data.entitlementProcessesWithoutMilestoneActions.length !== 1 ? 'es' : ''} Have No Milestone Actions`,
-      'Milestones track SLA status but no automated escalation, notification, or action fires on warning or violation. SLA tracking is passive — operators must manually monitor dashboards.',
-      'Configure warning and violation actions on each milestone in active Entitlement Processes. At minimum, add email alerts to case owners and managers when SLAs are breached.',
-      { records: data.entitlementProcessesWithoutMilestoneActions.map((ep: any) => ({ name: ep.Name, detail: 'No milestone warning/violation actions configured' })) }));
+      `${data.entitlementProcessesWithoutMilestoneActions.length} Active Entitlement Process${data.entitlementProcessesWithoutMilestoneActions.length !== 1 ? 'es' : ''} Have Milestones With No Milestone Actions`,
+      'These entitlement processes have milestones defined but no MilestoneAction records — meaning no automated escalation, notification, or action fires on milestone warning or violation. SLA tracking is passive and operators must manually monitor dashboards for breaches.',
+      'Configure warning and violation actions on each milestone in active Entitlement Processes via Setup → Entitlements → Entitlement Processes. At minimum, add email alerts to case owners and managers when SLAs are breached.',
+      { records: data.entitlementProcessesWithoutMilestoneActions.map((ep: any) => ({ name: ep.Name, detail: 'Milestones exist but no MilestoneAction configured — SLA breach notifications silent' })) }));
   }
 
   // ENT-3: Open cases with entitlement but no SLA start date
@@ -1901,38 +1923,49 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
-  // ── External OWD (Experience Cloud guest and community users) ─────────────────
-  // ExternalSharingModel is only meaningful when the org has active Experience Cloud sites.
-  // An object can have Private internal OWD but Public Read/Write external — exposing all
-  // records to unauthenticated guest users. This is a distinct and often higher-risk issue.
+  // ── External OWD (Experience Cloud / portal / guest users) ───────────────────
+  // External OWD is evaluated independently of Internal OWD. Salesforce enforces at the
+  // platform level that External cannot exceed Internal, so both can legitimately be
+  // ReadWrite (e.g. Account in many orgs). Checking "more permissive than internal" is
+  // therefore wrong — it would suppress valid findings where both are equally open.
+  // We flag on the External value alone: ReadWrite/ReadWriteTransfer is always a risk for
+  // external users; Read is a medium risk. Only skip objects where ExternalSharingModel is
+  // null or ControlledByParent (not independently configurable).
   const hasExperienceCloud = (data.guestAccessObjects || []).length > 0;
+
+  // Objects where external users (guest, portal, community) can create/edit all records
   const externalPRW = configurable.filter((obj: any) =>
-    (obj.ExternalSharingModel === 'ReadWrite' || obj.ExternalSharingModel === 'ReadWriteTransfer') &&
-    obj.ExternalSharingModel !== obj.InternalSharingModel  // only flag if external is MORE permissive
+    obj.ExternalSharingModel === 'ReadWrite' || obj.ExternalSharingModel === 'ReadWriteTransfer'
   );
-  if (externalPRW.length > 0 && hasExperienceCloud) {
+  if (externalPRW.length > 0) {
+    const context = hasExperienceCloud
+      ? 'Experience Cloud sites are active — external users (guest, portal, community members) can read and edit every record on these objects.'
+      : 'No active Experience Cloud site detected, but External OWD is already open. Enabling a site would immediately expose all records on these objects to external users.';
     items.push(createDebtItem(
       'sharingSecurity',
       'critical',
       `${externalPRW.length} Objects with External Public Read/Write OWD`,
-      'External OWD controls access for Experience Cloud guest users and community members. These objects allow unauthenticated or community users to read and edit all records — a critical data exposure risk for any org with active Experience Cloud sites.',
-      'Change External OWD to Private in Setup → Security → Sharing Settings for all objects that should not be accessible to guest or community users.',
-      { records: externalPRW.map((o: any) => ({ name: o.QualifiedApiName, detail: `External: ${o.ExternalSharingModel} / Internal: ${o.InternalSharingModel}` })) }
+      `External OWD controls record access for Experience Cloud guest users, portal users, and community members. ${context}`,
+      'Change External OWD to Private in Setup → Security → Sharing Settings. Use sharing sets or guest user sharing rules to grant targeted access where needed.',
+      { records: externalPRW.map((o: any) => ({ name: o.QualifiedApiName, detail: `External: ${o.ExternalSharingModel} | Internal: ${o.InternalSharingModel}` })) }
     ));
   }
 
+  // Objects where external users can read all records
   const externalReadOnly = configurable.filter((obj: any) =>
-    obj.ExternalSharingModel === 'Read' &&
-    obj.InternalSharingModel !== 'ReadWrite' && obj.InternalSharingModel !== 'ReadWriteTransfer' && obj.InternalSharingModel !== 'Read'
+    obj.ExternalSharingModel === 'Read'
   );
-  if (externalReadOnly.length > 0 && hasExperienceCloud) {
+  if (externalReadOnly.length > 0) {
+    const context = hasExperienceCloud
+      ? 'Experience Cloud sites are active — all external users can view every record on these objects.'
+      : 'No active Experience Cloud site detected, but External OWD is set to Public Read Only. Enabling a site would expose these records to external users.';
     items.push(createDebtItem(
       'sharingSecurity',
-      'high',
+      hasExperienceCloud ? 'high' : 'medium',
       `${externalReadOnly.length} Objects with External Public Read Only OWD`,
-      'These objects allow Experience Cloud guest or community users to read all records. While less severe than Read/Write, unauthenticated access to these objects may expose sensitive data to the public.',
-      'Review each object in Setup → Security → Sharing Settings. Set External OWD to Private for objects containing sensitive data, and use sharing sets or guest user sharing rules to grant specific access.',
-      { records: externalReadOnly.map((o: any) => ({ name: o.QualifiedApiName, detail: `External: ${o.ExternalSharingModel} / Internal: ${o.InternalSharingModel}` })) }
+      `These objects allow Experience Cloud guest users, portal users, and community members to view all records. ${context}`,
+      'Review each object in Setup → Security → Sharing Settings. Set External OWD to Private for objects containing sensitive data. Use sharing sets to grant record-level access to specific external users.',
+      { records: externalReadOnly.map((o: any) => ({ name: o.QualifiedApiName, detail: `External: ${o.ExternalSharingModel} | Internal: ${o.InternalSharingModel}` })) }
     ));
   }
 
@@ -2107,7 +2140,8 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   }
 
   // Sessions without MFA step-up (standard assurance level)
-  if (data.lowSecuritySessions.length > 0) {
+  const orgMfaEnforcedForSessions = !!(data as any).orgMfaEnforced;
+  if (data.lowSecuritySessions.length > 20 && !orgMfaEnforcedForSessions) {
     const uniqueUsers = new Set(data.lowSecuritySessions.map((s: any) => s.UserId));
     items.push(createDebtItem(
       'sharingSecurity',
@@ -2178,7 +2212,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${caseGuestProfiles.length} Guest Profile${caseGuestProfiles.length !== 1 ? 's' : ''} with Case Read Access — Unauthenticated Data Exposure`,
       `${caseGuestProfiles.length} guest user profile${caseGuestProfiles.length !== 1 ? 's' : ''} have Read access to the Case object. Unauthenticated site visitors can query and view case records — including customer support history, account details, and email threads — without logging in.`,
       'Remove Case Read access from all guest user profiles in Setup → Sites → Guest User Profile. Ensure Case OWD is set to Private. Use authenticated Experience Cloud portals if customers need case visibility.',
-      { records: caseGuestProfiles.slice(0, 20).map((p: any) => ({ name: p.Name || p.Id, detail: `Guest profile with Case Read${p.PermissionsEditCases ? ' + Edit' : ''} access` })) }
+      { records: caseGuestProfiles.slice(0, 20).map((p: any) => ({ name: (p.Parent && p.Parent.Name) || p.Id, detail: `Guest profile with Case Read${p.PermissionsEdit ? ' + Edit' : ''} access` })) }
     ));
   }
 
@@ -2305,7 +2339,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
   // Apex classes with hardcoded endpoint URLs (not using Named Credentials)
   const hardcodedEndpoints = data.apexCallouts.filter((c: any) => {
     const body = c.Body || '';
-    return /new\s+HttpRequest\(\)/.test(body) && /setEndpoint\s*\(\s*['"][^{]/.test(body);
+    return /new\s+HttpRequest\(\)/.test(body) && /setEndpoint\s*\(\s*['"](?!callout:)[^{]/.test(body);
   });
   if (hardcodedEndpoints.length > 0) {
     items.push(createDebtItem(
@@ -2359,7 +2393,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
   }
 
   // No External Credentials — using legacy Named Credentials only
-  if ((data.externalCredentialCount || 0) === 0 && data.namedCredentials.length > 0) {
+  if ((data as any).externalCredentialQueryWorked !== false && (data.externalCredentialCount || 0) === 0 && data.namedCredentials.length > 0) {
     items.push(createDebtItem(
       'integrations', 'medium',
       'No External Credentials Configured — Using Legacy Named Credentials Only',
@@ -2370,7 +2404,7 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
   }
 
   // No dedicated integration user
-  if ((data.dedicatedIntegrationUserCount || 0) === 0 && data.connectedApps.length > 0) {
+  if ((data.dedicatedIntegrationUserCount || 0) === 0 && data.connectedApps.length > 5) {
     items.push(createDebtItem(
       'integrations', 'medium',
       'No Dedicated Integration User Profiles Found — Connected Apps May Use Named Users',
@@ -2413,9 +2447,16 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
     }
   }
 
+  // Scope coverage to org-owned components only (ApexCodeCoverageAggregate returns managed pkg records too)
+  const orgComponentIds = new Set([
+    ...data.apexClasses.map((c: any) => c.Id),
+    ...data.apexTriggers.map((t: any) => t.Id),
+  ]);
+  const orgCoverage = data.coverage.filter((c: any) => orgComponentIds.has(c.ApexClassOrTriggerId));
+
   // Classes/triggers with 0% coverage (not tested at all)
-  const coveredIds = new Set(data.coverage.map((c: any) => c.ApexClassOrTriggerId));
-  const untestedClasses = data.apexClasses.filter((c: any) => !coveredIds.has(c.Id));
+  const coveredIds = new Set(orgCoverage.map((c: any) => c.ApexClassOrTriggerId));
+  const untestedClasses = data.apexClasses.filter((c: any) => !coveredIds.has(c.Id) && (c.LengthWithoutComments || 0) > 0);
   const untestedTriggers = data.apexTriggers.filter((t: any) => !coveredIds.has(t.Id));
   const totalUntested = untestedClasses.length + untestedTriggers.length;
   if (totalUntested > 0) {
@@ -2429,8 +2470,8 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
     ));
   }
 
-  // Classes below 75% (Salesforce minimum is 75% org-wide, but individual matters)
-  const lowCoverage = data.coverage.filter((c: any) => {
+  // Classes below 75% — scoped to org-owned components
+  const lowCoverage = orgCoverage.filter((c: any) => {
     const total = (c.NumLinesCovered || 0) + (c.NumLinesUncovered || 0);
     if (total === 0) return false;
     return (c.NumLinesCovered / total) < 0.75;
@@ -2443,7 +2484,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
     items.push(createDebtItem(
       'testCoverage',
       below50.length > 3 ? 'critical' : 'high',
-      `${lowCoverage.length} Components Below 75% Test Coverage`,
+      `${lowCoverage.length} Classes/Triggers Below 75% Test Coverage`,
       `${below50.length} components are below 50%. These are high-risk for deployment failures and regressions.`,
       'Prioritize test coverage for triggers, batch classes, and service classes first.',
       { total: lowCoverage.length, below50: below50.length }
@@ -2486,6 +2527,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
   // TC-6: ApexUnitTestClassShouldHaveRunAs (PMD)
   const noRunAs = data.testClasses.filter((c: any) => {
     const body = c.Body || '';
+    if (!body) return false;
     return !(/System\.runAs\s*\(/gi.test(body));
   });
   if (noRunAs.length > 0) {
@@ -2638,23 +2680,7 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
     ));
   }
 
-  // ── Custom object count approaching org limit ─────────────────────────────────
-  const objCount = data.customObjectCount || 0;
-  if (objCount > 800) {
-    items.push(createDebtItem('orgLimits', 'high',
-      `${objCount.toLocaleString()} Custom Objects — Approaching Org Limit (~900)`,
-      'Salesforce orgs have a default custom object limit of 800–900 (varies by edition). A count above 800 means new object creation will fail. This also causes slowdowns in Schema describe operations and Setup page load times.',
-      'Audit custom objects. Delete unused objects and their data. Review if any objects can be consolidated using polymorphic relationships, Custom Metadata Types, or Platform Events instead.',
-      {}
-    ));
-  } else if (objCount > 600) {
-    items.push(createDebtItem('orgLimits', 'medium',
-      `${objCount.toLocaleString()} Custom Objects — Monitor Approaching Limit`,
-      'The org has a high number of custom objects. With a limit of ~900, the current count leaves limited headroom for future development.',
-      'Periodically audit custom object usage. Remove deprecated objects and resist creating new objects where existing ones can be extended.',
-      {}
-    ));
-  }
+  // Custom object count — handled by the generic limits loop above using edition-accurate values from the limits API.
 
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
@@ -2706,22 +2732,24 @@ export function assessDuplicateRules(data: DuplicateRulesData): CategoryScore {
 export function assessReportsDashboards(data: ReportsDashboardsData): CategoryScore {
   const items: DebtItem[] = [];
 
-  const staleReportPct = data.totalReports > 0 ? Math.round((data.staleReports.length / data.totalReports) * 100) : 0;
-  if (data.staleReports.length > 50) {
+  const staleReportCount = (data as any).staleReportsCount ?? data.staleReports.length;
+  const staleReportPct = data.totalReports > 0 ? Math.round((staleReportCount / data.totalReports) * 100) : 0;
+  if (staleReportCount > 50) {
     items.push(createDebtItem('reportsDashboards', staleReportPct > 50 ? 'high' : 'medium',
-      `${data.staleReports.length} Reports Not Run in 6+ Months (${staleReportPct}% of total)`,
+      `${staleReportCount} Reports Not Run in 6+ Months (${staleReportPct}% of total)`,
       'Stale reports waste storage and clutter the org. Users may rely on outdated data if they run them.',
       'Delete or archive reports not run in over 6 months. Review report ownership and establish a cleanup cadence.',
-      { count: data.staleReports.length, total: data.totalReports }));
+      { count: staleReportCount, total: data.totalReports }));
   }
 
-  const staleDashPct = data.totalDashboards > 0 ? Math.round((data.staleDashboards.length / data.totalDashboards) * 100) : 0;
-  if (data.staleDashboards.length > 20) {
+  const staleDashCount = (data as any).staleDashboardsCount ?? data.staleDashboards.length;
+  const staleDashPct = data.totalDashboards > 0 ? Math.round((staleDashCount / data.totalDashboards) * 100) : 0;
+  if (staleDashCount > 20) {
     items.push(createDebtItem('reportsDashboards', staleDashPct > 50 ? 'high' : 'medium',
-      `${data.staleDashboards.length} Dashboards Not Viewed in 6+ Months (${staleDashPct}% of total)`,
+      `${staleDashCount} Dashboards Not Viewed in 6+ Months (${staleDashPct}% of total)`,
       'Unused dashboards indicate abandoned initiatives or poor adoption.',
       'Delete dashboards not viewed in 6 months. Consolidate active dashboards by team or function.',
-      { count: data.staleDashboards.length, total: data.totalDashboards }));
+      { count: staleDashCount, total: data.totalDashboards }));
   }
 
   if (data.totalReports > 2000) {
@@ -3142,7 +3170,9 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
   }
 
   // WCAG 2.2 Accessibility Release Updates — enforced Summer '26
-  if (!data.wcagUpdatesActive) {
+  // Only fire when the Tooling API query confirmed release updates are available but not enabled.
+  // data.wcagUpdatesActive === false means "query worked, not enabled". undefined/null means "query failed — skip".
+  if (data.wcagUpdatesActive === false) {
     items.push(createDebtItem(
       'experienceCloud',
       'medium',
@@ -4720,91 +4750,71 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
 export function assessFlowQuality(data: FlowQualityData): CategoryScore {
   const items: DebtItem[] = [];
 
-  // Missing Fault Paths — elements that can fail with no error handling
-  if (data.flowsWithMissingFaultPaths.length > 0) {
+  // Active Process Builder flows — legacy automation, Salesforce recommends migrating to record-triggered flows
+  if ((data.processBuilderFlows || []).length > 0) {
     items.push(createDebtItem(
       'flowQuality', 'high',
-      `${data.flowsWithMissingFaultPaths.length} Flow${data.flowsWithMissingFaultPaths.length !== 1 ? 's' : ''} Missing Fault Paths`,
-      'Flows with DML, subflow, or action elements that have no fault path leave exceptions unhandled. When these elements fail at runtime, users see a generic "An internal server error has occurred" message with no recovery path.',
-      'Add a Fault connector to every DML, Action, and Subflow element. Route fault paths to a screen that displays a meaningful error message or to an Apex action that logs the failure.',
-      { records: data.flowsWithMissingFaultPaths.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no fault path on failable element` })) }
+      `${data.processBuilderFlows.length} Active Process Builder Flow${data.processBuilderFlows.length !== 1 ? 's' : ''}`,
+      'Process Builder (ProcessType = Workflow) is a legacy automation tool that Salesforce has announced will be retired. Process Builder flows are less performant than record-triggered flows and cannot be combined with other automation in a single transaction boundary.',
+      'Migrate all Process Builder flows to record-triggered flows using the Migrate to Flow tool in Setup. Record-triggered flows offer better performance, easier debugging, and long-term platform support.',
+      { records: data.processBuilderFlows.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: 'Process Builder — migrate to record-triggered flow' })) }
     ));
   }
 
-  // Database Operations Inside Loops
-  if (data.flowsWithDmlInLoops.length > 0) {
+  // Database Operations Inside Loops — governor limit risk
+  if ((data.flowsWithDmlInLoops || []).length > 0) {
     items.push(createDebtItem(
       'flowQuality', 'high',
       `${data.flowsWithDmlInLoops.length} Flow${data.flowsWithDmlInLoops.length !== 1 ? 's' : ''} with Database Operations Inside Loops`,
-      'Get/Create/Update/Delete Records elements inside Flow loops execute one DML or SOQL statement per iteration. Flows processing large data sets will hit Salesforce governor limits (150 DML / 100 SOQL per transaction).',
-      'Move record operations outside loops. Collect records in a Loop and use a single Create/Update/Delete Records element after the loop exits with the full collection.',
-      { records: data.flowsWithDmlInLoops.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — DML inside loop` })) }
+      'Flows containing both a Loop element and record operation elements (Get/Create/Update/Delete Records) risk executing one DML or SOQL statement per iteration. Flows processing large data sets will hit governor limits (150 DML / 100 SOQL per transaction).',
+      'Move record operations outside loops. Collect data in a collection variable during the loop, then use a single Create/Update/Delete Records element after the loop exits.',
+      { records: data.flowsWithDmlInLoops.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — loop and DML elements present` })) }
     ));
   }
 
-  // Circular Subflow References — causes runtime error
-  if (data.circularSubflowFlows.length > 0) {
-    items.push(createDebtItem(
-      'flowQuality', 'critical',
-      `${data.circularSubflowFlows.length} Flow${data.circularSubflowFlows.length !== 1 ? 's' : ''} with Circular Subflow References`,
-      'A flow that calls a subflow that eventually calls the original flow creates an infinite loop. Salesforce does not permit circular subflow references at runtime — these flows will throw an error when executed.',
-      'Audit subflow chains. Extract shared logic into a dedicated utility flow that is not itself a caller of the flows that reference it.',
-      { records: data.circularSubflowFlows.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — circular subflow reference` })) }
-    ));
-  }
-
-  // CRUD in System Context Without Sharing
-  if (data.flowsSystemContextNoSharing.length > 0) {
+  // CRUD in System Context Without Sharing — security risk
+  if ((data.flowsSystemContextNoSharing || []).length > 0) {
     items.push(createDebtItem(
       'flowQuality', 'high',
-      `${data.flowsSystemContextNoSharing.length} Flow${data.flowsSystemContextNoSharing.length !== 1 ? 's' : ''} Perform CRUD in System Context Without Sharing`,
-      'Flows running in System Context Without Sharing bypass record-level security entirely. If user-controlled data influences which records are queried or modified, this enables privilege escalation — users can read or write records they should not have access to.',
-      'Change the flow\'s Run As context to "User" or "System Context With Sharing" wherever possible. Reserve "System Context Without Sharing" for internal automation that never surfaces user-controlled values in record filters.',
-      { records: data.flowsSystemContextNoSharing.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — CRUD in System Context Without Sharing` })) }
+      `${data.flowsSystemContextNoSharing.length} Flow${data.flowsSystemContextNoSharing.length !== 1 ? 's' : ''} Running in System Context Without Sharing`,
+      'Flows running in System Context Without Sharing bypass record-level security entirely. If user-controlled data influences which records are queried or modified, this can enable privilege escalation.',
+      'Change the Run As context to "User" or "System Context With Sharing" wherever possible. Reserve "System Context Without Sharing" for internal automation that never exposes user-controlled values in record filters.',
+      { records: data.flowsSystemContextNoSharing.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — System Context Without Sharing` })) }
     ));
   }
 
-  // CRUD in System Context With Sharing
-  if (data.flowsSystemContextWithSharing.length > 0) {
+  // CRUD in System Context With Sharing — worth reviewing
+  if ((data.flowsSystemContextWithSharing || []).length > 0) {
     items.push(createDebtItem(
       'flowQuality', 'low',
-      `${data.flowsSystemContextWithSharing.length} Flow${data.flowsSystemContextWithSharing.length !== 1 ? 's' : ''} Perform CRUD in System Context With Sharing`,
-      'Flows running in System Context With Sharing respect record visibility but still run with elevated system privileges for field access. Review these flows to confirm the elevated context is intentional.',
-      'Review each flow to confirm System Context With Sharing is required. Where flows only need user-level access, switch the Run As context to "User" for least-privilege operation.',
-      { records: data.flowsSystemContextWithSharing.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — CRUD in System Context With Sharing` })) }
+      `${data.flowsSystemContextWithSharing.length} Flow${data.flowsSystemContextWithSharing.length !== 1 ? 's' : ''} Running in System Context With Sharing`,
+      'Flows running in System Context With Sharing respect record visibility but run with elevated system privileges for field access. Review to confirm the elevated context is intentional.',
+      'Review each flow to confirm System Context With Sharing is required. Where flows only need user-level access, switch Run As to "User" for least-privilege operation.',
+      { records: data.flowsSystemContextWithSharing.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — System Context With Sharing` })) }
     ));
   }
 
-  // Hardcoded Salesforce IDs in Flows
-  if (data.flowsWithHardcodedIds.length > 0) {
+  // Obsolete flow version accumulation — org hygiene
+  const obsoleteCount = data.obsoleteFlowCount || 0;
+  if (obsoleteCount > 50) {
+    const severity = obsoleteCount > 300 ? 'medium' : 'low';
     items.push(createDebtItem(
-      'flowQuality', 'medium',
-      `${data.flowsWithHardcodedIds.length} Flow${data.flowsWithHardcodedIds.length !== 1 ? 's' : ''} Contain Hardcoded Salesforce IDs`,
-      'Org-specific record IDs hardcoded into flows will break when the flow is deployed to another org or when records are recreated (e.g., sandbox refresh, data migration). This is a Flow Scanner best practice violation.',
-      'Replace hardcoded IDs with flow variables, Custom Labels, or Custom Metadata Types. Use Get Records elements to look up records dynamically by name or external ID rather than hardcoding the Salesforce ID.',
-      { records: data.flowsWithHardcodedIds.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — contains hardcoded Salesforce ID` })) }
+      'flowQuality', severity,
+      `${obsoleteCount} Obsolete Flow Versions Accumulating`,
+      `Obsolete flow versions are deactivated versions that remain in the org after a new version is activated. ${obsoleteCount} obsolete versions create clutter in Setup, slow down flow searches, and make version history harder to audit.`,
+      'Use the Flow Version Management tool or SFDX to delete obsolete flow versions. Keep at most 1–2 prior versions for rollback purposes.',
+      { count: obsoleteCount }
     ));
   }
 
-  // Missing Descriptions on Flows
-  if (data.flowsWithMissingDescriptions.length > 0) {
+  // Missing Descriptions on active flows
+  if ((data.flowsWithMissingDescriptions || []).length > 0) {
     items.push(createDebtItem(
       'flowQuality', 'low',
-      `${data.flowsWithMissingDescriptions.length} Flow${data.flowsWithMissingDescriptions.length !== 1 ? 's' : ''} Missing Descriptions`,
-      'Flows without descriptions make it difficult to understand their purpose, triggering conditions, and business rules — especially for admins who did not build them.',
+      `${data.flowsWithMissingDescriptions.length} Active Flow${data.flowsWithMissingDescriptions.length !== 1 ? 's' : ''} Missing Descriptions`,
+      'Flows without descriptions make it difficult to understand their purpose, triggering conditions, and business rules — especially for future admins who did not build them.',
       'Add a description to every flow explaining what it does, when it triggers, and any key business rules it enforces.',
       { records: data.flowsWithMissingDescriptions.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no description` })) }
-    ));
-  }
-
-  // Default Copy Labels on Assignment Elements
-  if (data.flowsWithCopyLabels.length > 0) {
-    items.push(createDebtItem(
-      'flowQuality', 'low',
-      `${data.flowsWithCopyLabels.length} Flow${data.flowsWithCopyLabels.length !== 1 ? 's' : ''} Contain Assignment Elements with Default "Copy" Labels`,
-      'Assignment elements with auto-generated "Copy" labels (e.g., "Copy_1_of_MyAssignment") indicate elements were duplicated without being renamed. These make flows hard to read and debug.',
-      'Rename all assignment elements with descriptive labels that reflect the business action being performed.',
-      { records: data.flowsWithCopyLabels.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — "Copy" labels on assignment elements` })) }
     ));
   }
 

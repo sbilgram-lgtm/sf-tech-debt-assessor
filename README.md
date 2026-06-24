@@ -1,8 +1,23 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: June 22, 2026*
+*Last updated: June 24, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **343 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **341 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+
+## What's New — June 24, 2026
+
+Comprehensive accuracy audit — 40+ checks corrected across all 23 categories:
+
+- **Flow Quality:** Removed 4 checks that could never work via SOQL (fault paths, hardcoded IDs, copy labels, circular subflows — all require Metadata API). Added 2 accurate checks: active Process Builder flows and obsolete flow version accumulation. Fixed DML-in-loops to use Tooling API (FlowElement is not accessible via standard SOQL). Removed invalid `NamespacePrefix = null` filter from all standard SOQL Flow queries.
+- **Test Coverage:** Test classes now identified via the canonical `IsTest` field instead of a name heuristic. Added `Body` and `Status = 'Active'` to the query so TC-5 (assert messages), TC-6 (runAs), TC-7 (testMethod keyword) can actually run. Abstract classes with 0 executable lines no longer flagged as untested. `assessCodeQuality` now scopes coverage to org-owned components only (same fix applied to `assessTestCoverage` previously).
+- **Automation:** Process Builder count now includes `ProcessType = 'Workflow'` (the primary type — previously always 0). "Pending Time-Based Workflow Queue" correctly relabeled as "Pending Approval Process Instances" (time-based WFR queue is not SOQL-queryable). Main Flow query, s-Controls, and Approval Processes fixed for namespace and LIMIT.
+- **Sharing & Security:** OAuth tokens now query `OauthToken` (replaced broken `AuthSession WHERE SessionType = 'OAuth2'`). Outbound messages `WHERE IsActive = true` removed (field doesn't exist). Low-security sessions threshold raised from `> 0` to `> 20` with MFA guard. `caseGuestProfiles` scoped to `UserType = 'GuestUser'` only. `ProfileIpRange` LIMIT raised to 2000.
+- **Service Cloud:** Escalation Rules check inverted — now fires when absent (not when present). Assignment Rules threshold fixed — fires when none configured (Salesforce only allows 1 active rule at a time, making `> 1` unreachable). Zero-touch case close rate date filter removed from CaseComment subquery. EntitlementProcessMilestone LIMIT raised to 2000. Stalled draft articles now filters `IsLatestVersion = true`.
+- **Integrations:** NamedCredential and RemoteProxy queries now filter `NamespacePrefix = null`. `setEndpoint` regex excludes `callout:` Named Credential syntax. Integration user threshold raised to `> 5` to exclude Salesforce-shipped built-in apps.
+- **Data Model:** CustomObject query now excludes `__mdt`, `__e`, `__x`, `__b`, and Custom Settings — counts true custom objects only. Bloated objects display resolved to API names instead of opaque IDs. Hardcoded 800/600 custom object thresholds removed — generic limits loop handles this with edition-accurate values.
+- **Remaining categories:** DuplicateRule, MatchingRule, RecordType, Custom Settings queries all now filter `NamespacePrefix = null`. Platform events EntityDefinition now counts only `IsCustomizable = true` (excludes standard Salesforce events). Email templates filtered to `isActive = true`. Reports/Dashboards stale count now uses a COUNT query (LIMIT 200 sample no longer understates the number). WCAG check now only fires when Tooling API confirmed the setting exists and is not enabled — silent query failures no longer produce false positives.
+
+---
 
 ## What's New — June 22, 2026
 
@@ -205,7 +220,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **OmniStudio** | 26 | See detail table below |
 | **Performance** | 22 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, flows with DML in loops, total active flows (>300), obsolete flow versions (>200), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
-| **Flow Quality** | 8 | See detail table below |
+| **Flow Quality** | 6 | See detail table below |
 
 ---
 
@@ -379,18 +394,16 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 ---
 
-### Flow Quality — All 8 Checks
+### Flow Quality — All 6 Checks
 
 | # | Check | Severity |
 |---|---|---|
-| 1 | Active flows missing fault paths on failable elements (DML, Actions, Subflows) | High |
-| 2 | Active flows with database operations inside loops — governor limit risk | High |
-| 3 | Flows with circular subflow references — runtime error | Critical |
-| 4 | Flows running in System Context Without Sharing — privilege escalation risk | High |
-| 5 | Flows running in System Context With Sharing — elevated privileges, review intent | Low |
-| 6 | Flows containing hardcoded Salesforce IDs — breaks on deployment (Flow Scanner) | Medium |
-| 7 | Active flows with no description | Low |
-| 8 | Flows with assignment elements using default "Copy" labels — readability issue | Low |
+| 1 | Active Process Builder flows (ProcessType = Workflow) — legacy, Salesforce retiring | High |
+| 2 | Active flows with loop and record operation elements — governor limit risk | High |
+| 3 | Flows running in System Context Without Sharing — privilege escalation risk | High |
+| 4 | Flows running in System Context With Sharing — elevated privileges, review intent | Low |
+| 5 | Obsolete flow versions accumulating (>50) — org hygiene | Low / Medium |
+| 6 | Active flows with no description | Low |
 
 ---
 

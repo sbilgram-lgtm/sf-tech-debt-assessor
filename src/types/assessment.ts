@@ -59,6 +59,7 @@ export interface ApexData {
 export interface DataModelData {
   objects: any[];
   fields: any[];
+  fieldsByObject?: Record<string, number>;
   fieldUsage: any[];
 }
 
@@ -74,6 +75,7 @@ export interface ServiceCloudData {
   routingConfigurations: any[];
   presenceConfigurations: any[];
   // Knowledge
+  knowledgeEnabled: boolean;
   publishedArticleCount: number;
   staleArticleCount: number;  // published, not modified in 12+ months
   draftStalledCount: number;  // draft, not modified in 180+ days
@@ -367,12 +369,10 @@ export interface LwcData {
 
 export interface FlowQualityData {
   allFlows: any[];
-  flowsWithMissingFaultPaths: any[];
   flowsWithDmlInLoops: any[];
-  flowsWithHardcodedIds: any[];
   flowsWithMissingDescriptions: any[];
-  flowsWithCopyLabels: any[];
   flowsSystemContextNoSharing: any[];
   flowsSystemContextWithSharing: any[];
-  circularSubflowFlows: any[];
+  processBuilderFlows: any[];
+  obsoleteFlowCount: number;
 }
