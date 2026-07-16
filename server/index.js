@@ -267,11 +267,15 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       "FROM ApexCodeCoverageAggregate"
     );
 
+    // soapLoginApex: classes with SOAP login() patterns (excluding classes that only contain login URLs)
     const soapLoginApex = (classes.records || []).filter(c => {
       const body = c.Body || '';
-      return /\.login\s*\(|ConnectorConfig|login\.salesforce\.com/i.test(body);
+      return /\.login\s*\(|ConnectorConfig/i.test(body);
     });
+    const soapLoginApexIds = new Set(soapLoginApex.map(c => c.Id));
+    // hardcodedLoginUrls: classes referencing login.salesforce.com / test.salesforce.com — deduplicated from soapLoginApex
     const hardcodedLoginUrls = (classes.records || []).filter(c => {
+      if (soapLoginApexIds.has(c.Id)) return false;
       const body = c.Body || '';
       return /login\.salesforce\.com|test\.salesforce\.com/i.test(body);
     });
@@ -288,7 +292,11 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     });
     const noStartStopTestClasses = testClassBodies.filter(c => {
       const body = c.Body || '';
-      return !/Test\.startTest/i.test(body);
+      if (/Test\.startTest/i.test(body)) return false;
+      // Skip test utility/factory classes that have no @isTest methods of their own
+      // (they exist to provide data, not to run test logic)
+      if (!/@isTest\s*(?:static\s+)?(?:void|public|private)/i.test(body)) return false;
+      return true;
     });
     const noTestSetupClasses = testClassBodies.filter(c => {
       const body = c.Body || '';

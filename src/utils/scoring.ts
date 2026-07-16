@@ -297,8 +297,8 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // Check for SOQL in loops (basic pattern detection)
   const soqlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    const forLoopPattern = /for\s*\([^)]*\)\s*\{[^}]*\[SELECT/gi;
-    const whileLoopPattern = /while\s*\([^)]*\)\s*\{[^}]*\[SELECT/gi;
+    const forLoopPattern = /for\s*\([^)]*\)\s*\{[\s\S]*?\[SELECT/gi;
+    const whileLoopPattern = /while\s*\([^)]*\)\s*\{[\s\S]*?\[SELECT/gi;
     return forLoopPattern.test(body) || whileLoopPattern.test(body);
   });
   if (soqlInLoops.length > 0) {
@@ -312,10 +312,12 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // Check for hardcoded IDs
+  // Check for hardcoded IDs — Salesforce IDs are 15 or 18 chars, alphanumeric only (no underscores),
+  // and must not be part of a longer identifier. Require them to appear after = or in an explicit Id/string context.
   const hardcodedIds = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    const idPattern = /['"][a-zA-Z0-9]{15,18}['"]/g;
+    // 15-char or 18-char purely alphanumeric strings in quotes preceded by = or , or ( — avoids API names with underscores
+    const idPattern = /(?:=\s*|,\s*|\(\s*)['"]([a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})['"]/g;
     const matches = body.match(idPattern) || [];
     return matches.length > 0;
   });
@@ -348,8 +350,9 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // DML operations in loops (insert/update/delete/upsert/merge in for/while)
   const dmlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    return /for\s*\([\s\S]*?\)\s*\{[\s\S]*?\b(insert|update|delete|upsert|merge)\b/gi.test(body) ||
-           /while\s*\([^)]*\)\s*\{[\s\S]*?\b(insert|update|delete|upsert|merge)\b/gi.test(body);
+    // Look for a DML keyword that appears after a for/while loop opening — scan a generous window
+    return /\bfor\s*\([\s\S]{0,500}?\)\s*\{[\s\S]{0,2000}?\b(insert|update|delete|upsert|merge)\b/gi.test(body) ||
+           /\bwhile\s*\([^)]{0,200}\)\s*\{[\s\S]{0,2000}?\b(insert|update|delete|upsert|merge)\b/gi.test(body);
   });
   if (dmlInLoops.length > 0) {
     items.push(createDebtItem(
@@ -361,11 +364,13 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // Schema.getGlobalDescribe() — expensive schema lookup
+  // Schema.getGlobalDescribe() — expensive schema lookup (single call); CQ-44 will catch multi-call classes separately
   const schemaLookups = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    return /Schema\.getGlobalDescribe\s*\(\s*\)/gi.test(body);
+    const callCount = (body.match(/Schema\.getGlobalDescribe\s*\(\s*\)/gi) || []).length;
+    return callCount === 1;
   });
+  const schemaLookupsIds = new Set(schemaLookups.map((c: any) => c.Id));
   if (schemaLookups.length > 0) {
     items.push(createDebtItem(
       'code', 'medium',
@@ -379,14 +384,16 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // Classes without with sharing / inherited sharing
   const noSharing = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    // Skip interfaces, abstract classes, test classes, and @isTest
+    // Skip interfaces, test classes, and @isTest
     if (/@isTest\b/i.test(body)) return false;
     if (/\binterface\b/i.test(body)) return false;
-    // Flag classes that declare a class keyword but lack with sharing / inherited sharing / without sharing declaration
-    return /\bclass\b/i.test(body) &&
-      !/\bwith\s+sharing\b/i.test(body) &&
-      !/\binherited\s+sharing\b/i.test(body) &&
-      !/\bwithout\s+sharing\b/i.test(body);
+    // Check the outer class declaration line only (first occurrence of `class <Name>`)
+    // Inner classes inherit from the outer class and don't need their own sharing keyword
+    const outerClassLine = body.match(/^[\s\S]*?\bclass\s+\w+/i)?.[0] || '';
+    return /\bclass\b/i.test(outerClassLine) &&
+      !/\bwith\s+sharing\b/i.test(outerClassLine) &&
+      !/\binherited\s+sharing\b/i.test(outerClassLine) &&
+      !/\bwithout\s+sharing\b/i.test(outerClassLine);
   });
   if (noSharing.length > 0) {
     items.push(createDebtItem(
@@ -439,6 +446,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       !/WITH\s+USER_MODE/i.test(q)
     );
   });
+  const soqlNoFlsIds = new Set(soqlNoFls.map((c: any) => c.Id));
   if (soqlNoFls.length > 0) {
     items.push(createDebtItem(
       'code', 'medium',
@@ -492,12 +500,13 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // @future methods with DML after callout pattern
+  // @future methods with DML after callout pattern — track IDs to avoid double-counting with CQ-24
   const futureDmlAfterCallout = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     return /@future\s*\(\s*callout\s*=\s*true/gi.test(body) &&
            /\b(insert|update|delete|upsert)\b/gi.test(body);
   });
+  const futureDmlIds = new Set(futureDmlAfterCallout.map((c: any) => c.Id));
   if (futureDmlAfterCallout.length > 0) {
     items.push(createDebtItem(
       'code', 'medium',
@@ -606,10 +615,11 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-24: @future annotation (AvoidFutureAnnotation)
+  // CQ-24: @future annotation (AvoidFutureAnnotation) — exclude classes already flagged by CQ-17 to avoid double-count
   const futureClasses = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
+    if (futureDmlIds.has(c.Id)) return false;
     return /@future\b/i.test(body);
   });
   if (futureClasses.length > 0) {
@@ -625,7 +635,8 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   const dmlInConstructor = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /public\s+\w+\s*\([^)]*\)\s*\{[^}]*\b(insert|update|delete|upsert|merge)\b/gi.test(body);
+    // Match a public constructor (name matches class name pattern) followed by DML within ~2000 chars
+    return /public\s+\w+\s*\([^)]{0,200}\)\s*\{[\s\S]{0,2000}?\b(insert|update|delete|upsert|merge)\b/gi.test(body);
   });
   if (dmlInConstructor.length > 0) {
     items.push(createDebtItem('code', 'high',
@@ -665,12 +676,13 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-28: System.debug in production code (PMD: AvoidDebugStatements)
+  // CQ-28: System.debug in production code (PMD: AvoidDebugStatements) — track IDs to avoid double-count with CQ-46
   const debugClasses = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
     return /\bSystem\.debug\s*\(/gi.test(body);
   });
+  const debugClassIds = new Set(debugClasses.map((c: any) => c.Id));
   if (debugClasses.length > 0) {
     items.push(createDebtItem('code', 'medium',
       `${debugClasses.length} Apex Classes Contain System.debug Statements`,
@@ -713,10 +725,11 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-31: ApexCRUDViolation — SOQL/DML without CRUD permission checks
+  // CQ-31: ApexCRUDViolation — DML without CRUD permission checks (SOQL-only cases already covered by CQ-14)
   const crudViolations = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
+    if (soqlNoFlsIds.has(c.Id)) return false; // already flagged by CQ-14, skip to avoid double-count
     const hasDmlOrSoql = /\b(insert|update|delete|upsert)\s+\w/gi.test(body) || /\[SELECT\b/gi.test(body);
     const hasCrudCheck = /\.isAccessible\(\)|\.isCreateable\(\)|\.isUpdateable\(\)|\.isDeletable\(\)|WITH\s+USER_MODE|WITH\s+SECURITY_ENFORCED|Schema\.sObjectType\./gi.test(body);
     return hasDmlOrSoql && !hasCrudCheck;
@@ -746,11 +759,13 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // CQ-33: ApexOpenRedirect — redirects to user-controlled locations
+  // Only flag PageReference built from URL/query-parameter sources, not from arbitrary Map.get() calls
   const openRedirects = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /new\s+PageReference\s*\(\s*\w+\.get\s*\(/gi.test(body) ||
-           /new\s+PageReference\s*\(\s*ApexPages\.currentPage\(\)\.getParameters/gi.test(body);
+    return /new\s+PageReference\s*\(\s*ApexPages\.currentPage\(\)\.getParameters/gi.test(body) ||
+           /new\s+PageReference\s*\(\s*params\.get\s*\(/gi.test(body) ||
+           /new\s+PageReference\s*\(\s*parameters\.get\s*\(/gi.test(body);
   });
   if (openRedirects.length > 0) {
     items.push(createDebtItem('code', 'critical',
@@ -825,11 +840,19 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-38: AvoidDeeplyNestedIfStmts
+  // CQ-38: AvoidDeeplyNestedIfStmts — count max nesting depth by scanning for consecutive if blocks
   const deeplyNested = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /if\s*\([^{]*\)\s*\{[^{}]*if\s*\([^{]*\)\s*\{[^{}]*if\s*\([^{]*\)\s*\{[^{}]*if\s*\(/gi.test(body);
+    // Walk the source tracking depth: increment on `if (`, decrement on `}` (simplified but practical)
+    let depth = 0, maxIfDepth = 0, currentIfDepth = 0;
+    const tokens = body.match(/\bif\s*\(|[{}]/g) || [];
+    for (const tok of tokens) {
+      if (tok === '{') { depth++; }
+      else if (tok === '}') { depth = Math.max(0, depth - 1); }
+      else if (/^if/.test(tok)) { currentIfDepth = depth + 1; if (currentIfDepth > maxIfDepth) maxIfDepth = currentIfDepth; }
+    }
+    return maxIfDepth >= 4;
   });
   if (deeplyNested.length > 0) {
     items.push(createDebtItem('code', 'medium',
@@ -932,10 +955,11 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-44: AvoidMultipleMassSchemaLookups (Graph Engine)
+  // CQ-44: AvoidMultipleMassSchemaLookups (Graph Engine) — excludes single-call classes already flagged by CQ-13
   const multiSchemaLookups = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
+    if (schemaLookupsIds.has(c.Id)) return false; // CQ-13 already flagged this single-call class
     const matches = (body.match(/Schema\.getGlobalDescribe\s*\(\s*\)|Schema\.describeSObjects\s*\(/gi) || []).length;
     return matches >= 2;
   });
@@ -948,35 +972,39 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-45: UnimplementedType (Graph Engine)
-  const unimplementedTypes = apex.classes.filter((c: any) => {
+  // CQ-45: UnimplementedType (Graph Engine) — abstract classes/interfaces with no concrete subclass in org
+  const abstractAndInterfaces = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /\b(abstract\s+class|interface)\b/gi.test(body) && !/\bglobal\b/gi.test(body);
+    if (/\bglobal\b/gi.test(body)) return false; // global types may be implemented in managed packages
+    return /\b(abstract\s+class|interface)\b/gi.test(body);
   });
-  if (unimplementedTypes.length > 0) {
-    items.push(createDebtItem('code', 'medium',
-      `${unimplementedTypes.length} Non-Global Abstract Classes or Interfaces Detected`,
-      'Non-global abstract classes and interfaces with no concrete implementations may represent dead code. Unused abstractions add maintenance overhead. This is flagged by Salesforce Graph Engine (UnimplementedType).',
-      'Review each abstract class and interface to confirm it has at least one active implementation. Delete those that are unused.',
-      { records: unimplementedTypes.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Abstract class or interface — verify active implementations exist' })) }
-    ));
+  if (abstractAndInterfaces.length > 0) {
+    // Build a set of all class names that extend or implement something
+    const implementedNames = new Set<string>();
+    for (const cls of (apex.classes || [])) {
+      const body = cls.Body || '';
+      let m;
+      const re = /\b(?:extends|implements)\s+([\w]+)/gi;
+      while ((m = re.exec(body)) !== null) {
+        implementedNames.add(m[1].toLowerCase());
+      }
+    }
+    const unimplementedTypes = abstractAndInterfaces.filter((c: any) =>
+      !implementedNames.has(c.Name.toLowerCase())
+    );
+    if (unimplementedTypes.length > 0) {
+      items.push(createDebtItem('code', 'medium',
+        `${unimplementedTypes.length} Non-Global Abstract Classes or Interfaces With No Known Implementation`,
+        'Abstract classes and interfaces with no concrete subclass or implementing class in the org may be dead code. Unused abstractions add maintenance overhead. This is flagged by Salesforce Graph Engine (UnimplementedType).',
+        'Review each abstract class and interface to confirm it has at least one active implementation. Delete those that are unused.',
+        { records: unimplementedTypes.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Abstract class or interface — no implementing class found in org' })) }
+      ));
+    }
   }
 
-  // CQ-46: UnusedLocalVariable (PMD)
-  const debugNoLevel = apex.classes.filter((c: any) => {
-    const body = c.Body || '';
-    if (/@isTest\b/i.test(body)) return false;
-    return /System\.debug\s*\(\s*(?!LoggingLevel)[^)]/gi.test(body);
-  });
-  if (debugNoLevel.length > 0) {
-    items.push(createDebtItem('code', 'low',
-      `${debugNoLevel.length} Classes Use System.debug() Without a LoggingLevel`,
-      'Single-argument System.debug() calls default to DEBUG level, appearing in all debug logs regardless of configured logging level. Using a LoggingLevel parameter allows fine-grained control. This is flagged by PMD (DebugsShouldUseLoggingLevel).',
-      'Replace System.debug(msg) with System.debug(LoggingLevel.DEBUG, msg) or an appropriate level (INFO, WARN, ERROR).',
-      { records: debugNoLevel.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'System.debug() without LoggingLevel parameter' })) }
-    ));
-  }
+  // CQ-46 (DebugsShouldUseLoggingLevel) removed — CQ-28 already flags all System.debug() usage at medium severity.
+  // Every class that would hit CQ-46 is already penalised under CQ-28; keeping both would double-deduct.
 
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
