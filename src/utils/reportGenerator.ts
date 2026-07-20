@@ -10,17 +10,19 @@ declare module 'jspdf' {
 }
 
 function getScoreColor(percentage: number) {
-  if (percentage >= 80) return { r: 39, g: 174, b: 96 };
-  if (percentage >= 60) return { r: 243, g: 156, b: 18 };
-  if (percentage >= 40) return { r: 211, g: 84, b: 0 };
+  if (percentage >= 85) return { r: 39, g: 174, b: 96 };
+  if (percentage >= 70) return { r: 46, g: 204, b: 113 };
+  if (percentage >= 50) return { r: 243, g: 156, b: 18 };
+  if (percentage >= 30) return { r: 211, g: 84, b: 0 };
   return { r: 192, g: 57, b: 43 };
 }
 
 function getScoreLabel(percentage: number): string {
-  if (percentage >= 80) return 'Healthy';
-  if (percentage >= 60) return 'Moderate Debt';
-  if (percentage >= 40) return 'Significant Debt';
-  return 'Critical Debt';
+  if (percentage >= 85) return 'Excellent';
+  if (percentage >= 70) return 'Good';
+  if (percentage >= 50) return 'Average';
+  if (percentage >= 30) return 'Fair';
+  return 'Poor';
 }
 
 export function generatePDFReport(assessment: AssessmentResult): void {
@@ -71,10 +73,9 @@ export function generatePDFReport(assessment: AssessmentResult): void {
 
   doc.autoTable({
     startY: yPos + 5,
-    head: [['Category', 'Score', 'Rating', 'Issues']],
+    head: [['Category', 'Health', 'Issues']],
     body: assessment.categories.map(cat => [
       cat.category,
-      `${cat.percentage}%`,
       getScoreLabel(cat.percentage),
       `${cat.items.length} issues`
     ]),
@@ -92,7 +93,7 @@ export function generatePDFReport(assessment: AssessmentResult): void {
 
     doc.setFontSize(11);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Score: ${category.percentage}%  |  ${getScoreLabel(category.percentage)}  |  ${category.items.length} issue${category.items.length !== 1 ? 's' : ''}`, 14, 28);
+    doc.text(`${getScoreLabel(category.percentage)}  |  ${category.items.length} issue${category.items.length !== 1 ? 's' : ''}`, 14, 28);
 
     if (category.items.length === 0) {
       doc.setFontSize(11);
@@ -191,10 +192,10 @@ export function generateExcelReport(assessment: AssessmentResult): void {
     [],
     [`Overall Health Score: ${assessment.overallPercentage}%  —  ${getScoreLabel(assessment.overallPercentage)}`],
     [],
-    ['Category', 'Score %', 'Rating', 'Issues Found']
+    ['Category', 'Health', 'Issues Found']
   ];
   assessment.categories.forEach(cat => {
-    summaryRows.push([cat.category, cat.percentage, getScoreLabel(cat.percentage), cat.items.length]);
+    summaryRows.push([cat.category, getScoreLabel(cat.percentage), cat.items.length]);
   });
 
   const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
@@ -205,7 +206,7 @@ export function generateExcelReport(assessment: AssessmentResult): void {
   assessment.categories.forEach(category => {
     const rows: any[][] = [
       [category.category],
-      [`Score: ${category.percentage}%  —  ${getScoreLabel(category.percentage)}  —  ${category.items.length} issue${category.items.length !== 1 ? 's' : ''}`],
+      [`${getScoreLabel(category.percentage)}  —  ${category.items.length} issue${category.items.length !== 1 ? 's' : ''}`],
       []
     ];
 
@@ -265,11 +266,11 @@ export function generateCSVReport(assessment: AssessmentResult): void {
   rows.push([]);
 
   // Column headers
-  rows.push(['Category', 'Score %', 'Severity', 'Issue', 'Description', 'Recommendation', 'Affected Record', 'Detail']);
+  rows.push(['Category', 'Health', 'Severity', 'Issue', 'Description', 'Recommendation', 'Affected Record', 'Detail']);
 
   assessment.categories.forEach(category => {
     if (category.items.length === 0) {
-      rows.push([category.category, String(category.percentage), '', 'No issues found', '', '', '', '']);
+      rows.push([category.category, getScoreLabel(category.percentage), '', 'No issues found', '', '', '', '']);
       return;
     }
 
@@ -284,7 +285,7 @@ export function generateCSVReport(assessment: AssessmentResult): void {
       if (records.length === 0) {
         rows.push([
           category.category,
-          String(category.percentage),
+          getScoreLabel(category.percentage),
           item.severity,
           item.title,
           item.description,
@@ -296,7 +297,7 @@ export function generateCSVReport(assessment: AssessmentResult): void {
         records.forEach((record, i) => {
           rows.push([
             i === 0 ? category.category : '',
-            i === 0 ? String(category.percentage) : '',
+            i === 0 ? getScoreLabel(category.percentage) : '',
             i === 0 ? item.severity : '',
             i === 0 ? item.title : '',
             i === 0 ? item.description : '',
