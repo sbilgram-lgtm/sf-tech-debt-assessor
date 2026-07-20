@@ -1,4 +1,5 @@
 import React from 'react';
+import { getHealthRating } from '../utils/healthRating';
 
 interface ScoreGaugeProps {
   percentage: number;
@@ -12,13 +13,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ percentage, label, size 
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percentage / 100) * circumference;
   const svgSize = (radius + stroke) * 2;
-
-  const getColor = () => {
-    if (percentage >= 80) return '#27ae60';
-    if (percentage >= 60) return '#f39c12';
-    if (percentage >= 40) return '#d35400';
-    return '#c0392b';
-  };
+  const { label: healthLabel, color } = getHealthRating(percentage);
 
   return (
     <div style={{ textAlign: 'center' }}>
@@ -36,7 +31,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ percentage, label, size 
           cy={radius + stroke}
           r={radius}
           fill="none"
-          stroke={getColor()}
+          stroke={color}
           strokeWidth={stroke}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
@@ -48,10 +43,20 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ percentage, label, size 
         <div style={{
           fontSize: size === 'large' ? '2.5rem' : '1.5rem',
           fontWeight: 'bold',
-          color: getColor()
+          color
         }}>
           {percentage}%
         </div>
+        {size === 'large' && (
+          <div style={{
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            color,
+            marginTop: '2px'
+          }}>
+            {healthLabel}
+          </div>
+        )}
       </div>
       <div style={{
         marginTop: size === 'large' ? 40 : 25,
