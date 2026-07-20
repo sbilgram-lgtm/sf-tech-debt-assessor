@@ -1,6 +1,6 @@
 """
-Generates SF_Tech_Debt_Assessor_All_Checks_2026-06-17.docx
-A complete reference of every check across all 22 categories.
+Generates SF_Tech_Debt_Assessor_All_Checks_2026-06-22.docx
+A complete reference of every check across all 23 categories.
 """
 
 from docx import Document
@@ -54,7 +54,7 @@ CATEGORIES = [
   },
   {
     'name': 'Code Quality',
-    'checks': 29,
+    'checks': 46,
     'group': 'Code & Development',
     'checks_list': [
       ('Triggers with Business Logic (No Handler Pattern)', 'high'),
@@ -86,6 +86,23 @@ CATEGORIES = [
       ('HTTP (Non-HTTPS) Callout Endpoints (PMD: ApexInsecureEndpoint)', 'high'),
       ('System.debug Statements in Production Code (PMD: AvoidDebugStatements)', 'medium'),
       ('SOQL Queries Without WHERE or LIMIT — Full Table Scan Risk (PMD: AvoidNonRestrictiveQueries)', 'high'),
+      ('Hardwired IVs or Keys in Crypto.encrypt/decrypt Calls (PMD: ApexBadCrypto)', 'critical'),
+      ('DML / SOQL Without CRUD Permission Checks (PMD: ApexCRUDViolation)', 'critical'),
+      ('Database.executeAnonymous() Usage — Arbitrary Code Execution Risk (PMD: ApexDangerousMethods)', 'critical'),
+      ('PageReference Constructed from User-Controlled Input — Open Redirect (PMD: ApexOpenRedirect)', 'critical'),
+      ('Hardcoded Authorization Headers in HTTP Callouts — Use Named Credentials (PMD: ApexSuggestUsingNamedCred)', 'high'),
+      ('URL Parameters Used Without Escaping — XSS Risk (PMD: ApexXSSFromURLParam)', 'high'),
+      ('High Cyclomatic Complexity — Too Many Decision Branches (PMD: CyclomaticComplexity)', 'high'),
+      ('Methods with 6+ Parameters — Use Wrapper Objects (PMD: ExcessiveParameterList)', 'medium'),
+      ('If Statements Nested 4+ Levels Deep (PMD: AvoidDeeplyNestedIfStmts)', 'medium'),
+      ('@AuraEnabled Properties with Private/Protected Getters — Runtime Error (PMD: InaccessibleAuraEnabledGetter)', 'high'),
+      ('equals() Overridden Without hashCode() or Vice Versa — Broken Map/Set Contract (PMD: OverrideBothEqualsAndHashcode)', 'high'),
+      ('Class Names Shadow Built-In Apex Types (PMD: TypeShadowsBuiltInNamespace)', 'high'),
+      ('SOQL LIMIT 1 Result Used Without Null Check — NullPointerException Risk (Graph Engine: ApexNullPointerException)', 'high'),
+      ('SOQL Bind Variables Without Null Checks — Full Table Scan Risk (Graph Engine: MissingNullCheckOnSoqlVariable)', 'high'),
+      ('Multiple Calls to Schema.getGlobalDescribe() / describeSObjects() (Graph Engine: AvoidMultipleMassSchemaLookups)', 'high'),
+      ('Non-Global Abstract Classes or Interfaces Without Concrete Implementation (Graph Engine: UnimplementedType)', 'medium'),
+      ('System.debug() Without LoggingLevel Parameter (PMD: DebugsShouldUseLoggingLevel)', 'low'),
     ],
   },
   {
@@ -224,13 +241,16 @@ CATEGORIES = [
   },
   {
     'name': 'Test Coverage',
-    'checks': 4,
+    'checks': 7,
     'group': 'Code & Development',
     'checks_list': [
       ('Low Test Class Ratio (<30% of production components)', 'high'),
       ('Classes/Triggers with Zero Test Coverage', 'critical'),
       ('Components Below 75% Test Coverage', 'high'),
       ('Triggers Without a Dedicated Test Class (by naming convention)', 'medium'),
+      ('Assert Statements Without a Message Parameter — Failures Are Cryptic (PMD: ApexAssertionsShouldIncludeMessage)', 'low'),
+      ('Test Classes That Never Call System.runAs() — Multi-User Scenarios Untested (PMD: ApexUnitTestClassShouldHaveRunAs)', 'medium'),
+      ('Test Methods Using the Deprecated testMethod Keyword — Replace with @isTest (PMD: ApexUnitTestMethodShouldHaveIsTestAnnotation)', 'low'),
     ],
   },
   {
@@ -510,6 +530,21 @@ CATEGORIES = [
       ('File Distribution Across Objects (Top 20 by attachment count)', 'low'),
     ],
   },
+  {
+    'name': 'Flow Quality',
+    'checks': 8,
+    'group': 'Code & Development',
+    'checks_list': [
+      ('Active Flows Missing Fault Paths on Failable Elements (DML, Actions, Subflows)', 'high'),
+      ('Active Flows with Database Operations Inside Loops — Governor Limit Risk', 'high'),
+      ('Flows with Circular Subflow References — Causes Runtime Error', 'critical'),
+      ('Flows Running in System Context Without Sharing — Privilege Escalation Risk', 'high'),
+      ('Flows Running in System Context With Sharing — Elevated Privileges, Review Intent', 'low'),
+      ('Flows Containing Hardcoded Salesforce IDs — Breaks on Deployment (Flow Scanner)', 'medium'),
+      ('Active Flows with No Description', 'low'),
+      ('Flows with Assignment Elements Using Default "Copy" Labels — Readability Issue', 'low'),
+    ],
+  },
 ]
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -565,7 +600,7 @@ run.font.color.rgb = RGBColor(0x03, 0x2D, 0x60)
 
 sub = doc.add_paragraph()
 sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = sub.add_run('Complete Check Reference  —  All 22 Categories  —  June 17, 2026')
+r = sub.add_run('Complete Check Reference  —  All 23 Categories  —  June 22, 2026')
 r.font.size = Pt(12)
 r.font.color.rgb = RGBColor(0x7F, 0x8C, 0x8D)
 r.font.italic = True
@@ -581,7 +616,7 @@ doc.add_paragraph()
 # Summary note
 note = doc.add_paragraph()
 rn = note.add_run(
-    'This document lists every individual check across all 22 assessment categories. '
+    'This document lists every individual check across all 23 assessment categories. '
     'Checks are marked Critical, High, Medium, or Low. The tool runs all checks on every '
     'assessment and only surfaces findings where the check condition is met.'
 )
@@ -710,7 +745,7 @@ for cat in CATEGORIES:
 
 # ── Save ─────────────────────────────────────────────────────────────
 out = os.path.expanduser(
-    '~/Desktop/SF_Tech_Debt_Assessor_All_Checks_2026-06-17.docx'
+    '~/Desktop/SF_Tech_Debt_Assessor_All_Checks_2026-06-22.docx'
 )
 doc.save(out)
 print(f"Saved: {out}")
