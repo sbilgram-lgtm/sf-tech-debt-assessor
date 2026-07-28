@@ -42,6 +42,8 @@ export interface AutomationData {
   activePushTopics: any[];
   pendingTimeQueueCount: number;
   loginFlows: any[];
+  jsButtons: any[];
+  feedEnabledObjects: any[];
 }
 
 export interface ApexData {
@@ -189,6 +191,10 @@ export interface SharingSecurityData {
   usersWithExcessivePermSets: any[];
   clonedSysAdminProfiles: any[];
   transactionSecurityPolicies: any[];
+  profilesWithNoUsers: any[];
+  permSetsWithNoAssignees: any[];
+  rolesWithNoUsers: any[];
+  allRoles: any[];
 }
 
 export interface IntegrationData {
@@ -233,6 +239,8 @@ export interface ReportsDashboardsData {
   totalReports: number;
   staleDashboards: any[];
   totalDashboards: number;
+  personalFolderReportCount: number;
+  unusedCustomReportTypes: any[];
 }
 
 export interface EmailTemplatesData {
@@ -258,6 +266,7 @@ export interface CustomMetadataData {
 export interface RecordTypesLayoutsData {
   recordTypes: any[];
   pageLayouts: any[];
+  orphanedLayouts: any[];
 }
 
 export interface EinsteinAIData {

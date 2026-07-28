@@ -223,6 +223,30 @@ export function assessConfiguration(
     ));
   }
 
+  // JavaScript buttons/links — broken in Lightning Experience
+  const jsButtons = automation.jsButtons || [];
+  if (jsButtons.length > 0) {
+    items.push(createDebtItem(
+      'configuration', 'high',
+      `${jsButtons.length} JavaScript Button${jsButtons.length !== 1 ? 's' : ''} or Custom Link${jsButtons.length !== 1 ? 's' : ''} — Broken in Lightning Experience`,
+      `${jsButtons.length} custom button${jsButtons.length !== 1 ? 's' : ''} or link${jsButtons.length !== 1 ? 's' : ''} use inline JavaScript (LinkType = javascript). JavaScript buttons do not execute in Lightning Experience — users clicking them see no response or a silent failure. This was a key check in the Salesforce Optimizer.`,
+      'Replace JavaScript buttons with Quick Actions, Lightning Web Components, or Flow-launched actions. Use the Lightning Experience Transition Assistant in Setup to identify all affected buttons.',
+      { records: jsButtons.slice(0, 50).map((b: any) => ({ name: b.Name, detail: b.SobjectType || 'Custom button — JavaScript not supported in LEX' })) }
+    ));
+  }
+
+  // Feed Tracking enabled on excessive objects — storage and performance overhead
+  const feedEnabledObjects = automation.feedEnabledObjects || [];
+  if (feedEnabledObjects.length > 20) {
+    items.push(createDebtItem(
+      'configuration', 'medium',
+      `Feed Tracking Enabled on ${feedEnabledObjects.length} Objects — Review Scope`,
+      `Chatter Feed Tracking is enabled on ${feedEnabledObjects.length} objects. Each tracked object maintains a feed table that grows with every record change. Enabling it broadly — especially on high-volume objects — increases storage consumption and can slow feed queries. The Salesforce Optimizer flagged orgs with excessive feed tracking adoption.`,
+      'Audit Feed Tracking in Setup → Chatter → Feed Tracking. Disable tracking on objects where Chatter feed activity is not actively used. Focus tracking on objects with genuine collaboration needs (Cases, Opportunities, custom objects with high user engagement).',
+      { records: feedEnabledObjects.slice(0, 50).map((o: any) => ({ name: o.QualifiedApiName, detail: 'Feed Tracking enabled' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -2303,6 +2327,71 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
+  // Profiles with no active users — dead config
+  const profilesWithNoUsers = data.profilesWithNoUsers || [];
+  // Exclude well-known system profiles that never have direct users
+  const systemProfileNames = new Set(['Guest User', 'Standard Guest', 'Analytics Cloud Integration User', 'Analytics Cloud Security User', 'Authenticated Website', 'Customer Community User', 'Customer Community Login User', 'Partner Community User', 'Partner Community Login User', 'Chatter Free User', 'Chatter External User', 'High Volume Customer Portal User', 'High Volume Customer Portal']);
+  const genuineOrphanProfiles = profilesWithNoUsers.filter((p: any) => !systemProfileNames.has(p.Name) && p.UserType === 'Standard');
+  if (genuineOrphanProfiles.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'low',
+      `${genuineOrphanProfiles.length} Standard Profile${genuineOrphanProfiles.length !== 1 ? 's' : ''} With No Active Users Assigned`,
+      `${genuineOrphanProfiles.length} standard profile${genuineOrphanProfiles.length !== 1 ? 's' : ''} have no active users. These are dead configuration that adds noise to permission audits and could be inadvertently assigned to new users. The Salesforce Optimizer flagged this pattern.`,
+      'Delete or archive profiles not assigned to any active user. Confirm the profile is not used in automation or Experience Cloud guest access before deleting.',
+      { records: genuineOrphanProfiles.slice(0, 50).map((p: any) => ({ name: p.Name, detail: 'No active users assigned' })) }
+    ));
+  }
+
+  // Permission Sets assigned to no users — dead config
+  const permSetsWithNoAssignees = data.permSetsWithNoAssignees || [];
+  if (permSetsWithNoAssignees.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'low',
+      `${permSetsWithNoAssignees.length} Custom Permission Set${permSetsWithNoAssignees.length !== 1 ? 's' : ''} Not Assigned to Any User`,
+      `${permSetsWithNoAssignees.length} custom permission set${permSetsWithNoAssignees.length !== 1 ? 's' : ''} exist but are not assigned to any user. Unassigned permission sets clutter access reviews and may represent abandoned configurations. The Salesforce Optimizer highlighted this as governance debt.`,
+      'Review each unassigned permission set. Delete those that are no longer needed. Add a description to those retained for future use explaining their purpose.',
+      { records: permSetsWithNoAssignees.slice(0, 50).map((ps: any) => ({ name: ps.Label || ps.Name, detail: 'Custom permission set — no active user assignments' })) }
+    ));
+  }
+
+  // Roles with no active users
+  const rolesWithNoUsers = data.rolesWithNoUsers || [];
+  if (rolesWithNoUsers.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'low',
+      `${rolesWithNoUsers.length} Role${rolesWithNoUsers.length !== 1 ? 's' : ''} in Hierarchy With No Active Users`,
+      `${rolesWithNoUsers.length} role${rolesWithNoUsers.length !== 1 ? 's' : ''} exist in the role hierarchy but have no active users. Empty roles bloat the hierarchy, slow sharing recalculation, and make the org structure harder to read. The Salesforce Optimizer flagged empty roles.`,
+      'Delete roles that have no active users and no children in the hierarchy. Flatten the hierarchy where possible — fewer levels means faster sharing recalculation.',
+      { records: rolesWithNoUsers.slice(0, 50).map((r: any) => ({ name: r.Name, detail: 'Role with no active users' })) }
+    ));
+  }
+
+  // Role hierarchy depth — >10 levels is a performance and governance risk
+  const allRoles = data.allRoles || [];
+  if (allRoles.length > 0) {
+    const parentMap = new Map(allRoles.map((r: any) => [r.Id, r.ParentRoleId]));
+    let maxDepth = 0;
+    for (const role of allRoles) {
+      let depth = 0;
+      let current = role.Id;
+      while (parentMap.get(current)) {
+        current = parentMap.get(current);
+        depth++;
+        if (depth > 50) break; // guard against circular refs
+      }
+      if (depth > maxDepth) maxDepth = depth;
+    }
+    if (maxDepth > 10) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'medium',
+        `Role Hierarchy is ${maxDepth} Levels Deep`,
+        `The role hierarchy has ${maxDepth} levels. Deeply nested hierarchies significantly slow sharing recalculation when users are added or role memberships change. Salesforce recommends keeping hierarchies as flat as possible.`,
+        'Flatten the role hierarchy where possible. Consolidate intermediate roles that exist only for structural reasons. Target a maximum of 10 levels.',
+        { depth: maxDepth }
+      ));
+    }
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -2787,6 +2876,26 @@ export function assessReportsDashboards(data: ReportsDashboardsData): CategorySc
       { total: data.totalReports }));
   }
 
+  // Reports in personal folders — invisible to team, lost when user leaves
+  const personalCount = (data as any).personalFolderReportCount || 0;
+  if (personalCount > 0) {
+    items.push(createDebtItem('reportsDashboards', 'medium',
+      `${personalCount} Report${personalCount !== 1 ? 's' : ''} Stored in Personal Folders`,
+      `${personalCount} report${personalCount !== 1 ? 's' : ''} are saved in personal "My Personal Custom Reports" folders. These are invisible to other users — if the owner leaves or is deactivated, the reports become inaccessible. The Salesforce Optimizer flagged personal-folder reports as governance debt.`,
+      'Move reports from personal folders to shared folders accessible to the team. Establish a naming convention and shared folder structure to prevent future reports being saved privately.',
+      { count: personalCount }));
+  }
+
+  // Custom Report Types with no reports built on them
+  const unusedCRTs = (data as any).unusedCustomReportTypes || [];
+  if (unusedCRTs.length > 0) {
+    items.push(createDebtItem('reportsDashboards', 'low',
+      `${unusedCRTs.length} Custom Report Type${unusedCRTs.length !== 1 ? 's' : ''} With No Reports Built on Them`,
+      `${unusedCRTs.length} custom report type${unusedCRTs.length !== 1 ? 's' : ''} exist but have no reports using them. Unused Custom Report Types (CRTs) clutter the report builder and may represent abandoned configurations or superseded data models. The Salesforce Optimizer highlighted this.`,
+      'Delete Custom Report Types that have no associated reports after confirming they are not actively being built on. Document retained CRTs with a description explaining their purpose.',
+      { records: unusedCRTs.slice(0, 50).map((r: any) => ({ name: r.Label || r.DeveloperName, detail: 'Custom Report Type — no reports found' })) }));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Reports & Dashboards', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -2957,6 +3066,16 @@ export function assessRecordTypesLayouts(data: RecordTypesLayoutsData): Category
       'Excessive page layouts are hard to maintain and keep in sync as objects evolve.',
       'Consolidate page layouts. Consider Dynamic Forms on Lightning pages to replace layout proliferation.',
       { count: data.pageLayouts.length }));
+  }
+
+  // Orphaned page layouts — not assigned to any profile or record type
+  const orphanedLayouts = (data as any).orphanedLayouts || [];
+  if (orphanedLayouts.length > 0) {
+    items.push(createDebtItem('recordTypesLayouts', 'medium',
+      `${orphanedLayouts.length} Page Layout${orphanedLayouts.length !== 1 ? 's' : ''} Not Assigned to Any Profile or Record Type`,
+      `${orphanedLayouts.length} page layout${orphanedLayouts.length !== 1 ? 's' : ''} exist but are not assigned to any profile or record type — they are unreachable by any user. Orphaned layouts waste maintenance effort and confuse administrators during audits. The Salesforce Optimizer flagged unassigned page layouts.`,
+      'Delete orphaned page layouts after confirming they are not referenced in any automation. Use Setup → Object Manager → [Object] → Page Layout Assignment to review assignments.',
+      { records: orphanedLayouts.slice(0, 50).map((l: any) => ({ name: l.Name, detail: l.EntityDefinitionId || 'Page layout — no profile or record type assignment' })) }));
   }
 
   const maxScore = 100;

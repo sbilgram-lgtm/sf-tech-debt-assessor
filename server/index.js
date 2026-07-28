@@ -212,6 +212,12 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, FlowDefinitionView.ApiName, EntityType FROM LoginFlow LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
+    // JS buttons/links — broken in Lightning Experience
+    const [jsButtonsRes, feedTrackingRes] = await Promise.all([
+      safeToolingQuery(conn, "SELECT Id, Name, SobjectType FROM WebLink WHERE LinkType = 'javascript' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT QualifiedApiName FROM EntityDefinition WHERE IsFeedEnabled = true AND IsCustomizable = true LIMIT 200").catch(() => ({ records: [] }))
+    ]);
+
     res.json({
       workflowRules: workflowRules.records || [],
       processBuilders,
@@ -224,7 +230,9 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       sControls: sControlsRes.records || [],
       activePushTopics: activePushTopicsRes.records || [],
       pendingTimeQueueCount: (pendingTimeQueueRes.records[0] || {}).expr0 || 0,
-      loginFlows: loginFlowsRes.records || []
+      loginFlows: loginFlowsRes.records || [],
+      jsButtons: jsButtonsRes.records || [],
+      feedEnabledObjects: feedTrackingRes.records || []
     });
   } catch (err) {
     console.error('Automation assessment error:', err);
@@ -1011,6 +1019,28 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // Transaction Security Policies
     const txnSecurityRes = await safeQuery(conn, "SELECT Id, Name FROM TransactionSecurityPolicy WHERE IsActive = true LIMIT 10").catch(() => ({ records: [] }));
 
+    // Active user counts by profile — to detect profiles with no active users
+    const profileUserCountsRes = await safeQuery(conn,
+      "SELECT ProfileId, COUNT(Id) cnt FROM User WHERE IsActive = true GROUP BY ProfileId LIMIT 500"
+    ).catch(() => ({ records: [] }));
+    const activeProfileIds = new Set((profileUserCountsRes.records || []).map((r) => r.ProfileId));
+
+    // Active user counts by permission set — to detect unassigned custom perm sets
+    const psUserCountsRes = await safeQuery(conn,
+      "SELECT PermissionSetId, COUNT(Id) cnt FROM PermissionSetAssignment WHERE PermissionSet.IsCustom = true GROUP BY PermissionSetId LIMIT 500"
+    ).catch(() => ({ records: [] }));
+    const assignedPermSetIds = new Set((psUserCountsRes.records || []).map((r) => r.PermissionSetId));
+
+    // Roles with no active users, and all roles for hierarchy depth check
+    const [emptyRolesRes, allRolesRes] = await Promise.all([
+      safeQuery(conn,
+        "SELECT Id, Name FROM UserRole WHERE NamespacePrefix = null AND Id NOT IN (SELECT UserRoleId FROM User WHERE IsActive = true AND UserRoleId != null) LIMIT 200"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT Id, Name, ParentRoleId FROM UserRole WHERE NamespacePrefix = null LIMIT 500"
+      ).catch(() => ({ records: [] }))
+    ]);
+
     res.json({
       owdSettings: owdSettings.records || [],
       sharingRules,
@@ -1040,7 +1070,11 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       usersWithExcessivePermSets: usersWithExcessivePSRes.records || [],
       clonedSysAdminProfiles: clonedSysAdminRes.records || [],
       transactionSecurityPolicies: txnSecurityRes.records || [],
-      isSandbox: !!req.session.isSandbox
+      isSandbox: !!req.session.isSandbox,
+      profilesWithNoUsers: (profiles.records || []).filter(p => !activeProfileIds.has(p.Id)),
+      permSetsWithNoAssignees: (permSets.records || []).filter(ps => !assignedPermSetIds.has(ps.Id)),
+      rolesWithNoUsers: emptyRolesRes.records || [],
+      allRoles: allRolesRes.records || []
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -1230,21 +1264,39 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const iso = sixMonthsAgo.toISOString();
-    const [allReports, staleReports, staleReportsCount, allDashboards, staleDashboards, staleDashboardsCount] = await Promise.all([
+    const [allReports, staleReports, staleReportsCount, allDashboards, staleDashboards, staleDashboardsCount,
+           personalFolderReportsRes, customReportTypesRes] = await Promise.all([
       safeQuery(conn, "SELECT COUNT(Id) FROM Report"),
       safeQuery(conn, `SELECT Id, Name, LastRunDate, OwnerId FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null LIMIT 200`),
       safeQuery(conn, `SELECT COUNT(Id) FROM Report WHERE LastRunDate < ${iso} OR LastRunDate = null`),
       safeQuery(conn, "SELECT COUNT(Id) FROM Dashboard"),
       safeQuery(conn, `SELECT Id, Title, LastViewedDate FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null LIMIT 200`),
-      safeQuery(conn, `SELECT COUNT(Id) FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null`)
+      safeQuery(conn, `SELECT COUNT(Id) FROM Dashboard WHERE LastViewedDate < ${iso} OR LastViewedDate = null`),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Report WHERE FolderName = 'My Personal Custom Reports'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT Id, DeveloperName, Label FROM ReportType WHERE IsCustom = true AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] }))
     ]);
+
+    // Find which custom report types have at least one report built on them
+    const crtNames = (customReportTypesRes.records || []).map(r => r.DeveloperName);
+    let usedCrtNames = new Set();
+    if (crtNames.length > 0) {
+      // Report.ReportTypeApiName holds the CRT developer name
+      const usedRes = await safeQuery(conn,
+        `SELECT ReportTypeApiName FROM Report WHERE ReportTypeApiName IN ('${crtNames.slice(0, 100).join("','")}') GROUP BY ReportTypeApiName LIMIT 200`
+      ).catch(() => ({ records: [] }));
+      usedCrtNames = new Set((usedRes.records || []).map(r => r.ReportTypeApiName));
+    }
+    const unusedCustomReportTypes = (customReportTypesRes.records || []).filter(r => !usedCrtNames.has(r.DeveloperName));
+
     res.json({
       totalReports: (allReports.records[0] || {}).expr0 || 0,
       staleReports: staleReports.records || [],
       staleReportsCount: (staleReportsCount.records[0] || {}).expr0 || (staleReports.records || []).length,
       totalDashboards: (allDashboards.records[0] || {}).expr0 || 0,
       staleDashboards: staleDashboards.records || [],
-      staleDashboardsCount: (staleDashboardsCount.records[0] || {}).expr0 || (staleDashboards.records || []).length
+      staleDashboardsCount: (staleDashboardsCount.records[0] || {}).expr0 || (staleDashboards.records || []).length,
+      personalFolderReportCount: (personalFolderReportsRes.records[0] || {}).expr0 || 0,
+      unusedCustomReportTypes
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1317,11 +1369,14 @@ app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
 app.get('/api/assess/record-types-layouts', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const [recordTypes, pageLayouts] = await Promise.all([
+    const [recordTypes, pageLayouts, profileLayoutsRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, SobjectType, IsActive, Description FROM RecordType WHERE DeveloperName != 'Master' AND NamespacePrefix = null LIMIT 500"),
-      safeToolingQuery(conn, "SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500")
+      safeToolingQuery(conn, "SELECT Id, Name, EntityDefinitionId, Description FROM Layout LIMIT 500"),
+      safeToolingQuery(conn, "SELECT LayoutId FROM ProfileLayout LIMIT 2000").catch(() => ({ records: [] }))
     ]);
-    res.json({ recordTypes: recordTypes.records || [], pageLayouts: pageLayouts.records || [] });
+    const assignedLayoutIds = new Set((profileLayoutsRes.records || []).map(r => r.LayoutId));
+    const orphanedLayouts = (pageLayouts.records || []).filter(l => !assignedLayoutIds.has(l.Id));
+    res.json({ recordTypes: recordTypes.records || [], pageLayouts: pageLayouts.records || [], orphanedLayouts });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

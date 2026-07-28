@@ -413,7 +413,7 @@ const GROUP_COLORS: Record<string, string> = {
 
 const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 24, group: 'Security & Access' },
+  { icon: '🔒',  name: 'Sharing & Security',      checks: 28, group: 'Security & Access' },
   { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
   { icon: '🌐',  name: 'Experience Cloud',        checks: 15, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
@@ -427,9 +427,9 @@ const CATEGORIES = [
   { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },
   { icon: '⚡',  name: 'Platform Events',         checks: 3,  group: 'Performance & Limits' },
   // ── Configuration & Architecture ──────────────────────────────
-  { icon: '⚙️',  name: 'Configuration',          checks: 13, group: 'Configuration & Architecture' },
+  { icon: '⚙️',  name: 'Configuration',          checks: 15, group: 'Configuration & Architecture' },
   { icon: '🗄️',  name: 'Data Model',              checks: 4,  group: 'Configuration & Architecture' },
-  { icon: '📋',  name: 'Record Types & Layouts',  checks: 4,  group: 'Configuration & Architecture' },
+  { icon: '📋',  name: 'Record Types & Layouts',  checks: 5,  group: 'Configuration & Architecture' },
   { icon: '🔧',  name: 'Custom Metadata',         checks: 3,  group: 'Configuration & Architecture' },
   { icon: '🔁',  name: 'Duplicate Rules',         checks: 4,  group: 'Configuration & Architecture' },
   { icon: '🔌',  name: 'Integrations',            checks: 9,  group: 'Configuration & Architecture' },
@@ -438,7 +438,7 @@ const CATEGORIES = [
   { icon: '🤖',  name: 'Einstein & AI',           checks: 9,  group: 'CRM & Service' },
   { icon: '📦',  name: 'Managed Packages',        checks: 3,  group: 'CRM & Service' },
   // ── Governance & Hygiene ───────────────────────────────────────
-  { icon: '📈',  name: 'Reports & Dashboards',    checks: 3,  group: 'Governance & Hygiene' },
+  { icon: '📈',  name: 'Reports & Dashboards',    checks: 5,  group: 'Governance & Hygiene' },
   { icon: '📧',  name: 'Email Templates',         checks: 3,  group: 'Governance & Hygiene' },
   { icon: '📎',  name: 'Notes & Attachments',     checks: 12, group: 'Governance & Hygiene' },
 ];
