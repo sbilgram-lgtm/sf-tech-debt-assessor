@@ -39,7 +39,6 @@ export interface AutomationData {
   webToCaseSettings: any;
   caseAutoResponseRules: any[];
   sControls: any[];
-  activePushTopics: any[];
   pendingTimeQueueCount: number;
   loginFlows: any[];
   jsButtons: any[];
@@ -252,6 +251,7 @@ export interface PlatformEventsData {
   platformEvents: any[];
   cdcEntities: any[];
   eventBusSubscribers: any[];
+  apexConsumedEvents: string[];
 }
 
 export interface ManagedPackagesData {

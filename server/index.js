@@ -200,14 +200,13 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
 
     const [approvalProcesses, einsteinFlowActions, webToCaseSettingsRes, caseAutoResponseRulesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 200"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
       safeQuery(conn, "SELECT EnableWebToCase, CaseCaptchaEnabledFlag FROM WebToCaseSettings LIMIT 1").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, Name, Active FROM AutoResponseRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
-    const [sControlsRes, activePushTopicsRes, pendingTimeQueueRes, loginFlowsRes] = await Promise.all([
+    const [sControlsRes, pendingTimeQueueRes, loginFlowsRes] = await Promise.all([
       safeToolingQuery(conn, "SELECT Id, Name FROM Scontrol WHERE NamespacePrefix = null LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, Name, ApiVersion, Query FROM PushTopic WHERE IsActive = true LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM ProcessInstance WHERE Status = 'Pending'").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT Id, FlowDefinitionView.ApiName, EntityType FROM LoginFlow LIMIT 20").catch(() => ({ records: [] }))
     ]);
@@ -228,7 +227,6 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       webToCaseSettings: (webToCaseSettingsRes.records || [])[0] || null,
       caseAutoResponseRules: caseAutoResponseRulesRes.records || [],
       sControls: sControlsRes.records || [],
-      activePushTopics: activePushTopicsRes.records || [],
       pendingTimeQueueCount: (pendingTimeQueueRes.records[0] || {}).expr0 || 0,
       loginFlows: loginFlowsRes.records || [],
       jsButtons: jsButtonsRes.records || [],
@@ -247,7 +245,7 @@ app.get('/api/assess/validation-rules', requireAuth, async (req, res) => {
     const rules = await safeToolingQuery(conn,
       "SELECT Id, ValidationName, EntityDefinitionId, Active, " +
       "Description, LastModifiedDate " +
-      "FROM ValidationRule WHERE Active = true"
+      "FROM ValidationRule WHERE Active = true LIMIT 5000"
     );
     res.json({ validationRules: rules.records || [] });
   } catch (err) {
@@ -268,7 +266,7 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const triggers = await safeToolingQuery(conn,
       "SELECT Id, Name, Body, TableEnumOrId, ApiVersion, " +
       "LastModifiedDate, NamespacePrefix " +
-      "FROM ApexTrigger WHERE NamespacePrefix = null"
+      "FROM ApexTrigger WHERE NamespacePrefix = null AND Status = 'Active'"
     );
     const testCoverage = await safeToolingQuery(conn,
       "SELECT ApexClassOrTriggerId, NumLinesCovered, NumLinesUncovered " +
@@ -351,7 +349,7 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
     ).catch(() => ({ records: [] }));
     const fieldsByObject = {};
     for (const row of (fieldCountsResult.records || [])) {
-      fieldsByObject[row.TableEnumOrId] = row.fieldCount;
+      fieldsByObject[row.TableEnumOrId] = row.expr0;
     }
 
     res.json({
@@ -883,7 +881,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // Integration/API service account users (likely have API-only profiles)
     const integrationUsers = await safeQuery(conn,
       "SELECT Id, Name, Username, Email, IsActive, LastLoginDate, " +
-      "Profile.Name, Profile.UserType, CreatedDate " +
+      "Profile.Id, Profile.Name, Profile.UserType, CreatedDate " +
       "FROM User WHERE IsActive = true AND " +
       "(Profile.Name LIKE '%API%' OR Profile.Name LIKE '%Integration%' OR " +
       "Profile.Name LIKE '%System%' OR Profile.Name LIKE '%Service%') " +
@@ -1277,14 +1275,14 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
     ]);
 
     // Find which custom report types have at least one report built on them
+    // Report.ReportType.DeveloperName is the correct relationship path (not the non-existent ReportTypeApiName)
     const crtNames = (customReportTypesRes.records || []).map(r => r.DeveloperName);
     let usedCrtNames = new Set();
     if (crtNames.length > 0) {
-      // Report.ReportTypeApiName holds the CRT developer name
       const usedRes = await safeQuery(conn,
-        `SELECT ReportTypeApiName FROM Report WHERE ReportTypeApiName IN ('${crtNames.slice(0, 100).join("','")}') GROUP BY ReportTypeApiName LIMIT 200`
+        `SELECT ReportType.DeveloperName FROM Report WHERE ReportType.DeveloperName IN ('${crtNames.slice(0, 100).join("','")}') GROUP BY ReportType.DeveloperName LIMIT 200`
       ).catch(() => ({ records: [] }));
-      usedCrtNames = new Set((usedRes.records || []).map(r => r.ReportTypeApiName));
+      usedCrtNames = new Set((usedRes.records || []).map(r => r.ReportType && r.ReportType.DeveloperName).filter(Boolean));
     }
     const unusedCustomReportTypes = (customReportTypesRes.records || []).filter(r => !usedCrtNames.has(r.DeveloperName));
 
@@ -1321,17 +1319,22 @@ app.get('/api/assess/email-templates', requireAuth, async (req, res) => {
 app.get('/api/assess/platform-events', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    const [platformEvents, cdcEntities, eventBusSubscribers, managedEventResult] = await Promise.all([
+    const [platformEvents, cdcEntities, eventBusSubscribers, managedEventResult, apexEventTriggersRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, DeveloperName, Description FROM PlatformEventChannel LIMIT 100"),
       safeQuery(conn, "SELECT Id, DeveloperName FROM PlatformEventChannelMember LIMIT 100"),
       safeQuery(conn, "SELECT Id, ExternalId, Type FROM EventBusSubscriber LIMIT 100"),
-      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE QualifiedApiName LIKE '%__e' AND IsCustomizable = true").catch(() => ({ records: [{ expr0: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM EntityDefinition WHERE QualifiedApiName LIKE '%__e' AND IsCustomizable = true").catch(() => ({ records: [{ expr0: 0 }] })),
+      // Apex triggers on __e objects are active consumers — not surfaced by EventBusSubscriber
+      safeToolingQuery(conn, "SELECT Id, Name, TableEnumOrId FROM ApexTrigger WHERE Status = 'Active' AND NamespacePrefix = null AND TableEnumOrId LIKE '%__e' LIMIT 100").catch(() => ({ records: [] }))
     ]);
+    // Build a set of event API names that have at least one Apex trigger consumer
+    const apexConsumedEvents = new Set((apexEventTriggersRes.records || []).map(t => t.TableEnumOrId));
     res.json({
       platformEvents: platformEvents.records || [],
       cdcEntities: cdcEntities.records || [],
       eventBusSubscribers: eventBusSubscribers.records || [],
-      managedPlatformEventCount: (managedEventResult.records[0] || {}).expr0 || 0
+      managedPlatformEventCount: (managedEventResult.records[0] || {}).expr0 || 0,
+      apexConsumedEvents: [...apexConsumedEvents]
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1618,19 +1621,19 @@ app.get('/api/assess/lwc', requireAuth, async (req, res) => {
       ),
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Format " +
-        "FROM LightningComponentResource WHERE FilePath LIKE '%.test.js' LIMIT 1000"
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.test.js' LIMIT 5000"
       ),
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Source " +
-        "FROM LightningComponentResource WHERE FilePath LIKE '%.js' AND FilePath NOT LIKE '%.test.js' LIMIT 1000"
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.js' AND FilePath NOT LIKE '%.test.js' LIMIT 5000"
       ),
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Source " +
-        "FROM LightningComponentResource WHERE FilePath LIKE '%.html' LIMIT 1000"
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.html' LIMIT 5000"
       ),
       safeToolingQuery(conn,
         "SELECT Id, LightningComponentBundleId, FilePath, Source " +
-        "FROM LightningComponentResource WHERE FilePath LIKE '%.css' LIMIT 1000"
+        "FROM LightningComponentResource WHERE FilePath LIKE '%.css' LIMIT 5000"
       ),
       safeToolingQuery(conn,
         "SELECT Id, Name, ApiVersion, Description, NamespacePrefix, IsAvailableInTouch, LastModifiedDate " +
@@ -2027,8 +2030,9 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
         "LIMIT 200"
       ).catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND (Description = null OR Description = '') LIMIT 200").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithoutSharing' LIMIT 200").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithSharing' LIMIT 200").catch(() => ({ records: [] })),
+      // RunInMode is a Tooling API field — safeQuery (standard REST) silently returns nothing for it
+      safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithoutSharing' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithSharing' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
       // Process Builder flows (ProcessType = 'Workflow') — legacy, should migrate to record-triggered flows
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND ProcessType = 'Workflow' LIMIT 200").catch(() => ({ records: [] })),
       // Obsolete flow versions — deactivated versions that accumulate and cause clutter

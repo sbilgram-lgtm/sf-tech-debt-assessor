@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: July 28, 2026*
+*Last updated: July 29, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **352 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **350 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## What's New — July 28, 2026
 
@@ -13,7 +13,7 @@ A web app that connects to any Salesforce org via OAuth and runs a comprehensive
 - **Record Types & Layouts (1 new):** Page layouts not assigned to any profile or record type — orphaned (Medium)
 - **Reports & Dashboards (2 new):** Reports stored in personal folders — invisible to team (Medium); Custom Report Types with no reports built on them (Low)
 
-Total checks: **343 → 352**
+Total checks: **343 → 350**
 
 ---
 
@@ -225,11 +225,11 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 
 | Category | Checks | What it checks |
 |---|---|---|
-| **Configuration** | 15 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
+| **Configuration** | 14 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
 | **Code Quality** | 46 | See detail table below |
 | **Data Model** | 4 | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | 69 | See detail table below |
-| **Sharing & Security** | 28 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, Outbound Messages with retired Session ID auth ⚠️ Feb 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth |
+| **Sharing & Security** | 27 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth |
 | **Integrations** | 9 | Named vs External Credentials, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
 | **Test Coverage** | 7 | Zero-coverage classes, below-75% components, test class ratio, assert messages, runAs usage, deprecated testMethod keyword |
 | **Org Limits** | 5 | All org limits — flags anything ≥50% consumed; Apex class count approaching ~5,000 limit; custom object count approaching ~900 limit |

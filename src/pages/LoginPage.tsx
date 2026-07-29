@@ -413,7 +413,7 @@ const GROUP_COLORS: Record<string, string> = {
 
 const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 28, group: 'Security & Access' },
+  { icon: '🔒',  name: 'Sharing & Security',      checks: 27, group: 'Security & Access' },
   { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
   { icon: '🌐',  name: 'Experience Cloud',        checks: 15, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
@@ -427,7 +427,7 @@ const CATEGORIES = [
   { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },
   { icon: '⚡',  name: 'Platform Events',         checks: 3,  group: 'Performance & Limits' },
   // ── Configuration & Architecture ──────────────────────────────
-  { icon: '⚙️',  name: 'Configuration',          checks: 15, group: 'Configuration & Architecture' },
+  { icon: '⚙️',  name: 'Configuration',          checks: 14, group: 'Configuration & Architecture' },
   { icon: '🗄️',  name: 'Data Model',              checks: 4,  group: 'Configuration & Architecture' },
   { icon: '📋',  name: 'Record Types & Layouts',  checks: 5,  group: 'Configuration & Architecture' },
   { icon: '🔧',  name: 'Custom Metadata',         checks: 3,  group: 'Configuration & Architecture' },

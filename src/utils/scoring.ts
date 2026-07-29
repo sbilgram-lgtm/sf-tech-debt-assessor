@@ -188,18 +188,6 @@ export function assessConfiguration(
     ));
   }
 
-  // Active PushTopics — deprecated Summer '26
-  const activePushTopics = automation.activePushTopics || [];
-  if (activePushTopics.length > 0) {
-    items.push(createDebtItem(
-      'configuration', 'high',
-      `${activePushTopics.length} Active PushTopic${activePushTopics.length !== 1 ? 's' : ''} — Deprecated Summer '26`,
-      `PushTopics (Streaming API) are deprecated in Summer '26. ${activePushTopics.length} active PushTopic${activePushTopics.length !== 1 ? 's' : ''} found. Any integration subscribing to PushTopics will break after Summer '26 enforcement.`,
-      'Migrate PushTopic subscriptions to Platform Events or Change Data Capture (CDC). Both provide equivalent real-time record change notifications with no deprecation risk.',
-      { records: activePushTopics.slice(0, 30).map((pt: any) => ({ name: pt.Name, detail: `API v${pt.ApiVersion} — deprecated Summer '26` })) }
-    ));
-  }
-
   // Pending Approval Process Instances — approvals awaiting a decision
   if ((automation.pendingTimeQueueCount || 0) > 0) {
     items.push(createDebtItem(
@@ -656,11 +644,17 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // CQ-25: DML in constructors/initializers (ApexCSRF)
+  // Only flag when a public method whose name matches the class name (i.e. an actual constructor) contains DML.
   const dmlInConstructor = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    // Match a public constructor (name matches class name pattern) followed by DML within ~2000 chars
-    return /public\s+\w+\s*\([^)]{0,200}\)\s*\{[\s\S]{0,2000}?\b(insert|update|delete|upsert|merge)\b/gi.test(body);
+    const name = c.Name || '';
+    // Build a regex that requires the method name to exactly match the class name
+    const ctorPattern = new RegExp(
+      `public\\s+${name}\\s*\\([^)]{0,200}\\)\\s*\\{[\\s\\S]{0,2000}?\\b(insert|update|delete|upsert|merge)\\b`,
+      'i'
+    );
+    return ctorPattern.test(body);
   });
   if (dmlInConstructor.length > 0) {
     items.push(createDebtItem('code', 'high',
@@ -833,12 +827,15 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-36: CyclomaticComplexity — high decision-point complexity
+  // CQ-36: CyclomaticComplexity — high decision-point complexity (class-level proxy)
+  // PMD measures per-method; without method boundary parsing we count per class.
+  // Threshold of 100 class-wide decision points approximates "several methods with high complexity"
+  // and avoids false positives on large-but-simple utility classes.
   const complexClasses = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
     const decisions = (body.match(/\b(if|else if|for|while|case|catch|&&|\|\|)\b/gi) || []).length;
-    return decisions > 20;
+    return decisions > 100;
   });
   if (complexClasses.length > 0) {
     items.push(createDebtItem('code', 'high',
@@ -2268,19 +2265,6 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
-  // Active Outbound Messages using Session IDs — retired February 2026
-  const activeOutboundMessages = (data.activeOutboundMessages || []);
-  if (activeOutboundMessages.length > 0) {
-    items.push(createDebtItem(
-      'sharingSecurity',
-      'high',
-      `${activeOutboundMessages.length} Active Outbound Message${activeOutboundMessages.length !== 1 ? 's' : ''} — Session IDs Retired February 2026`,
-      `Session IDs in Outbound Messages were retired in February 2026. ${activeOutboundMessages.length} active outbound message${activeOutboundMessages.length !== 1 ? 's' : ''} found — these are non-functional if they rely on Session ID authentication.`,
-      'Migrate Outbound Message authentication from Session IDs to OAuth. Review each active Outbound Message in Setup → Workflow → Outbound Messages and update the receiving endpoint to use OAuth tokens.',
-      { records: activeOutboundMessages.slice(0, 50).map((m: any) => ({ name: m.Name, detail: 'Active Outbound Message — Session ID auth retired Feb 2026' })) }
-    ));
-  }
-
   // Permission Set Groups not adopted — users getting permissions via individual PSs
   if ((data.permissionSetGroupCount || 0) === 0 && data.permissionSets.length > 5) {
     items.push(createDebtItem(
@@ -2938,12 +2922,23 @@ export function assessEmailTemplates(data: EmailTemplatesData): CategoryScore {
 export function assessPlatformEvents(data: PlatformEventsData): CategoryScore {
   const items: DebtItem[] = [];
 
-  if (data.platformEvents.length > 0 && data.eventBusSubscribers.length === 0) {
+  // A platform event channel has no subscriber if it has no CometD/streaming subscriber AND
+  // no Apex trigger consuming it. EventBusSubscriber only tracks CometD clients — Apex triggers
+  // on __e objects are the most common consumer pattern and must be cross-checked separately.
+  const apexConsumedEvents = new Set((data as any).apexConsumedEvents || []);
+  const unsubscribedEvents = data.platformEvents.filter((pe: any) => {
+    const apiName = pe.DeveloperName;
+    // Check both streaming subscribers and Apex trigger consumers
+    const hasStreamingSub = data.eventBusSubscribers.some((s: any) => s.ExternalId && s.ExternalId.includes(apiName));
+    const hasApexTrigger = apexConsumedEvents.has(apiName + '__e') || apexConsumedEvents.has(apiName);
+    return !hasStreamingSub && !hasApexTrigger;
+  });
+  if (data.platformEvents.length > 0 && unsubscribedEvents.length > 0) {
     items.push(createDebtItem('platformEvents', 'high',
-      `${data.platformEvents.length} Platform Event Channels with No Active Subscribers`,
-      'Platform events with no subscribers are producing events that nobody is consuming — wasted processing and potential limit consumption.',
-      'Audit platform event usage. Remove events no longer consumed, or wire up missing subscribers.',
-      { count: data.platformEvents.length }));
+      `${unsubscribedEvents.length} Platform Event Channel${unsubscribedEvents.length !== 1 ? 's' : ''} with No Active Subscribers`,
+      'These platform event channels have no CometD/streaming subscribers and no Apex trigger consumers. Events being published to them are going unprocessed — wasted processing and potential daily event limit consumption.',
+      'Audit platform event usage. Remove event channels no longer consumed, or wire up the missing subscriber (Apex trigger or CometD client).',
+      { records: unsubscribedEvents.slice(0, 20).map((pe: any) => ({ name: pe.DeveloperName, detail: 'No streaming subscriber or Apex trigger consumer found' })) }));
   }
 
   if (data.cdcEntities.length > 20) {
