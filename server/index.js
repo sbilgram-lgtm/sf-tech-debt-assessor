@@ -1089,7 +1089,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     try {
       connectedApps = await safeToolingQuery(conn,
         "SELECT Id, Name, Description, MobileSessionTimeout " +
-        "FROM ConnectedApplication"
+        "FROM ConnectedApplication LIMIT 500"
       );
     } catch (e) { /* optional */ }
 
@@ -1579,7 +1579,7 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE NamespacePrefix = null LIMIT 200"),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, ValidFrom, ExpirationDate FROM Certificate WHERE ExpirationDate != null LIMIT 50"),
       safeQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM ExternalClientApplication LIMIT 50"),
-      safeQuery(conn, "SELECT Id, Name, MobileSessionTimeout FROM ConnectedApplication WHERE Name LIKE '%CTI%' OR Name LIKE '%Telephony%' OR Name LIKE '%OpenCTI%' OR Name LIKE '%Voice%' LIMIT 20").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT Id, Name, MobileSessionTimeout FROM ConnectedApplication WHERE Name LIKE '%CTI%' OR Name LIKE '%Telephony%' OR Name LIKE '%OpenCTI%' OR Name LIKE '%Voice%' LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
     res.json({
@@ -1840,7 +1840,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 LIMIT 200"
       ),
       safeQuery(conn,
-        "SELECT TableEnumOrId, COUNT(Id) FROM ApexTrigger WHERE Status = 'Active' GROUP BY TableEnumOrId LIMIT 200"
+        "SELECT TableEnumOrId, COUNT(Id) FROM ApexTrigger WHERE Status = 'Active' AND NamespacePrefix = null GROUP BY TableEnumOrId LIMIT 200"
       ),
       safeQuery(conn,
         "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('BatchApex','Queueable','Future') LIMIT 500"
@@ -1858,10 +1858,10 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, TracedEntityId, LogType, ExpirationDate FROM TraceFlag WHERE ExpirationDate > TODAY LIMIT 100"
       ),
       safeToolingQuery(conn,
-        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND (TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave') LIMIT 500"
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave') LIMIT 500"
       ),
       safeToolingQuery(conn,
-        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND TriggerType = 'Scheduled' AND ProcessType = 'AutoLaunchedFlow' LIMIT 200"
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND TriggerType = 'Scheduled' AND ProcessType = 'AutoLaunchedFlow' LIMIT 200"
       ),
       safeQuery(conn,
         "SELECT Id, DeveloperName FROM PlatformCachePartition LIMIT 10"
@@ -1882,8 +1882,8 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('Future','Queueable') LIMIT 500"
       ),
       safeQuery(conn, `SELECT COUNT(Id) FROM AsyncApexJob WHERE Status IN ('Processing','Holding') AND CreatedDate < ${new Date(Date.now() - 86400000).toISOString()}`).catch(() => ({ records: [{ expr0: 0 }] })),
-      safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] })),
-      safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeToolingQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete' AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] })),
       safeToolingQuery(conn, "SELECT FlowVersionId FROM FlowElement WHERE Type = 'Loop' GROUP BY FlowVersionId LIMIT 200").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete') GROUP BY FlowVersionId LIMIT 500").catch(() => ({ records: [] }))
     ]);
@@ -2019,7 +2019,7 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       processBuilderFlows,
       obsoleteFlowCountResult
     ] = await Promise.all([
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
       // FlowElement is Tooling API only — must use safeToolingQuery here.
       // Requires both a Loop element and a record op element in the same flow (heuristic).
       safeToolingQuery(conn,
@@ -2029,14 +2029,14 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
         "AND Id IN (SELECT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete','RecordLookup')) " +
         "LIMIT 200"
       ).catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND (Description = null OR Description = '') LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (Description = null OR Description = '') LIMIT 200").catch(() => ({ records: [] })),
       // RunInMode is a Tooling API field — safeQuery (standard REST) silently returns nothing for it
       safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithoutSharing' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND RunInMode = 'SystemModeWithSharing' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
       // Process Builder flows (ProcessType = 'Workflow') — legacy, should migrate to record-triggered flows
-      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND ProcessType = 'Workflow' LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND ProcessType = 'Workflow' LIMIT 200").catch(() => ({ records: [] })),
       // Obsolete flow versions — deactivated versions that accumulate and cause clutter
-      safeQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete'").catch(() => ({ records: [{ expr0: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete' AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
 
     const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;

@@ -72,18 +72,6 @@ export function assessConfiguration(
     ));
   }
 
-  // Check for Process Builders (should be migrated to Flows)
-  if (automation.processBuilders.length > 0) {
-    items.push(createDebtItem(
-      'configuration',
-      'high',
-      `${automation.processBuilders.length} Active Process Builders`,
-      'Process Builders are deprecated. Salesforce will retire them in a future release.',
-      'Migrate Process Builders to record-triggered flows using the Migrate to Flow tool.',
-      { records: automation.processBuilders.map((r:any) => ({ name: r.MasterLabel || r.Label, detail: r.ProcessType })) }
-    ));
-  }
-
   // Check for high total automation count (overlap risk)
   const totalAutomation = (automation.allFlows || []).length + (automation.workflowRules || []).length;
   if (totalAutomation > 50) {
@@ -307,10 +295,13 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // Check for SOQL in loops (basic pattern detection)
+  // Use [\s\S]{0,300} for the loop header to handle C-style for loops with method calls
+  // in the condition (e.g. for (Integer i = 0; i < list.size(); i++)) where [^)]* would
+  // stop prematurely at the first closing paren inside list.size().
   const soqlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    const forLoopPattern = /for\s*\([^)]*\)\s*\{[\s\S]*?\[SELECT/gi;
-    const whileLoopPattern = /while\s*\([^)]*\)\s*\{[\s\S]*?\[SELECT/gi;
+    const forLoopPattern = /for\s*\([\s\S]{0,300}?\)\s*\{[\s\S]*?\[SELECT/gi;
+    const whileLoopPattern = /while\s*\([\s\S]{0,200}?\)\s*\{[\s\S]*?\[SELECT/gi;
     return forLoopPattern.test(body) || whileLoopPattern.test(body);
   });
   if (soqlInLoops.length > 0) {
@@ -360,11 +351,30 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // DML operations in loops (insert/update/delete/upsert/merge in for/while)
+  // Split on method boundaries to avoid cross-method false positives.
+  function hasDmlInLoopPerMethod(body: string): boolean {
+    const dmlKeywords = /\b(insert|update|delete|upsert|merge)\b/i;
+    const forPattern = /\bfor\s*\(/i;
+    const whilePattern = /\bwhile\s*\(/i;
+    // Find method start positions by scanning for method-signature-like declarations
+    const methodPattern = /\b(?:public|private|protected|global|override|static|void|String|Integer|Boolean|List|Map|Set|\w+)\s+\w+\s*\([^)]{0,300}\)\s*\{/gi;
+    const starts: number[] = [];
+    let m: RegExpExecArray | null;
+    const mp = new RegExp(methodPattern.source, 'gi');
+    while ((m = mp.exec(body)) !== null) starts.push(m.index);
+    if (starts.length === 0) {
+      // No method boundaries found — fall back to checking whole body
+      return (forPattern.test(body) || whilePattern.test(body)) && dmlKeywords.test(body);
+    }
+    for (let i = 0; i < starts.length; i++) {
+      const segment = body.slice(starts[i], starts[i + 1] ?? body.length);
+      if ((forPattern.test(segment) || whilePattern.test(segment)) && dmlKeywords.test(segment)) return true;
+    }
+    return false;
+  }
   const dmlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    // Look for a DML keyword that appears after a for/while loop opening — scan a generous window
-    return /\bfor\s*\([\s\S]{0,500}?\)\s*\{[\s\S]{0,2000}?\b(insert|update|delete|upsert|merge)\b/gi.test(body) ||
-           /\bwhile\s*\([^)]{0,200}\)\s*\{[\s\S]{0,2000}?\b(insert|update|delete|upsert|merge)\b/gi.test(body);
+    return hasDmlInLoopPerMethod(body);
   });
   if (dmlInLoops.length > 0) {
     items.push(createDebtItem(
@@ -749,7 +759,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     if (/@isTest\b/i.test(body)) return false;
     if (soqlNoFlsIds.has(c.Id)) return false; // already flagged by CQ-14, skip to avoid double-count
     const hasDmlOrSoql = /\b(insert|update|delete|upsert)\s+\w/gi.test(body) || /\[SELECT\b/gi.test(body);
-    const hasCrudCheck = /\.isAccessible\(\)|\.isCreateable\(\)|\.isUpdateable\(\)|\.isDeletable\(\)|WITH\s+USER_MODE|WITH\s+SECURITY_ENFORCED|Schema\.sObjectType\./gi.test(body);
+    const hasCrudCheck = /\.isAccessible\(\)|\.isCreateable\(\)|\.isUpdateable\(\)|\.isDeletable\(\)|WITH\s+USER_MODE|WITH\s+SECURITY_ENFORCED/gi.test(body);
     return hasDmlOrSoql && !hasCrudCheck;
   });
   if (crudViolations.length > 0) {
@@ -1890,6 +1900,16 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
       'Completed VoiceCall records with no CaseId mean agents are ending calls without completing the post-call wrap-up flow. These interactions have no case history, no CSAT survey eligibility, and no contact timeline record.',
       'Review the Service Cloud Voice post-call flow configuration. Ensure the wrap-up flow creates and links a case before the call is marked completed. Train agents on wrap-up procedures.',
       { count: data.voiceCallsNoCaseCount }
+    ));
+  }
+
+  // Cases not linked to an Asset record
+  if ((data.casesNoAssetLinkCount || 0) > 50) {
+    items.push(createDebtItem('serviceCloud', 'low',
+      `${data.casesNoAssetLinkCount} Open Cases Not Linked to an Asset Record`,
+      'A high number of open cases have no Asset linked. Cases without an Asset association cannot drive asset service history, warranty entitlement lookups, or Field Service scheduling — limiting product reliability insights and support quality for products.',
+      'Encourage agents to link cases to the relevant Asset when the case relates to a specific product instance. Review case creation flows and web-to-case forms to see if Asset lookup can be pre-populated from the contact or account.',
+      { count: data.casesNoAssetLinkCount }
     ));
   }
 
@@ -4013,14 +4033,37 @@ export function assessLwc(data: LwcData): CategoryScore {
   }
 
   // 29. for:each without key — forces full list re-render
-  const forEachHits = htmlScan(/for:each=/, /\bkey=/);
-  if (forEachHits.length > 0) {
+  // Check per-occurrence: a for:each is only safe if key= appears within ~200 chars after it
+  // in the same template element. A file-level key= counterPattern is too broad — a file with
+  // one keyed loop and one unkeyed loop would pass the file-level check entirely.
+  const forEachHitsRaw: { bundleId: string; name: string }[] = [];
+  {
+    const bundleMap3 = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    for (const r of htmlResources) {
+      const src: string = r.Source || '';
+      if (!/for:each=/.test(src)) continue;
+      // Check each for:each occurrence individually
+      const forEachRe = /for:each=/g;
+      let fmatch: RegExpExecArray | null;
+      let hasUnkeyed = false;
+      while ((fmatch = forEachRe.exec(src)) !== null) {
+        const window = src.slice(fmatch.index, fmatch.index + 200);
+        if (!/\bkey=/.test(window)) { hasUnkeyed = true; break; }
+      }
+      if (!hasUnkeyed) continue;
+      const name = bundleMap3.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!forEachHitsRaw.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        forEachHitsRaw.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (forEachHitsRaw.length > 0) {
     items.push(createDebtItem(
       'lwc', 'high',
-      `${forEachHits.length} LWC Component${forEachHits.length !== 1 ? 's' : ''} Use for:each Without a key Attribute`,
+      `${forEachHitsRaw.length} LWC Component${forEachHitsRaw.length !== 1 ? 's' : ''} Use for:each Without a key Attribute`,
       'Omitting the key attribute on for:each items forces LWC to destroy and recreate all list items on every render cycle instead of patching only changed items. This is a major performance issue for any list with more than a handful of items.',
       'Add a unique key={item.Id} or key={item.uniqueField} to the direct child element inside every for:each loop.',
-      { records: forEachHits.slice(0, 50).map(h => ({ name: h.name, detail: 'for:each without key — full list re-render on every change' })) }
+      { records: forEachHitsRaw.slice(0, 50).map(h => ({ name: h.name, detail: 'for:each without key — full list re-render on every change' })) }
     ));
   }
 
@@ -4682,16 +4725,6 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
     ));
   }
 
-  // ── Obsolete flow versions ────────────────────────────────────────────────────
-  if ((data.obsoleteFlowCount || 0) > 200) {
-    items.push(createDebtItem('performance', 'low',
-      `${data.obsoleteFlowCount} Obsolete Flow Versions in Org`,
-      'Obsolete flow versions accumulate over time as flows are activated and replaced. Very large numbers of obsolete versions slow sandbox deployments and clutter the Setup interface.',
-      'Periodically delete obsolete flow versions via Setup → Flows or via the Metadata API. Keep only the current active version plus one prior version for rollback capability.',
-      {}
-    ));
-  }
-
   // ── Apex 5,000+ lines (severe tier) ──────────────────────────────────────────
   const veryLargeApexClasses = data.largeApexClasses.filter((c: any) => (c.LengthWithoutComments || 0) > 5000);
   if (veryLargeApexClasses.length > 0) {
@@ -4700,19 +4733,6 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
       'Apex classes over 5,000 lines are extreme outliers that severely violate the Single Responsibility Principle. They slow Apex compilation, make test coverage requirements harder to meet, and are prime candidates for governor limit failures due to method complexity.',
       'Immediately prioritise refactoring these classes. Break into domain-specific service classes, extract utilities, and adopt a layered architecture (handler, service, selector, domain).',
       { records: veryLargeApexClasses.map((c: any) => ({ name: c.Name, detail: `${c.LengthWithoutComments} lines` })) }
-    ));
-  }
-
-  // ── Flow DML in loops ─────────────────────────────────────────────────────────
-  const loopsSet = new Set((data.flowsWithLoopsIds || []).map(String));
-  const dmlSet = new Set((data.flowsWithDmlIds || []).map(String));
-  const flowsWithBoth = Array.from(loopsSet).filter(id => dmlSet.has(id));
-  if (flowsWithBoth.length > 0) {
-    items.push(createDebtItem('performance', 'high',
-      `${flowsWithBoth.length} Active Flows Contain Both Loop and DML Elements`,
-      'Flows that contain both a Loop element and record DML elements (Create/Update/Delete Records) are likely performing DML inside a loop. This hits the 150 DML statement governor limit in bulk scenarios and causes Flow fault errors or record save failures. This is flagged by Salesforce Code Analyzer (Flow Scanner: Database Operations in Loops).',
-      'Refactor the flow to collect records inside the loop into a collection variable, then perform a single Create/Update/Delete Records element outside the loop using the collection.',
-      {}
     ));
   }
 
@@ -4814,9 +4834,13 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
   // ── Externally shared files ───────────────────────────────────────────────────
 
   if (data.externallySharedFileCount > 0) {
+    const permanentlyShared = data.permanentlySharedFileCount || 0;
+    const permanentDetail = permanentlyShared > 0
+      ? ` Of these, ${permanentlyShared} have no expiry date and will remain publicly accessible indefinitely.`
+      : '';
     items.push(createDebtItem('notesAttachments', 'high',
       `${data.externallySharedFileCount} Files Shared Externally via Content Delivery`,
-      'ContentDistribution records create publicly accessible links to files hosted in Salesforce. Files shared with no expiry date remain publicly accessible indefinitely. This is a data exposure risk for any file that contains customer, employee, or confidential business data.',
+      `ContentDistribution records create publicly accessible links to files hosted in Salesforce.${permanentDetail} This is a data exposure risk for any file that contains customer, employee, or confidential business data.`,
       'Audit all active ContentDistribution records. Revoke external sharing for files that no longer need it. Set expiry dates on all active distributions. Establish a governance policy for external file sharing with regular review cycles.',
       {}
     ));
@@ -4834,7 +4858,10 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
   }
 
   // ── Files permanently shared externally ──────────────────────────────────────
-  if ((data.permanentlySharedFileCount || 0) > 0) {
+  // Only fire this as a separate finding when there are permanently-shared files
+  // that are ADDITIONAL to the externally-shared count (i.e. not all externals are permanent),
+  // avoiding a double-deduction for the same files flagged above.
+  if ((data.permanentlySharedFileCount || 0) > 0 && data.externallySharedFileCount <= 0) {
     items.push(createDebtItem('notesAttachments', 'high',
       `${data.permanentlySharedFileCount} Files Shared Externally With No Expiry Date`,
       'ContentDistribution records with no ExpiryDate create publicly accessible download links that never expire. These files remain publicly accessible indefinitely — even if the associated record is deleted or the sharing was intended to be temporary. This is a data governance and potential data exposure risk.',
