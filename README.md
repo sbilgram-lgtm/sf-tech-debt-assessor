@@ -226,8 +226,8 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | Category | Checks | What it checks |
 |---|---|---|
 | **Configuration** | 13 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
-| **Code Quality** | 46 | See detail table below |
-| **Data Model** | 4 | Object/field descriptions, field sprawl, object count |
+| **Code Quality** | 45 | See detail table below |
+| **Data Model** | 5 | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | 70 | See detail table below |
 | **Sharing & Security** | 29 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth |
 | **Integrations** | 9 | Named vs External Credentials, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
@@ -241,11 +241,11 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Custom Metadata & Settings** | 3 | Custom Settings vs Custom Metadata Types, undocumented settings |
 | **Record Types & Page Layouts** | 5 | Inactive record types, excessive layouts, undocumented types, orphaned page layouts not assigned to any profile |
 | **Einstein & AI** | 9 | Einstein/Agentforce enablement, prompt templates, inactive bots, inactive AI Applications, Case Classification training data, Agent Topics, Agent Actions, Data Cloud connection |
-| **Experience Cloud** | 15 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing (LWR & Aura), self-registration, CDN, custom domains, guest access, Aura guest page caching, high page count per site, large network member base |
+| **Experience Cloud** | 16 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing (LWR & Aura), self-registration, CDN, custom domains, guest access, Aura guest page caching, high page count per site, large network member base |
 | **Connected App Security** | 12 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026, OAuth tokens for deactivated users, Connected Apps bypassing IP restrictions |
 | **LWC & Components** | 39 | See detail table below |
 | **OmniStudio** | 26 | See detail table below |
-| **Performance** | 22 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, flows with DML in loops, total active flows (>300), obsolete flow versions (>200), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
+| **Performance** | 20 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, total active flows (>300), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
 | **Flow Quality** | 6 | See detail table below |
 
