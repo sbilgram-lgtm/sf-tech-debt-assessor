@@ -1,8 +1,18 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: July 29, 2026*
+*Last updated: July 31, 2026*
 
 A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **349 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+
+## What's New — July 31, 2026
+
+**Test suite added — 89 tests across 3 layers:**
+
+- **Layer 1 — Check Count Parity** (`checkCountParity.test.ts`): Counts `createDebtItem` calls per scoring function and asserts they match the `checks:` values declared in `LoginPage CATEGORIES`. Any future drift between the code and the UI check counts fails automatically.
+- **Layer 2 — Regression Tests** (`regressions.test.ts`): One test per confirmed bug from the accuracy audit — DML-in-loop cross-method false positive, `Schema.sObjectType` CRUD false positive, C-style `for`-loop SOQL detection, `for:each` key= per-occurrence check, Process Builder double-count, obsolete flows double-count, DML-in-loop flows double-count, external files double-deduction.
+- **Layer 3 — Scoring Smoke Tests** (`scoring.smoke.test.ts`): Every scoring function tested with a clean-org input (no items → score = 100) and a flagged input (≥1 item → score < 100). Catches logic inversions and crashes on empty input across all 23 categories.
+
+---
 
 ## What's New — July 28, 2026
 
@@ -559,7 +569,9 @@ docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
 
 ### Prerequisites
 - Node.js 18+
-- A Salesforce Connected App with callback URL `http://localhost:3000/auth/callback`
+- A Salesforce **Connected App** or **External Client App** (Spring '25+) with `http://localhost:3000/auth/callback` added to its Callback URL list
+
+> **Both app types work locally.** In your Connected App or External Client App, add `http://localhost:3000/auth/callback` alongside any existing Render callback URL. The server auto-detects localhost and uses the correct redirect URI — no env var override needed.
 
 ### Steps
 
@@ -570,15 +582,11 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+Open **http://localhost:3000** — React runs on port 3000, Express on port 3001.
 
-Create a `.env` file in the project root for local credentials:
+Enter your Org URL, Client ID, and Client Secret in the login form as normal. No `.env` file is required for local development. If you want to set a stable session secret, create a `.env` file in the project root:
 
 ```
-SF_LOGIN_URL=https://yourorg.sandbox.my.salesforce.com
-SF_CLIENT_ID=your_consumer_key
-SF_CLIENT_SECRET=your_consumer_secret
-SF_CALLBACK_URL=http://localhost:3000/auth/callback
 SESSION_SECRET=any-random-string
 ```
 
