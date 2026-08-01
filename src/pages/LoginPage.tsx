@@ -743,7 +743,7 @@ export const LoginPage: React.FC = () => {
               color: '#032d60',
               lineHeight: 1.55,
             }}>
-              Tech Debt Assessor is provided "as is," without warranties. Its assessments and recommendations reflect my professional experience as a technical architect but are intended as decision-support guidance, not legal, regulatory, or security advice.
+              Tech Debt Assessor is provided "as is," without warranties. Its assessments and recommendations reflect my professional experience as a technical architect but are intended as decision-support guidance, not legal, regulatory, or financial advice.
             </p>
             <p style={{
               margin: '8px 0 0',
