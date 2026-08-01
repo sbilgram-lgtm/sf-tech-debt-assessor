@@ -693,14 +693,28 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Footer note */}
-        <p style={{
-          marginTop: '10px',
-          fontSize: '0.70rem',
-          opacity: 0.5,
-          lineHeight: 1.5,
+        <div style={{
+          marginTop: '12px',
+          paddingTop: '10px',
+          borderTop: '1px solid rgba(255,255,255,0.15)',
         }}>
-          Read-only OAuth access · No data stored · Credentials saved locally only
-        </p>
+          <p style={{
+            margin: '0 0 4px',
+            fontSize: '0.72rem',
+            color: 'rgba(255,255,255,0.75)',
+            lineHeight: 1.5,
+          }}>
+            Read-only OAuth access · No data stored · Credentials saved locally only
+          </p>
+          <p style={{
+            margin: 0,
+            fontSize: '0.72rem',
+            color: 'rgba(255,255,255,0.6)',
+            lineHeight: 1.5,
+          }}>
+            Independent tool — not affiliated with or endorsed by Salesforce, Inc. Results are informational only and should not replace a formal technical review.
+          </p>
+        </div>
       </div>
 
       {/* ── RIGHT PANEL ── */}
