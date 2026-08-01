@@ -1,8 +1,14 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: July 31, 2026*
+*Last updated: August 1, 2026*
 
 A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **349 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+
+## What's New — August 1, 2026
+
+- **Migrated hosting from Render to Railway** — no more 30-second cold starts. The app is now always-on at **https://sf-tech-debt-assessor-production.up.railway.app**
+
+---
 
 ## What's New — July 31, 2026
 
@@ -63,8 +69,8 @@ Comprehensive accuracy audit — 40+ checks corrected across all 23 categories:
   - Test Coverage: 4 → 7 checks (3 new PMD test quality rules)
   - Flow Quality: brand new category with 8 checks (Flow Scanner rules)
 - Docker support: app is published to GitHub Container Registry on every push to `main`
-- Connected App setup now documents both Render and local Docker callback URLs
-- Clarified that External Client Apps (Spring '25+ orgs) support Render only — local Docker requires a Connected App
+- Connected App setup now documents both the hosted and local Docker callback URLs
+- Clarified that External Client Apps (Spring '25+ orgs) support the hosted version only — local Docker requires a Connected App
 - Apple Silicon (M1/M2/M3) Mac users must build the image locally (GHCR image is amd64 only)
 
 ## What's New — June 15–16, 2026
@@ -102,7 +108,7 @@ Nothing is written back to Salesforce. No external database is used. Assessment 
 
 ## Using the hosted app
 
-> Share this URL with colleagues: **https://sf-tech-debt-assessor.onrender.com**
+> Share this URL with colleagues: **https://sf-tech-debt-assessor-production.up.railway.app**
 
 Each user needs to register the app in the org they want to assess. Takes about 15 minutes. The steps differ slightly depending on the org type — check which applies before you start.
 
@@ -134,7 +140,7 @@ Supports both the hosted Render version and local Docker.
    - **Contact Email:** your email address
 3. Check **Enable OAuth Settings**
 4. In the **Callback URL** field, enter the URLs for the options you want to use — one per line:
-   - Hosted Render version: `https://sf-tech-debt-assessor.onrender.com/auth/callback`
+   - Hosted version: `https://sf-tech-debt-assessor-production.up.railway.app/auth/callback`
    - Local Docker: `http://localhost:3001/auth/callback`
    - You can include both — Salesforce will use whichever matches
 5. Under **Selected OAuth Scopes**, add:
@@ -154,7 +160,7 @@ Supports both the hosted Render version and local Docker.
 
 ### Option B — External Client App (Spring '25+ / Trailhead Playground orgs)
 
-> **Note:** External Client Apps only support the hosted Render version. Local Docker requires HTTPS and is not supported with `http://localhost`.
+> **Note:** External Client Apps only support the hosted version. Local Docker requires HTTPS and is not supported with `http://localhost`.
 
 1. Log in as an Administrator → **Setup → External Client Apps → New**
 2. Fill in:
@@ -164,7 +170,7 @@ Supports both the hosted Render version and local Docker.
 3. Under **OAuth Settings**, check **Enable OAuth**
 4. Set **Callback URL** to:
    ```
-   https://sf-tech-debt-assessor.onrender.com/auth/callback
+   https://sf-tech-debt-assessor-production.up.railway.app/auth/callback
    ```
 5. Under **OAuth Scopes**, add:
    - `Access and manage your data (api)`
@@ -200,8 +206,7 @@ The user who authenticates must have:
 
 ## Running an assessment
 
-1. Open **https://sf-tech-debt-assessor.onrender.com** (or `http://localhost:3001` for Docker)
-   > The hosted site may take 30 seconds to wake up if it hasn't been used recently
+1. Open **https://sf-tech-debt-assessor-production.up.railway.app** (or `http://localhost:3001` for Docker)
 2. Enter your credentials:
    - **Org / Sandbox URL** — your org's My Domain URL (see examples below)
    - **Client ID** — Consumer Key from the app setup above
@@ -465,7 +470,7 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 ## Running with Docker
 
-The app is published as a Docker image to GitHub Container Registry on every push to `main`. This is the recommended option for running the app inside your own network without depending on Render.
+The app is published as a Docker image to GitHub Container Registry on every push to `main`. This is the recommended option for running the app inside your own network.
 
 > **Important:** Local Docker requires a **Connected App** (not an External Client App). External Client Apps require HTTPS and do not support `http://localhost` callback URLs.
 
@@ -571,7 +576,7 @@ docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
 - Node.js 18+
 - A Salesforce **Connected App** or **External Client App** (Spring '25+) with `http://localhost:3000/auth/callback` added to its Callback URL list
 
-> **Both app types work locally.** In your Connected App or External Client App, add `http://localhost:3000/auth/callback` alongside any existing Render callback URL. The server auto-detects localhost and uses the correct redirect URI — no env var override needed.
+> **Both app types work locally.** In your Connected App or External Client App, add `http://localhost:3000/auth/callback` alongside the hosted callback URL. The server auto-detects localhost and uses the correct redirect URI — no env var override needed.
 
 ### Steps
 
@@ -592,19 +597,20 @@ SESSION_SECRET=any-random-string
 
 ---
 
-## Deploying your own instance to Render
+## Deploying your own instance to Railway
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+The app is hosted on [Railway](https://railway.app) — always-on, no cold starts, free within the $5/month credit.
 
 1. Push this repo to GitHub
-2. Go to [render.com](https://render.com) → New → Web Service
+2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
 3. Connect your GitHub repo
-4. Set:
-   - **Build Command:** `npm install --production=false && npm run build`
-   - **Start Command:** `node server/index.js`
-5. Add environment variables:
-   - `NODE_ENV` = `production`
-   - `SESSION_SECRET` = any long random string (e.g. output of `openssl rand -hex 32`)
-   - `NPM_CONFIG_PRODUCTION` = `false`
+4. Railway auto-detects the Dockerfile — no build/start commands needed
+5. Add environment variables (Settings → Variables → Raw Editor):
+   ```
+   NODE_ENV=production
+   NPM_CONFIG_PRODUCTION=false
+   SESSION_SECRET=your-random-string (generate with: openssl rand -hex 32)
+   ```
 6. Click **Deploy**
-7. Once live, add your Render URL + `/auth/callback` to your Connected App's callback URLs
+7. Once live, go to Settings → Networking → Generate Domain to get your URL
+8. Add your Railway URL + `/auth/callback` to your Connected App's callback URLs

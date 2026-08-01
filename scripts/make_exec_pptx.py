@@ -179,7 +179,7 @@ for i, (num, title, body) in enumerate(steps):
         add_text(slide, "→", x + 2.88, 3.4, 0.3, 0.5,
                  size=20, bold=True, color=DARK_GREY, align=PP_ALIGN.CENTER)
 
-add_text(slide, "Deployed at: sf-tech-debt-assessor.onrender.com",
+add_text(slide, "Deployed at: sf-tech-debt-assessor-production.up.railway.app",
          0.4, 5.55, 12.5, 0.4,
          size=12, italic=True, color=MID_GREY, align=PP_ALIGN.CENTER)
 
@@ -212,7 +212,7 @@ add_text(slide, "Option A — External Client App (Spring '25+)", 0.5, 2.73, 5.8
 add_bullet_box(slide, [
     "Setup → External Client Apps → New",
     "Enable OAuth  ·  Disable PKCE",
-    "Callback URL: sf-tech-debt-assessor.onrender.com/auth/callback",
+    "Callback URL: sf-tech-debt-assessor-production.up.railway.app/auth/callback",
     "Scopes: api  +  refresh_token",
     "Save → wait ~10 min → View Consumer Details for Key & Secret",
 ], 0.48, 3.12, 5.75, 1.55, size=10.5, color=NAVY)
@@ -225,7 +225,7 @@ add_text(slide, "Option B — Connected App (older orgs)", 0.5, 4.91, 5.8, 0.34,
 add_bullet_box(slide, [
     "Setup → App Manager → New Connected App",
     "Enable OAuth Settings  ·  Disable PKCE",
-    "Callback URL: sf-tech-debt-assessor.onrender.com/auth/callback",
+    "Callback URL: sf-tech-debt-assessor-production.up.railway.app/auth/callback",
     "Scopes: api  +  refresh_token",
     "Save → wait ~10 min → Manage Consumer Details for Key & Secret",
 ], 0.48, 5.3, 5.75, 1.45, size=10.5, color=NAVY)
@@ -269,7 +269,7 @@ add_bullet_box(slide, [
     "missing required code challenge → PKCE is still enabled.",
     "  Uncheck 'Require PKCE' in the app settings, save, retry.",
     "",
-    "App sleeping? First load takes ~30 sec on Render free tier.",
+    "App not responding? Check Railway dashboard for service status.",
 ], 7.08, 5.25, 5.75, 1.55, size=10, color=NAVY)
 
 
@@ -498,7 +498,7 @@ for i, (val, lbl) in enumerate(stats):
              size=11, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
 
 add_rect(slide, 3.67, 4.85, 6.0, 0.72, fill=SF_BLUE)
-add_text(slide, "sf-tech-debt-assessor.onrender.com",
+add_text(slide, "sf-tech-debt-assessor-production.up.railway.app",
          3.67, 4.88, 6.0, 0.65,
          size=16, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 
@@ -509,7 +509,7 @@ add_text(slide, "Built by Steven Bilgram, Success Architect",
 
 # ── Save ─────────────────────────────────────────────────────────
 out = os.path.expanduser(
-    "~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-07-29.pptx"
+    "~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-08-01.pptx"
 )
 prs.save(out)
 print(f"Saved: {out}")
