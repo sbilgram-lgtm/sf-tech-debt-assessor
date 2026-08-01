@@ -120,7 +120,7 @@ Do this once per Salesforce org you want to assess.
 
 ### Which setup type do I need?
 
-| Org Type | Setup Type | Supports Render | Supports Local Docker |
+| Org Type | Setup Type | Supports Hosted | Supports Local Docker |
 |---|---|---|---|
 | Production / Sandbox / Developer Edition | Connected App | ✅ | ✅ |
 | Trailhead Playground / Spring '25+ orgs | External Client App | ✅ | ❌ |
@@ -131,7 +131,7 @@ Do this once per Salesforce org you want to assess.
 
 ### Option A — Connected App (Production, Sandbox, Developer Edition)
 
-Supports both the hosted Render version and local Docker.
+Supports both the hosted version and local Docker.
 
 1. Log in as an Administrator → **Setup → App Manager → New Connected App**
 2. Fill in:
