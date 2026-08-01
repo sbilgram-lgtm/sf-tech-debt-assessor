@@ -473,7 +473,34 @@ for i, (color, title, body) in enumerate(outputs):
 
 
 # ══════════════════════════════════════════════════════════════════
-# SLIDE 10 — Call to Action
+# SLIDE 10 — Disclaimer
+# ══════════════════════════════════════════════════════════════════
+slide = prs.slides.add_slide(BLANK)
+add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
+header_band(slide, "Important Disclaimer", "Please read before using this tool")
+footer(slide, 11)
+
+add_rect(slide, 0.5, 1.35, 12.33, 5.6, fill=WHITE, line=SF_BLUE)
+add_rect(slide, 0.5, 1.35, 12.33, 0.48, fill=SF_BLUE)
+add_text(slide, "Important Disclaimer", 0.7, 1.38, 12.0, 0.4,
+         size=14, bold=True, color=WHITE)
+
+add_bullet_box(slide, [
+    "Tech Debt Assessor is provided \"as is,\" without warranties. Its assessments and",
+    "recommendations reflect my professional experience as a technical architect but are",
+    "intended as decision-support guidance, not legal, regulatory, or financial advice.",
+    "",
+    "Users are responsible for validating results and adapting recommendations to their",
+    "specific environment, requirements, and risks. I accept no liability for its use or",
+    "misuse; by using the software, you accept these terms.",
+    "",
+    "This tool is independent and is not affiliated with or endorsed by Salesforce, Inc.",
+    "\"Salesforce\" is a trademark of Salesforce, Inc.",
+], 0.7, 1.95, 12.0, 4.8, size=13, color=NAVY)
+
+
+# ══════════════════════════════════════════════════════════════════
+# SLIDE 11 — Call to Action
 # ══════════════════════════════════════════════════════════════════
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=NAVY)
@@ -505,6 +532,9 @@ add_text(slide, "sf-tech-debt-assessor-production.up.railway.app",
 add_text(slide, "Built by Steven Bilgram, Success Architect",
          0.6, 6.05, 12, 0.4,
          size=13, color=WHITE, align=PP_ALIGN.CENTER)
+add_text(slide, "Independent tool — not affiliated with or endorsed by Salesforce, Inc.",
+         0.6, 6.45, 12, 0.3,
+         size=9, italic=True, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
 
 
 # ── Save ─────────────────────────────────────────────────────────

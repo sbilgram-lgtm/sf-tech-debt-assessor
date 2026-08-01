@@ -1,12 +1,23 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: August 1, 2026*
+*Last updated: August 1, 2026 (rev 2)*
 
 A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **349 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+
+## Disclaimer
+
+Tech Debt Assessor is provided "as is," without warranties. Its assessments and recommendations reflect my professional experience as a technical architect but are intended as decision-support guidance, not legal, regulatory, or financial advice.
+
+Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
+
+This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
 
 ## What's New — August 1, 2026
 
 - **Migrated hosting from Render to Railway** — no more 30-second cold starts. The app is now always-on at **https://sf-tech-debt-assessor-production.up.railway.app**
+- **Disclaimer added** — an "Important Disclaimer" box now appears on the login page above the Connect form, clarifying that the tool is independent, not affiliated with Salesforce, Inc., and that results are informational guidance only — not legal, regulatory, or financial advice.
 
 ---
 
