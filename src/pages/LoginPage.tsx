@@ -699,20 +699,12 @@ export const LoginPage: React.FC = () => {
           borderTop: '1px solid rgba(255,255,255,0.15)',
         }}>
           <p style={{
-            margin: '0 0 4px',
+            margin: 0,
             fontSize: '0.72rem',
             color: 'rgba(255,255,255,0.75)',
             lineHeight: 1.5,
           }}>
             Read-only OAuth access · No data stored · Credentials saved locally only
-          </p>
-          <p style={{
-            margin: 0,
-            fontSize: '0.72rem',
-            color: 'rgba(255,255,255,0.6)',
-            lineHeight: 1.5,
-          }}>
-            Independent tool — not affiliated with or endorsed by Salesforce, Inc. Results are informational only and should not replace a formal technical review.
           </p>
         </div>
       </div>
@@ -727,6 +719,42 @@ export const LoginPage: React.FC = () => {
         padding: '48px 40px',
       }}>
         <div style={{ width: '100%', maxWidth: '380px' }}>
+
+          {/* Disclaimer box */}
+          <div style={{
+            backgroundColor: '#eaf1fb',
+            border: '1.5px solid #0070d2',
+            borderRadius: '8px',
+            padding: '14px 16px',
+            marginBottom: '28px',
+          }}>
+            <p style={{
+              margin: '0 0 6px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              color: '#032d60',
+              lineHeight: 1.4,
+            }}>
+              Important Disclaimer
+            </p>
+            <p style={{
+              margin: 0,
+              fontSize: '0.80rem',
+              color: '#032d60',
+              lineHeight: 1.55,
+            }}>
+              Tech Debt Assessor is provided "as is," without warranties. Its assessments and recommendations reflect my professional experience as a technical architect but are intended as decision-support guidance, not legal, regulatory, or security advice.
+            </p>
+            <p style={{
+              margin: '8px 0 0',
+              fontSize: '0.80rem',
+              color: '#032d60',
+              lineHeight: 1.55,
+            }}>
+              Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
+            </p>
+          </div>
+
           <h2 style={{
             fontSize: '1.4rem',
             fontWeight: 700,
