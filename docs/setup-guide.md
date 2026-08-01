@@ -7,7 +7,7 @@ This guide walks you through connecting the Salesforce Tech Debt Assessor to a c
 ## What You Need
 
 - Access to the customer's org with System Administrator profile
-- The app URL: **https://sf-tech-debt-assessor.onrender.com**
+- The app URL: **https://sf-tech-debt-assessor-production.up.railway.app**
 
 ---
 
@@ -45,7 +45,7 @@ Salesforce introduced **External Client Apps** in Spring '25 as the new way to c
 ### Step 2 — Configure OAuth
 
 1. On the OAuth page, set the following:
-   - **Callback URL:** `https://sf-tech-debt-assessor.onrender.com/auth/callback`
+   - **Callback URL:** `https://sf-tech-debt-assessor-production.up.railway.app/auth/callback`
    - **OAuth Scopes:** Add both:
      - `Access and manage your data (api)`
      - `Perform requests on your behalf at any time (refresh_token, offline_access)`
@@ -87,7 +87,7 @@ Salesforce introduced **External Client Apps** in Spring '25 as the new way to c
 
    **API (Enable OAuth Settings)**
    - Check **Enable OAuth Settings**
-   - **Callback URL:** `https://sf-tech-debt-assessor.onrender.com/auth/callback`
+   - **Callback URL:** `https://sf-tech-debt-assessor-production.up.railway.app/auth/callback`
    - **Selected OAuth Scopes:** Add both:
      - `Access and manage your data (api)`
      - `Perform requests on your behalf at any time (refresh_token, offline_access)`
@@ -115,7 +115,7 @@ Salesforce introduced **External Client Apps** in Spring '25 as the new way to c
 
 ## Running the Assessment (Both Paths)
 
-1. Open **https://sf-tech-debt-assessor.onrender.com** in your browser
+1. Open **https://sf-tech-debt-assessor-production.up.railway.app** in your browser
 2. Enter the following:
 
    | Field | Value |
@@ -129,6 +129,41 @@ Salesforce introduced **External Client Apps** in Spring '25 as the new way to c
 5. Click **Allow** when prompted
 6. Click **Run Assessment** on the dashboard
 7. Click **Export PDF** to generate the report
+
+---
+
+## Running Locally (Development)
+
+To run the app on your own machine instead of the deployed Railway URL:
+
+### Step 1 — Start the dev server
+
+```bash
+cd sf-tech-debt-assessor
+npm run dev
+```
+
+This starts both servers — React on **http://localhost:3000** and Express on **http://localhost:3001**.
+
+### Step 2 — Add the local callback URL to your app
+
+The app detects it's running locally and automatically uses `http://localhost:3000/auth/callback` as the redirect URI. You need to add this to your Connected App or External Client App alongside the Railway URL.
+
+**External Client App (Spring '25+):**
+1. Setup → External Client Apps → find your app → **Edit**
+2. In OAuth Settings, add `http://localhost:3000/auth/callback` to the Callback URL field (one URL per line)
+3. Save — wait ~10 minutes
+
+**Connected App (Classic):**
+1. Setup → App Manager → find your app → **Edit**
+2. Add `http://localhost:3000/auth/callback` to the Callback URL field (one URL per line)
+3. Save — wait ~10 minutes
+
+### Step 3 — Log in
+
+Open **http://localhost:3000** and log in with the same Client ID, Client Secret, and Org URL as normal.
+
+> Both the local and Railway callback URLs can coexist in the same app — no need to create a separate Connected App for local development.
 
 ---
 
@@ -176,10 +211,10 @@ A **System Administrator** profile will work for all checks. If using a non-admi
 | `error=missing required code challenge` | PKCE is enabled on your app — go to Setup → External Client Apps (or App Manager for classic) → find your app → Edit → uncheck **Require Proof Key for Code Exchange (PKCE)** → Save. Wait 5 minutes then retry. |
 | Redirected back to login with no error | Wait 5–10 minutes for the app to activate, then try again |
 | `error=invalid_client` | Copy the Consumer Key and Secret fresh from Manage Consumer Details |
-| `error=redirect_uri_mismatch` | Verify the Callback URL is exactly `https://sf-tech-debt-assessor.onrender.com/auth/callback` |
+| `error=redirect_uri_mismatch` | Verify the Callback URL matches the URL you're running from — `https://sf-tech-debt-assessor-production.up.railway.app/auth/callback` for Railway, or `http://localhost:3000/auth/callback` for local dev. Both can be added to the same app. |
 | Can't find "External Client Apps" in Setup | Your org uses the classic path — follow Option B instead |
 | Dashboard loads but categories show errors | The logged-in user lacks API access or View Setup and Configuration permission |
-| App takes 30+ seconds to load | Render free tier spins down after inactivity — first load may be slow, subsequent loads are fast |
+| App takes 30+ seconds to load | App is hosted on Railway and is always-on — no cold starts |
 
 ---
 

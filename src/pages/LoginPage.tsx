@@ -544,40 +544,40 @@ export const LoginPage: React.FC = () => {
         flex: '0 0 60%',
         background: 'linear-gradient(145deg, #032D60 0%, #0070D2 60%, #1589EE 100%)',
         color: 'white',
-        padding: '28px 48px',
+        padding: '20px 40px',
         display: 'flex',
         flexDirection: 'column',
-        overflowY: 'auto',
+        overflowY: 'hidden',
       }}>
         {/* Header */}
-        <div style={{ marginBottom: '18px' }}>
+        <div style={{ marginBottom: '10px' }}>
           {/* Wordmark */}
-          <div style={{ marginBottom: '10px' }}>
+          <div style={{ marginBottom: '6px' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 500, opacity: 0.85, letterSpacing: '0.05em' }}>
               SALESFORCE TECH DEBT ASSESSOR
             </span>
           </div>
 
           <h1 style={{
-            fontSize: '2rem',
+            fontSize: '1.8rem',
             fontWeight: 700,
-            margin: '0 0 4px',
+            margin: '0 0 2px',
             lineHeight: 1.15,
             letterSpacing: '-0.02em',
           }}>
             Know your org's health in minutes.
           </h1>
 
-          <p style={{ fontSize: '0.85rem', opacity: 0.75, margin: '0 0 6px', fontWeight: 400 }}>
+          <p style={{ fontSize: '0.85rem', opacity: 0.75, margin: '0 0 4px', fontWeight: 400 }}>
             by <strong style={{ opacity: 1 }}>Steven Bilgram</strong>, Success Architect
           </p>
 
           <p style={{
-            fontSize: '0.88rem',
-            lineHeight: 1.55,
+            fontSize: '0.85rem',
+            lineHeight: 1.5,
             opacity: 0.88,
             maxWidth: '520px',
-            marginTop: '10px',
+            marginTop: '6px',
           }}>
             Connects securely to your Salesforce org via OAuth and runs a comprehensive
             read-only scan across <strong>{TOTAL_CHECKS} checks</strong> in {CATEGORIES.length} categories —
@@ -590,8 +590,8 @@ export const LoginPage: React.FC = () => {
         <div style={{
           display: 'flex',
           gap: '32px',
-          marginBottom: '16px',
-          paddingBottom: '14px',
+          marginBottom: '10px',
+          paddingBottom: '10px',
           borderBottom: '1px solid rgba(255,255,255,0.2)',
         }}>
           {[
@@ -607,8 +607,8 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Category grid */}
-        <div style={{ marginBottom: '10px' }}>
-          <p style={{ fontSize: '0.72rem', opacity: 0.6, margin: '0 0 8px', letterSpacing: '0.03em' }}>
+        <div style={{ marginBottom: '6px' }}>
+          <p style={{ fontSize: '0.72rem', opacity: 0.6, margin: '0 0 6px', letterSpacing: '0.03em' }}>
             Click any category to see all checks
           </p>
           <div style={{
@@ -671,10 +671,10 @@ export const LoginPage: React.FC = () => {
 
         {/* Group legend */}
         <div style={{
-          marginTop: '8px',
+          marginTop: '4px',
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '7px 16px',
+          gap: '5px 14px',
         }}>
           {Object.entries(GROUP_COLORS).map(([group, color]) => (
             <div key={group} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -694,8 +694,8 @@ export const LoginPage: React.FC = () => {
 
         {/* Footer note */}
         <div style={{
-          marginTop: '12px',
-          paddingTop: '10px',
+          marginTop: '8px',
+          paddingTop: '8px',
           borderTop: '1px solid rgba(255,255,255,0.15)',
         }}>
           <p style={{
@@ -975,7 +975,7 @@ export const LoginPage: React.FC = () => {
                   <>Under <strong>OAuth Settings</strong>, check <strong>Enable OAuth</strong></>,
                   <>Set <strong>Callback URL</strong> to:<br />
                     <code style={{ display: 'inline-block', marginTop: '4px', padding: '4px 8px', backgroundColor: '#f4f4f4', borderRadius: '4px', fontSize: '0.8rem', color: '#c0392b', wordBreak: 'break-all' }}>
-                      https://sf-tech-debt-assessor.onrender.com/auth/callback
+                      https://sf-tech-debt-assessor-production.up.railway.app/auth/callback
                     </code>
                   </>,
                   <>Under <strong>OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token)</em></>,
@@ -998,7 +998,7 @@ export const LoginPage: React.FC = () => {
                   <>Check <strong>Enable OAuth Settings</strong></>,
                   <>Set <strong>Callback URL</strong> to:<br />
                     <code style={{ display: 'inline-block', marginTop: '4px', padding: '4px 8px', backgroundColor: '#f4f4f4', borderRadius: '4px', fontSize: '0.8rem', color: '#c0392b', wordBreak: 'break-all' }}>
-                      https://sf-tech-debt-assessor.onrender.com/auth/callback
+                      https://sf-tech-debt-assessor-production.up.railway.app/auth/callback
                     </code>
                   </>,
                   <>Under <strong>Selected OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token)</em></>,
