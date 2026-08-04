@@ -69,6 +69,7 @@ function makeFlowQuality(overrides: object = {}) {
     flowsSystemContextWithSharing: [],
     processBuilderFlows: [],
     obsoleteFlowCount: 0,
+    flowsModifiedByInactiveUser: [],
     ...overrides,
   };
 }

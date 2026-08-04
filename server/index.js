@@ -244,7 +244,7 @@ app.get('/api/assess/validation-rules', requireAuth, async (req, res) => {
   try {
     const rules = await safeToolingQuery(conn,
       "SELECT Id, ValidationName, EntityDefinitionId, Active, " +
-      "Description, LastModifiedDate " +
+      "Description, ErrorMessage, LastModifiedDate " +
       "FROM ValidationRule WHERE Active = true LIMIT 5000"
     );
     res.json({ validationRules: rules.records || [] });
@@ -1029,6 +1029,30 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     ).catch(() => ({ records: [] }));
     const assignedPermSetIds = new Set((psUserCountsRes.records || []).map((r) => r.PermissionSetId));
 
+    // Active users with no role assigned — breaks criteria-based sharing rules for those users
+    const usersWithNoRoleRes = await safeQuery(conn,
+      "SELECT Id, Name, Username, Profile.Name FROM User WHERE IsActive = true AND UserRoleId = null AND UserType = 'Standard' LIMIT 500"
+    ).catch(() => ({ records: [] }));
+
+    // Profiles with View All Data or Modify All Data (excluding System Administrator)
+    let profilesWithVADRes = { records: [] };
+    let profilesWithMADRes = { records: [] };
+    try {
+      [profilesWithVADRes, profilesWithMADRes] = await Promise.all([
+        safeToolingQuery(conn,
+          "SELECT Id, Name FROM Profile WHERE PermissionsViewAllData = true AND Name != 'System Administrator' LIMIT 100"
+        ),
+        safeToolingQuery(conn,
+          "SELECT Id, Name FROM Profile WHERE PermissionsModifyAllData = true AND Name != 'System Administrator' LIMIT 100"
+        )
+      ]);
+    } catch(e) {}
+
+    // Permission sets granting View All + Modify All on the same object (effectively bypasses OWD)
+    const objPermsVADMADRes = await safeQuery(conn,
+      "SELECT Parent.Name, SobjectType FROM ObjectPermissions WHERE PermissionsViewAllRecords = true AND PermissionsModifyAllRecords = true AND Parent.IsOwnedByProfile = false AND Parent.NamespacePrefix = null LIMIT 200"
+    ).catch(() => ({ records: [] }));
+
     // Roles with no active users, and all roles for hierarchy depth check
     const [emptyRolesRes, allRolesRes] = await Promise.all([
       safeQuery(conn,
@@ -1072,7 +1096,11 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       profilesWithNoUsers: (profiles.records || []).filter(p => !activeProfileIds.has(p.Id)),
       permSetsWithNoAssignees: (permSets.records || []).filter(ps => !assignedPermSetIds.has(ps.Id)),
       rolesWithNoUsers: emptyRolesRes.records || [],
-      allRoles: allRolesRes.records || []
+      allRoles: allRolesRes.records || [],
+      usersWithNoRole: usersWithNoRoleRes.records || [],
+      profilesWithViewAllData: profilesWithVADRes.records || [],
+      profilesWithModifyAllData: profilesWithMADRes.records || [],
+      permSetsWithObjectVADMAD: objPermsVADMADRes.records || []
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -1097,7 +1125,7 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     let namedCredentials = { records: [] };
     try {
       namedCredentials = await safeToolingQuery(conn,
-        "SELECT Id, DeveloperName, Endpoint, PrincipalType " +
+        "SELECT Id, DeveloperName, Endpoint, PrincipalType, AuthenticationProtocol " +
         "FROM NamedCredential WHERE NamespacePrefix = null"
       );
     } catch (e) { /* optional */ }
@@ -1274,6 +1302,12 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, DeveloperName, Label FROM ReportType WHERE IsCustom = true AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] }))
     ]);
 
+    // Reports and dashboards owned by deactivated users
+    const [reportsOwnedByInactiveRes, dashboardsOwnedByInactiveRes] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name, OwnerId, Owner.Name, Owner.IsActive FROM Report WHERE Owner.IsActive = false LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Title, OwnerId, Owner.Name, Owner.IsActive FROM Dashboard WHERE Owner.IsActive = false LIMIT 200").catch(() => ({ records: [] }))
+    ]);
+
     // Find which custom report types have at least one report built on them
     // Report.ReportType.DeveloperName is the correct relationship path (not the non-existent ReportTypeApiName)
     const crtNames = (customReportTypesRes.records || []).map(r => r.DeveloperName);
@@ -1294,7 +1328,9 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
       staleDashboards: staleDashboards.records || [],
       staleDashboardsCount: (staleDashboardsCount.records[0] || {}).expr0 || (staleDashboards.records || []).length,
       personalFolderReportCount: (personalFolderReportsRes.records[0] || {}).expr0 || 0,
-      unusedCustomReportTypes
+      unusedCustomReportTypes,
+      reportsOwnedByInactive: reportsOwnedByInactiveRes.records || [],
+      dashboardsOwnedByInactive: dashboardsOwnedByInactiveRes.records || []
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2017,7 +2053,8 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       flowsSystemContextNoSharing,
       flowsSystemContextWithSharing,
       processBuilderFlows,
-      obsoleteFlowCountResult
+      obsoleteFlowCountResult,
+      flowsModifiedByInactiveResult
     ] = await Promise.all([
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
       // FlowElement is Tooling API only — must use safeToolingQuery here.
@@ -2036,7 +2073,9 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       // Process Builder flows (ProcessType = 'Workflow') — legacy, should migrate to record-triggered flows
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND ProcessType = 'Workflow' LIMIT 200").catch(() => ({ records: [] })),
       // Obsolete flow versions — deactivated versions that accumulate and cause clutter
-      safeQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete' AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] }))
+      safeQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete' AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] })),
+      // Flows last modified by a deactivated user — orphaned ownership (Tooling API required for Flow)
+      safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, LastModifiedBy.Name, LastModifiedBy.IsActive FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND LastModifiedBy.IsActive = false LIMIT 200").catch(() => ({ records: [] }))
     ]);
 
     const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;
@@ -2048,7 +2087,8 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       flowsSystemContextNoSharing: flowsSystemContextNoSharing.records || [],
       flowsSystemContextWithSharing: flowsSystemContextWithSharing.records || [],
       processBuilderFlows: processBuilderFlows.records || [],
-      obsoleteFlowCount
+      obsoleteFlowCount,
+      flowsModifiedByInactiveUser: flowsModifiedByInactiveResult.records || []
     });
   } catch (err) {
     console.error('Flow Quality assessment error:', err);

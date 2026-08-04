@@ -61,6 +61,8 @@ const emptySharing = {
   permissionSetGroupCount: 1, usersWithExcessivePermSets: [], clonedSysAdminProfiles: [],
   transactionSecurityPolicies: [{}], profilesWithNoUsers: [], permSetsWithNoAssignees: [],
   rolesWithNoUsers: [], allRoles: [],
+  usersWithNoRole: [], profilesWithViewAllData: [], profilesWithModifyAllData: [],
+  permSetsWithObjectVADMAD: [],
 };
 const emptyIntegrations = {
   connectedApps: [], namedCredentials: [], remoteSiteSettings: [], apexCallouts: [],
@@ -77,6 +79,7 @@ const emptyDuplicateRules = {
 const emptyReports = {
   staleReports: [], totalReports: 0, staleDashboards: [], totalDashboards: 0,
   personalFolderReportCount: 0, unusedCustomReportTypes: [],
+  reportsOwnedByInactive: [], dashboardsOwnedByInactive: [],
 };
 // Email: supply one lightning template to avoid "no templates" finding
 const emptyEmail = { classicTemplates: [], lightningTemplates: [{ Id: 't1', Name: 'Welcome' }] };
@@ -139,6 +142,7 @@ const emptyFlowQuality = {
   allFlows: [], flowsWithDmlInLoops: [], flowsWithMissingDescriptions: [],
   flowsSystemContextNoSharing: [], flowsSystemContextWithSharing: [],
   processBuilderFlows: [], obsoleteFlowCount: 0,
+  flowsModifiedByInactiveUser: [],
 };
 
 // ─── helper ───────────────────────────────────────────────────────────────────

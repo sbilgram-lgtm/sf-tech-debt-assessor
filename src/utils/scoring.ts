@@ -112,6 +112,20 @@ export function assessConfiguration(
     ));
   }
 
+  // Validation rules with no error message — users see a blank error on failure
+  const noErrorMsg = validationRules.validationRules.filter(
+    (rule: any) => !rule.ErrorMessage || rule.ErrorMessage.trim() === ''
+  );
+  if (noErrorMsg.length > 0) {
+    items.push(createDebtItem(
+      'configuration', 'medium',
+      `${noErrorMsg.length} Validation Rule${noErrorMsg.length !== 1 ? 's' : ''} With No Error Message`,
+      `${noErrorMsg.length} active validation rule${noErrorMsg.length !== 1 ? 's have' : ' has'} no error message configured. When one of these rules fires, the user sees a blank or generic error with no guidance on how to fix their input.`,
+      'Add a clear, user-facing error message to every validation rule explaining what went wrong and what the user needs to change.',
+      { records: noErrorMsg.map((r: any) => ({ name: r.ValidationName || r.EntityDefinitionId, detail: 'No error message — users see a blank error when rule fires' })) }
+    ));
+  }
+
   // Classic Approval Processes — superseded by Flow Approval Processes (Spring '26)
   const activeApprovals = automation.approvalProcesses || [];
   if (activeApprovals.length > 0) {
@@ -2396,6 +2410,56 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     }
   }
 
+  // Active standard users with no role — breaks criteria-based sharing rules
+  const usersWithNoRole = (data as any).usersWithNoRole || [];
+  if (usersWithNoRole.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'medium',
+      `${usersWithNoRole.length} Active User${usersWithNoRole.length !== 1 ? 's' : ''} With No Role Assigned`,
+      `${usersWithNoRole.length} active standard user${usersWithNoRole.length !== 1 ? 's' : ''} have no role in the hierarchy. Users without roles are excluded from criteria-based sharing rules that target roles or subordinates, causing them to miss records they should see. This is a common misconfiguration after onboarding.`,
+      'Assign a role to every active standard user. If a flat hierarchy is intentional, use permission sets and sharing rules targeting public groups instead of role-based rules.',
+      { records: usersWithNoRole.slice(0, 50).map((u: any) => ({ name: u.Name, detail: `${u.Username} — ${u.Profile?.Name || 'Unknown Profile'} — no role assigned` })) }
+    ));
+  }
+
+  // Profiles with View All Data (non-SysAdmin)
+  const profilesWithVAD = (data as any).profilesWithViewAllData || [];
+  if (profilesWithVAD.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'critical',
+      `${profilesWithVAD.length} Profile${profilesWithVAD.length !== 1 ? 's' : ''} With "View All Data" Permission`,
+      `${profilesWithVAD.length} non-System Administrator profile${profilesWithVAD.length !== 1 ? 's have' : ' has'} the "View All Data" permission enabled. This overrides all OWD, sharing rules, and record-level security — users on these profiles can see every record in the org. This is frequently granted temporarily and never revoked.`,
+      'Remove "View All Data" from non-admin profiles. Grant object-level visibility via permission sets with View All on specific objects only if required. Audit which users are on these profiles.',
+      { records: profilesWithVAD.map((p: any) => ({ name: p.Name, detail: 'Profile has View All Data — bypasses all record-level security' })) }
+    ));
+  }
+
+  // Profiles with Modify All Data (non-SysAdmin)
+  const profilesWithMAD = (data as any).profilesWithModifyAllData || [];
+  if (profilesWithMAD.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'critical',
+      `${profilesWithMAD.length} Profile${profilesWithMAD.length !== 1 ? 's' : ''} With "Modify All Data" Permission`,
+      `${profilesWithMAD.length} non-System Administrator profile${profilesWithMAD.length !== 1 ? 's have' : ' has'} the "Modify All Data" permission enabled. This grants unrestricted read and write access to every record in the org, regardless of OWD or sharing rules. Often granted for data migrations and left in place.`,
+      'Remove "Modify All Data" from non-admin profiles immediately. Grant Modify All on specific objects via permission sets only where required by a documented business need.',
+      { records: profilesWithMAD.map((p: any) => ({ name: p.Name, detail: 'Profile has Modify All Data — unrestricted read/write on every record' })) }
+    ));
+  }
+
+  // Permission sets with View All + Modify All on the same object (bypasses OWD per-object)
+  const objVADMAD = (data as any).permSetsWithObjectVADMAD || [];
+  if (objVADMAD.length > 0) {
+    const psNameSet = new Set(objVADMAD.map((r: any) => r.Parent?.Name).filter(Boolean));
+    const psNames = Array.from(psNameSet);
+    items.push(createDebtItem(
+      'sharingSecurity', 'high',
+      `${psNames.length} Permission Set${psNames.length !== 1 ? 's' : ''} With Both View All and Modify All on an Object`,
+      `${psNames.length} custom permission set${psNames.length !== 1 ? 's grant' : ' grants'} both View All Records and Modify All Records on the same object. This effectively bypasses OWD and sharing rules for that object for any user assigned the permission set.`,
+      'Review each permission set and remove View All / Modify All where not strictly required. Use sharing rules and manual sharing instead to grant targeted access.',
+      { records: objVADMAD.slice(0, 50).map((r: any) => ({ name: r.Parent?.Name || 'Unknown PS', detail: `${r.SobjectType} — View All + Modify All` })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -2470,6 +2534,20 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       'Hardcoded endpoints bypass Named Credentials, exposing URLs/credentials and breaking across sandboxes.',
       'Migrate callouts to use Named Credentials so credentials are managed centrally and securely.',
       { records: hardcodedEndpoints.map((c:any) => ({ name: c.Name })) }
+    ));
+  }
+
+  // Named credentials using Password auth — legacy pattern
+  const passwordAuthCreds = data.namedCredentials.filter(
+    (nc: any) => nc.AuthenticationProtocol === 'Password'
+  );
+  if (passwordAuthCreds.length > 0) {
+    items.push(createDebtItem(
+      'integrations', 'high',
+      `${passwordAuthCreds.length} Named Credential${passwordAuthCreds.length !== 1 ? 's' : ''} Using Password Authentication`,
+      `${passwordAuthCreds.length} Named Credential${passwordAuthCreds.length !== 1 ? 's use' : ' uses'} Username-Password authentication. Password-based credentials are a legacy pattern — credentials can expire or be changed without notice, breaking integrations silently. OAuth 2.0 (Client Credentials or JWT) is the current Salesforce standard.`,
+      'Migrate Named Credentials using Password auth to OAuth 2.0 where the target system supports it. Use External Credentials with OAuth Client Credentials flow for modern system-to-system integrations.',
+      { records: passwordAuthCreds.map((nc: any) => ({ name: nc.DeveloperName, detail: `Password auth — ${nc.Endpoint || 'endpoint not set'}` })) }
     ));
   }
 
@@ -2888,6 +2966,28 @@ export function assessReportsDashboards(data: ReportsDashboardsData): CategorySc
       `${personalCount} report${personalCount !== 1 ? 's' : ''} are saved in personal "My Personal Custom Reports" folders. These are invisible to other users — if the owner leaves or is deactivated, the reports become inaccessible. The Salesforce Optimizer flagged personal-folder reports as governance debt.`,
       'Move reports from personal folders to shared folders accessible to the team. Establish a naming convention and shared folder structure to prevent future reports being saved privately.',
       { count: personalCount }));
+  }
+
+  // Reports owned by deactivated users — unmanageable orphans
+  const reportsOwnedByInactive = (data as any).reportsOwnedByInactive || [];
+  if (reportsOwnedByInactive.length > 0) {
+    items.push(createDebtItem('reportsDashboards', 'high',
+      `${reportsOwnedByInactive.length} Report${reportsOwnedByInactive.length !== 1 ? 's' : ''} Owned by Deactivated Users`,
+      `${reportsOwnedByInactive.length} report${reportsOwnedByInactive.length !== 1 ? 's are' : ' is'} owned by deactivated users. These reports cannot be edited, scheduled, or managed by the owner and will become inaccessible if the user record is deleted. Scheduled reports will silently stop running.`,
+      'Reassign reports owned by deactivated users to an active user or a public group. Use the Mass Transfer Records tool or a one-off Data Loader export/import to bulk reassign.',
+      { records: reportsOwnedByInactive.slice(0, 50).map((r: any) => ({ name: r.Name, detail: `Owner: ${r.Owner?.Name || r.OwnerId} — deactivated` })) }
+    ));
+  }
+
+  // Dashboards owned by deactivated users
+  const dashboardsOwnedByInactive = (data as any).dashboardsOwnedByInactive || [];
+  if (dashboardsOwnedByInactive.length > 0) {
+    items.push(createDebtItem('reportsDashboards', 'high',
+      `${dashboardsOwnedByInactive.length} Dashboard${dashboardsOwnedByInactive.length !== 1 ? 's' : ''} Owned by Deactivated Users`,
+      `${dashboardsOwnedByInactive.length} dashboard${dashboardsOwnedByInactive.length !== 1 ? 's are' : ' is'} owned by deactivated users. These dashboards cannot be refreshed, edited, or scheduled. Dynamic dashboards that run as the owner will fail silently.`,
+      'Reassign dashboards to an active user. For dynamic dashboards, verify the running user is also updated to an active account.',
+      { records: dashboardsOwnedByInactive.slice(0, 50).map((r: any) => ({ name: r.Title, detail: `Owner: ${r.Owner?.Name || r.OwnerId} — deactivated` })) }
+    ));
   }
 
   // Custom Report Types with no reports built on them
@@ -4973,6 +5073,18 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
       `Obsolete flow versions are deactivated versions that remain in the org after a new version is activated. ${obsoleteCount} obsolete versions create clutter in Setup, slow down flow searches, and make version history harder to audit.`,
       'Use the Flow Version Management tool or SFDX to delete obsolete flow versions. Keep at most 1–2 prior versions for rollback purposes.',
       { count: obsoleteCount }
+    ));
+  }
+
+  // Flows last modified by a deactivated user — change control gap
+  const flowsModifiedByInactiveUser = (data as any).flowsModifiedByInactiveUser || [];
+  if (flowsModifiedByInactiveUser.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'low',
+      `${flowsModifiedByInactiveUser.length} Active Flow${flowsModifiedByInactiveUser.length !== 1 ? 's' : ''} Last Modified by a Deactivated User`,
+      `${flowsModifiedByInactiveUser.length} active flow${flowsModifiedByInactiveUser.length !== 1 ? 's were' : ' was'} last modified by a user who is now deactivated. This is a change control gap — there is no active owner who understands the last change made to these flows.`,
+      'Assign each flow to an active admin or developer. Review the last modification to confirm the change was intentional and documented.',
+      { records: flowsModifiedByInactiveUser.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `Last modified by: ${f.LastModifiedBy?.Name || 'Unknown'} — deactivated` })) }
     ));
   }
 

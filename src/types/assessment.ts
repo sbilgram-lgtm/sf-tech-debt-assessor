@@ -194,6 +194,10 @@ export interface SharingSecurityData {
   permSetsWithNoAssignees: any[];
   rolesWithNoUsers: any[];
   allRoles: any[];
+  usersWithNoRole: any[];
+  profilesWithViewAllData: any[];
+  profilesWithModifyAllData: any[];
+  permSetsWithObjectVADMAD: any[];
 }
 
 export interface IntegrationData {
@@ -240,6 +244,8 @@ export interface ReportsDashboardsData {
   totalDashboards: number;
   personalFolderReportCount: number;
   unusedCustomReportTypes: any[];
+  reportsOwnedByInactive: any[];
+  dashboardsOwnedByInactive: any[];
 }
 
 export interface EmailTemplatesData {
@@ -384,4 +390,5 @@ export interface FlowQualityData {
   flowsSystemContextWithSharing: any[];
   processBuilderFlows: any[];
   obsoleteFlowCount: number;
+  flowsModifiedByInactiveUser: any[];
 }
