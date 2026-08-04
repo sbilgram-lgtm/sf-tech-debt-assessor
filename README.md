@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: August 1, 2026 (rev 2)*
+*Last updated: August 4, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **349 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **358 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,20 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — August 4, 2026
+
+9 new metadata-only checks across 5 categories — all validated against Salesforce API field names before implementation:
+
+- **Sharing & Security (4 new):** Active users with no role assigned (Medium); Profiles with View All Data — non-SysAdmin (Critical); Profiles with Modify All Data — non-SysAdmin (Critical); Permission sets with both View All Records + Modify All Records on the same object (High)
+- **Reports & Dashboards (2 new):** Reports owned by deactivated users (High); Dashboards owned by deactivated users (High)
+- **Flow Quality (1 new):** Active flows last modified by a deactivated user — change control gap (Low)
+- **Configuration (1 new):** Validation rules with no error message — users see blank error on failure (Medium)
+- **Integrations (1 new):** Named Credentials using Password authentication — legacy pattern (High)
+
+Total checks: **349 → 358**
 
 ---
 
@@ -251,16 +265,16 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 
 | Category | Checks | What it checks |
 |---|---|---|
-| **Configuration** | 13 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
+| **Configuration** | 14 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, validation rules with no error message, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
 | **Code Quality** | 45 | See detail table below |
 | **Data Model** | 5 | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | 70 | See detail table below |
-| **Sharing & Security** | 29 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth |
-| **Integrations** | 9 | Named vs External Credentials, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
+| **Sharing & Security** | 33 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth, users with no role assigned, profiles with View All Data, profiles with Modify All Data, permission sets with object-level View All + Modify All |
+| **Integrations** | 10 | Named vs External Credentials, Named Credentials using Password auth, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
 | **Test Coverage** | 7 | Zero-coverage classes, below-75% components, test class ratio, assert messages, runAs usage, deprecated testMethod keyword |
 | **Org Limits** | 5 | All org limits — flags anything ≥50% consumed; Apex class count approaching ~5,000 limit; custom object count approaching ~900 limit |
 | **Duplicate & Matching Rules** | 4 | Missing rules, inactive rules, undocumented rules |
-| **Reports & Dashboards** | 5 | Stale reports/dashboards, report proliferation, reports in personal folders, unused Custom Report Types |
+| **Reports & Dashboards** | 7 | Stale reports/dashboards, report proliferation, reports in personal folders, unused Custom Report Types, reports owned by deactivated users, dashboards owned by deactivated users |
 | **Email Templates** | 3 | Classic (legacy) templates, templates not updated in 2+ years |
 | **Platform Events & CDC** | 3 | Unsubscribed event channels, excessive CDC entities |
 | **Managed Packages** | 3 | Beta packages, package count, version currency |
@@ -273,7 +287,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **OmniStudio** | 26 | See detail table below |
 | **Performance** | 20 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, total active flows (>300), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
-| **Flow Quality** | 6 | See detail table below |
+| **Flow Quality** | 7 | See detail table below |
 
 ---
 
@@ -447,7 +461,7 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 ---
 
-### Flow Quality — All 6 Checks
+### Flow Quality — All 7 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -456,7 +470,8 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 | 3 | Flows running in System Context Without Sharing — privilege escalation risk | High |
 | 4 | Flows running in System Context With Sharing — elevated privileges, review intent | Low |
 | 5 | Obsolete flow versions accumulating (>50) — org hygiene | Low / Medium |
-| 6 | Active flows with no description | Low |
+| 6 | Active flows last modified by a deactivated user — change control gap | Low |
+| 7 | Active flows with no description | Low |
 
 ---
 
