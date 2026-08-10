@@ -12,18 +12,19 @@ interface CheckItem {
 const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
   'Configuration': [
     { title: 'Active Workflow Rules', severity: 'high' },
-    { title: 'Active Process Builders', severity: 'high' },
-    { title: 'Objects with Overlapping Automation', severity: 'medium' },
+    { title: 'Active Automation Components — Review for Overlap', severity: 'medium' },
     { title: 'Active Validation Rules (>50)', severity: 'medium' },
     { title: 'Validation Rules Without Descriptions', severity: 'low' },
+    { title: 'Validation Rules With No Error Message', severity: 'medium' },
     { title: 'Classic Approval Processes Still Active', severity: 'medium' },
     { title: 'Flows Using Legacy Einstein for Flow Actions', severity: 'low' },
     { title: 'Web-to-Case Enabled Without CAPTCHA', severity: 'high' },
     { title: 'Active Case Auto-Response Rules', severity: 'low' },
     { title: 's-Controls Still Active — Deprecated Technology', severity: 'critical' },
-    { title: "Active PushTopics — Deprecated Summer '26", severity: 'high' },
-    { title: 'Pending Time-Based Workflow Actions in Queue', severity: 'medium' },
+    { title: 'Pending Approval Process Instances Awaiting Decision', severity: 'medium' },
     { title: 'No Login Flows Configured', severity: 'low' },
+    { title: 'JavaScript Buttons or Custom Links — Broken in Lightning Experience', severity: 'high' },
+    { title: 'Feed Tracking Enabled on Objects — Review Scope', severity: 'medium' },
   ],
   'Code Quality': [
     { title: 'Triggers with Business Logic', severity: 'high' },
@@ -76,6 +77,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Custom Objects Without Descriptions', severity: 'low' },
     { title: 'Custom Fields Lack Descriptions (>50%)', severity: 'medium' },
     { title: 'Objects with 100+ Custom Fields', severity: 'high' },
+    { title: 'Objects Above 80% Custom Field Limit', severity: 'medium' },
     { title: 'Custom Object Count (>200)', severity: 'medium' },
   ],
   'Service Cloud': [
@@ -148,6 +150,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Open Work Orders With No Case and No Asset', severity: 'medium' },
     { title: 'Active CSAT Surveys With No Survey Responses', severity: 'medium' },
     { title: 'Completed Voice Calls With No Linked Case', severity: 'high' },
+    { title: 'Open Cases Not Linked to an Asset Record', severity: 'medium' },
   ],
   'Sharing & Security': [
     { title: 'Objects with Internal Public Read/Write OWD', severity: 'critical' },
@@ -178,12 +181,17 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Custom Permission Sets Not Assigned to Any User', severity: 'low' },
     { title: 'Roles in Hierarchy With No Active Users', severity: 'low' },
     { title: 'Role Hierarchy Depth Exceeds 10 Levels', severity: 'medium' },
+    { title: 'Active Users With No Role Assigned', severity: 'low' },
+    { title: 'Profiles With "View All Data" Permission', severity: 'critical' },
+    { title: 'Profiles With "Modify All Data" Permission', severity: 'critical' },
+    { title: 'Permission Sets With Both View All and Modify All on an Object', severity: 'high' },
   ],
   'Integrations': [
     { title: 'Remote Sites with Protocol Security Disabled', severity: 'critical' },
     { title: 'Inactive Remote Site Settings', severity: 'low' },
     { title: 'Connected Apps Without Descriptions', severity: 'low' },
     { title: 'Classes with Hardcoded HTTP Endpoints', severity: 'high' },
+    { title: 'Named Credentials Using Password Authentication', severity: 'high' },
     { title: 'Named Credentials Using Per-User Auth', severity: 'medium' },
     { title: "Apex Classes on Retired API Versions (≤v30)", severity: 'critical' },
     { title: "Active PushTopics — Streaming API Deprecated Summer '26", severity: 'high' },
@@ -216,6 +224,10 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Reports Not Run in 6+ Months (>50)', severity: 'medium' },
     { title: 'Dashboards Not Viewed in 6+ Months (>20)', severity: 'medium' },
     { title: 'Total Reports in Org (>2,000)', severity: 'medium' },
+    { title: 'Reports Stored in Personal Folders', severity: 'medium' },
+    { title: 'Reports Owned by Deactivated Users', severity: 'high' },
+    { title: 'Dashboards Owned by Deactivated Users', severity: 'high' },
+    { title: 'Custom Report Types With No Reports Built on Them', severity: 'low' },
   ],
   'Email Templates': [
     { title: 'Classic (Non-Lightning) Email Templates', severity: 'medium' },
@@ -242,6 +254,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Custom Record Types Across Org (>100)', severity: 'medium' },
     { title: 'Record Types Without Descriptions (>10)', severity: 'low' },
     { title: 'Page Layouts Configured (>100)', severity: 'medium' },
+    { title: 'Page Layouts Not Assigned to Any Profile or Record Type', severity: 'medium' },
   ],
   'Einstein & AI': [
     { title: 'Einstein Generative AI / Agentforce Not Enabled', severity: 'low' },
@@ -270,6 +283,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Aura Sites with Guest Page Caching Disabled (GuestCacheMaxAge = 0)', severity: 'high' },
     { title: 'Sites with More Than 30 Experience Builder Pages', severity: 'medium' },
     { title: 'Experience Cloud Sites with Over 100,000 Members', severity: 'medium' },
+    { title: 'Live Sites with Unknown Template Type', severity: 'low' },
   ],
   'Connected App Security': [
     { title: 'Connected Apps Without Session Timeout', severity: 'high' },
@@ -373,9 +387,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Event Monitoring Not Producing Logs (Last 7 Days)', severity: 'low' },
     { title: 'Async Jobs Stuck in Processing 24+ Hours', severity: 'high' },
     { title: 'Total Active Flows Exceeds 300', severity: 'medium' },
-    { title: 'Obsolete Flow Versions Exceeds 200', severity: 'low' },
     { title: 'Apex Classes Exceed 5,000 Lines', severity: 'high' },
-    { title: 'Active Flows with DML Elements Inside Loops', severity: 'high' },
     { title: 'Large Static Resources Over 500 KB', severity: 'medium' },
   ],
   'Notes & Attachments': [
@@ -393,9 +405,12 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'File Distribution Across Objects', severity: 'low' },
   ],
   'Flow Quality': [
+    { title: 'Active Process Builder Flows', severity: 'high' },
     { title: 'Flows with Database Operations Inside Loops', severity: 'high' },
     { title: 'Flows Perform CRUD in System Context Without Sharing', severity: 'high' },
     { title: 'Flows Perform CRUD in System Context With Sharing', severity: 'low' },
+    { title: 'Obsolete Flow Versions Accumulating', severity: 'low' },
+    { title: 'Active Flows Last Modified by a Deactivated User', severity: 'low' },
     { title: 'Flows Missing Descriptions', severity: 'low' },
   ],
 };
@@ -412,7 +427,7 @@ const GROUP_COLORS: Record<string, string> = {
 
 const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 33, group: 'Security & Access' },
+  { icon: '🔒',  name: 'Sharing & Security',      checks: 32, group: 'Security & Access' },
   { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
   { icon: '🌐',  name: 'Experience Cloud',        checks: 16, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
