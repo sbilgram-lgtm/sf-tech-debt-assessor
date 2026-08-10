@@ -2,7 +2,7 @@
 *By Steven Bilgram, Success Architect*
 *Last updated: August 4, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **358 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **357 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -24,7 +24,7 @@ This tool is independent and is not affiliated with or endorsed by Salesforce, I
 - **Configuration (1 new):** Validation rules with no error message — users see blank error on failure (Medium)
 - **Integrations (1 new):** Named Credentials using Password authentication — legacy pattern (High)
 
-Total checks: **349 → 358**
+Total checks: **349 → 358** (corrected to 357 after accuracy audit)
 
 ---
 
