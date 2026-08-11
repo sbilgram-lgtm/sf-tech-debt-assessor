@@ -87,6 +87,12 @@ app.get('/auth/login', (req, res) => {
 });
 
 app.get('/auth/callback', async (req, res) => {
+  if (req.query.error) {
+    const desc = req.query.error_description || req.query.error;
+    console.error('Salesforce auth error:', desc);
+    return res.redirect(`${getBaseUrl(req)}/login?error=${encodeURIComponent(desc)}`);
+  }
+
   const loginUrl = req.session.loginUrl || 'https://login.salesforce.com';
   const clientId = req.session.clientId || process.env.SF_CLIENT_ID;
   const clientSecret = req.session.clientSecret || process.env.SF_CLIENT_SECRET;

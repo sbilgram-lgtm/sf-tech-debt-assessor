@@ -478,8 +478,15 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('error') === 'auth_failed') {
+    const errParam = params.get('error');
+    if (errParam === 'auth_failed') {
       setError('Authentication failed. Check your Client ID, Client Secret, and Callback URL in your Connected App.');
+    } else if (errParam === 'missing_credentials') {
+      setError('Client ID and Client Secret are required.');
+    } else if (errParam === 'session_error') {
+      setError('Session error — please try again.');
+    } else if (errParam) {
+      setError(`Salesforce error: ${decodeURIComponent(errParam)}`);
     }
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
