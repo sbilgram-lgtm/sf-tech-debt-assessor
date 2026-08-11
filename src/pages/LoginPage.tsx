@@ -994,7 +994,6 @@ export const LoginPage: React.FC = () => {
                     </code>
                   </>,
                   <>Under <strong>OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token)</em></>,
-                  <><strong>Uncheck "Require Proof Key for Code Exchange (PKCE)"</strong> if it appears — leave it disabled</>,
                   <>Click <strong>Save</strong> — wait ~10 minutes for Salesforce to activate it</>,
                   <>Go back to the External Client App → <strong>View Consumer Details</strong> to retrieve your <strong>Consumer Key</strong> (Client ID) and <strong>Consumer Secret</strong></>,
                 ].map((step, i) => (
@@ -1017,7 +1016,6 @@ export const LoginPage: React.FC = () => {
                     </code>
                   </>,
                   <>Under <strong>Selected OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token)</em></>,
-                  <><strong>Uncheck "Require Proof Key for Code Exchange (PKCE)"</strong> — this must be disabled</>,
                   <>Click <strong>Save</strong> — wait ~10 minutes for Salesforce to activate the app</>,
                   <>Go back to the Connected App → <strong>Manage Consumer Details</strong> to retrieve your <strong>Consumer Key</strong> (Client ID) and <strong>Consumer Secret</strong></>,
                 ].map((step, i) => (
@@ -1041,9 +1039,6 @@ export const LoginPage: React.FC = () => {
                 <p style={{ margin: '0 0 8px', fontWeight: 600, color: '#b8860b' }}>Troubleshooting</p>
                 <p style={{ margin: '0 0 6px' }}>
                   <strong>redirect_uri_mismatch</strong> — the Callback URL in your app doesn't match. Update it to exactly the URL above, save, and wait ~10 min.
-                </p>
-                <p style={{ margin: '0 0 6px' }}>
-                  <strong>missing required code challenge</strong> — PKCE is still enabled. Go back into Setup and uncheck "Require Proof Key for Code Exchange (PKCE)", then save and retry.
                 </p>
                 <p style={{ margin: 0 }}>
                   <strong>Trailhead Playground URL format:</strong> <code style={{ fontSize: '0.8rem', color: '#c0392b' }}>https://orgname-dev-ed.trailblaze.my.salesforce.com</code>

@@ -3,7 +3,14 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
+const crypto = require('crypto');
 const jsforce = require('jsforce');
+
+function generatePkce() {
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -55,6 +62,9 @@ app.get('/auth/login', (req, res) => {
   req.session.clientId = clientId;
   req.session.clientSecret = clientSecret;
 
+  const { verifier, challenge } = generatePkce();
+  req.session.pkceVerifier = verifier;
+
   const oauth = new jsforce.OAuth2({
     loginUrl,
     clientId,
@@ -62,7 +72,11 @@ app.get('/auth/login', (req, res) => {
     redirectUri: getCallbackUrl(req)
   });
 
-  const authUrl = oauth.getAuthorizationUrl({ scope: 'api refresh_token' });
+  const authUrl = oauth.getAuthorizationUrl({
+    scope: 'api refresh_token',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+  });
   req.session.save(err => {
     if (err) {
       console.error('Session save error:', err);
@@ -86,7 +100,15 @@ app.get('/auth/callback', async (req, res) => {
 
   const conn = new jsforce.Connection({ oauth2: oauth });
   try {
-    await conn.authorize(req.query.code);
+    const tokenParams = req.session.pkceVerifier ? { code_verifier: req.session.pkceVerifier } : {};
+    const tokenRes = await new Promise((resolve, reject) => {
+      oauth.requestToken(req.query.code, tokenParams, (err, res) => err ? reject(err) : resolve(res));
+    });
+    conn.initialize({
+      accessToken: tokenRes.access_token,
+      instanceUrl: tokenRes.instance_url,
+      refreshToken: tokenRes.refresh_token,
+    });
     req.session.accessToken = conn.accessToken;
     req.session.instanceUrl = conn.instanceUrl;
     req.session.refreshToken = conn.refreshToken;
