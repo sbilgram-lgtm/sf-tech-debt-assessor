@@ -1,6 +1,6 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: August 4, 2026*
+*Last updated: August 11, 2026*
 
 A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **357 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
@@ -11,6 +11,13 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — August 11, 2026
+
+- **PKCE support added** — the OAuth flow now generates a `code_verifier`/`code_challenge` on every login. External Client Apps in Spring '25+ orgs can no longer have "Require PKCE" unchecked in the UI, making this required for those orgs. No setup change needed — the app handles it automatically. The "Uncheck PKCE" step has been removed from the setup guide.
+- **Salesforce OAuth errors now surface on the login page** — instead of a generic "Authentication failed" message, errors returned by Salesforce (e.g. redirect URI mismatch, invalid client) are shown directly so the exact issue is visible.
 
 ---
 
@@ -171,8 +178,7 @@ Supports both the hosted version and local Docker.
 5. Under **Selected OAuth Scopes**, add:
    - `Access and manage your data (api)`
    - `Perform requests on your behalf at any time (refresh_token, offline_access)`
-6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** — this must be disabled
-7. Click **Save** → then **Continue**
+6. Click **Save** → then **Continue**
 8. **Wait 10 minutes** — Salesforce needs time to activate the app
 
 **Get your credentials:**
@@ -200,8 +206,7 @@ Supports both the hosted version and local Docker.
 5. Under **OAuth Scopes**, add:
    - `Access and manage your data (api)`
    - `Perform requests on your behalf at any time (refresh_token, offline_access)`
-6. **Uncheck "Require Proof Key for Code Exchange (PKCE)"** if it appears — leave it disabled
-7. Click **Save** — wait ~10 minutes for Salesforce to activate it
+6. Click **Save** — wait ~10 minutes for Salesforce to activate it
 8. Go back to the External Client App → click the app name → copy:
    - **Client ID** → your Client ID
    - **Client Secret** → your Client Secret
@@ -225,7 +230,7 @@ The user who authenticates must have:
 > | "Authentication failed" | Double-check Client ID and Client Secret — copy/paste directly, no extra spaces |
 > | "redirect_uri_mismatch" | The Callback URL in your app doesn't match exactly. Check it's entered as shown above, then save and wait 10 minutes |
 > | "invalid_client_id" | Wait the full 10 minutes after creating the app, then try again |
-> | "missing required code challenge" | PKCE is still enabled — go back to your app in Setup and uncheck it |
+> | Any Salesforce error | The exact error message from Salesforce is now shown on the login page — use it to identify the specific issue |
 
 ---
 
@@ -602,9 +607,9 @@ docker run -d -p 3001:3001 --env-file .env.docker --name sf-assessor \
 - Node.js 18+
 - A Salesforce **Connected App** or **External Client App** (Spring '25+) with `http://localhost:3000/auth/callback` added to its Callback URL list
 
-> **Both app types work locally.** In your Connected App or External Client App, add `http://localhost:3000/auth/callback` alongside the hosted callback URL. The server auto-detects localhost and uses the correct redirect URI — no env var override needed.
+> **Both app types work locally.** PKCE is supported automatically — no need to disable it in your app setup.
 
-### Steps
+### Fresh clone
 
 ```bash
 git clone https://github.com/sbilgram-lgtm/sf-tech-debt-assessor
@@ -613,13 +618,18 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000** — React runs on port 3000, Express on port 3001.
+### Already cloned — pull latest
 
-Enter your Org URL, Client ID, and Client Secret in the login form as normal. No `.env` file is required for local development. If you want to set a stable session secret, create a `.env` file in the project root:
+```bash
+cd sf-tech-debt-assessor
+git pull origin main
+npm install
+npm run dev
+```
 
-```
-SESSION_SECRET=any-random-string
-```
+Open **http://localhost:3000** in your browser. Enter your Org URL, Client ID, and Client Secret in the login form.
+
+No `.env` file is required for local development.
 
 ---
 
