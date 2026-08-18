@@ -2,7 +2,7 @@
 *By Steven Bilgram, Success Architect*
 *Last updated: August 11, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **357 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **363 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,36 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — August 18, 2026
+
+5 new checks across Code Quality and Flow Quality:
+
+**Code Quality (3 new):**
+- **`System.runAs()` in production code** (Critical) — privilege escalation; `System.runAs()` is test-only and bypasses sharing rules in production
+- **Schedulable classes without try/catch in `execute()`** (High) — scheduled jobs fail silently with no alert when unhandled exceptions occur
+- **`@TestVisible` usage** (Low) — creates tight coupling between tests and internal implementation, making refactoring harder
+
+**Flow Quality (2 new):**
+- **Flows with multiple active versions** (High) — API/deploy anomaly that causes both versions to execute simultaneously
+- **Flows with more than 50 elements** (Medium) — maintainability signal; large flows are difficult to debug and hand off
+
+> Note: "Action elements without fault paths" was considered but requires parsing full Flow metadata XML — not achievable via SOQL/Tooling API queries.
+
+Total checks: **358 → 363**
+
+---
+
+## What's New — August 18, 2026 (earlier)
+
+Corrected count discrepancies:
+
+- Fixed Sharing & Security count: UI showed 32 checks, code had 33 — corrected to 33
+- Fixed README section headers: Code Quality listed as 46 (correct: 45), Service Cloud listed as 69 (correct: 70)
+
+Total checks: **357 → 358**
 
 ---
 
@@ -31,7 +61,7 @@ This tool is independent and is not affiliated with or endorsed by Salesforce, I
 - **Configuration (1 new):** Validation rules with no error message — users see blank error on failure (Medium)
 - **Integrations (1 new):** Named Credentials using Password authentication — legacy pattern (High)
 
-Total checks: **349 → 358** (corrected to 357 after accuracy audit)
+Total checks: **349 → 358**
 
 ---
 
@@ -271,7 +301,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | Category | Checks | What it checks |
 |---|---|---|
 | **Configuration** | 14 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, validation rules with no error message, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
-| **Code Quality** | 45 | See detail table below |
+| **Code Quality** | 48 | See detail table below |
 | **Data Model** | 5 | Object/field descriptions, field sprawl, object count |
 | **Service Cloud** | 70 | See detail table below |
 | **Sharing & Security** | 33 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth, users with no role assigned, profiles with View All Data, profiles with Modify All Data, permission sets with object-level View All + Modify All |
@@ -292,11 +322,11 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **OmniStudio** | 26 | See detail table below |
 | **Performance** | 20 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, total active flows (>300), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
-| **Flow Quality** | 7 | See detail table below |
+| **Flow Quality** | 9 | See detail table below |
 
 ---
 
-### Code Quality — All 46 Checks
+### Code Quality — All 48 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -345,11 +375,14 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 43 | SOQL bind variables without null checks — full table scan risk (Graph Engine: MissingNullCheckOnSoqlVariable) | High |
 | 44 | Multiple calls to `Schema.getGlobalDescribe()` / `describeSObjects()` (Graph Engine: AvoidMultipleMassSchemaLookups) | High |
 | 45 | Non-global abstract classes or interfaces with no concrete implementation (Graph Engine: UnimplementedType) | Medium |
+| 46 | `System.runAs()` in production code — privilege escalation (test-only method) | Critical |
+| 47 | Schedulable classes without try/catch in `execute()` — silent job failures | High |
+| 48 | `@TestVisible` usage — tests coupled to internal implementation | Low |
 | 46 | `System.debug()` without `LoggingLevel` parameter (PMD: DebugsShouldUseLoggingLevel) | Low |
 
 ---
 
-### Service Cloud — All 69 Checks
+### Service Cloud — All 70 Checks
 
 | Area | Checks | Examples |
 |---|---|---|
@@ -466,7 +499,7 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 ---
 
-### Flow Quality — All 7 Checks
+### Flow Quality — All 9 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -477,6 +510,8 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 | 5 | Obsolete flow versions accumulating (>50) — org hygiene | Low / Medium |
 | 6 | Active flows last modified by a deactivated user — change control gap | Low |
 | 7 | Active flows with no description | Low |
+| 8 | Flows with multiple active versions — API/deploy anomaly causing duplicate execution | High |
+| 9 | Flows with more than 50 elements — maintainability and debugging risk | Medium |
 
 ---
 

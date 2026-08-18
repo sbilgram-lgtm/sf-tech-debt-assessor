@@ -2082,7 +2082,9 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       flowsSystemContextWithSharing,
       processBuilderFlows,
       obsoleteFlowCountResult,
-      flowsModifiedByInactiveResult
+      flowsModifiedByInactiveResult,
+      multipleActiveVersionsResult,
+      largeFlowElementsResult
     ] = await Promise.all([
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
       // FlowElement is Tooling API only — must use safeToolingQuery here.
@@ -2103,10 +2105,20 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       // Obsolete flow versions — deactivated versions that accumulate and cause clutter
       safeQuery(conn, "SELECT COUNT(Id) FROM Flow WHERE Status = 'Obsolete' AND NamespacePrefix = null").catch(() => ({ records: [{ expr0: 0 }] })),
       // Flows last modified by a deactivated user — orphaned ownership (Tooling API required for Flow)
-      safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, LastModifiedBy.Name, LastModifiedBy.IsActive FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND LastModifiedBy.IsActive = false LIMIT 200").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, LastModifiedBy.Name, LastModifiedBy.IsActive FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND LastModifiedBy.IsActive = false LIMIT 200").catch(() => ({ records: [] })),
+      // Multiple active versions of the same flow — API/deploy anomaly that causes duplicate execution
+      safeToolingQuery(conn, "SELECT DeveloperName, COUNT(Id) FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null GROUP BY DeveloperName HAVING COUNT(Id) > 1 LIMIT 100").catch(() => ({ records: [] })),
+      // Large flows — more than 50 elements is a maintainability signal; filter to active flows in JS
+      safeToolingQuery(conn, "SELECT FlowVersionId, COUNT(Id) FROM FlowElement GROUP BY FlowVersionId HAVING COUNT(Id) > 50 LIMIT 100").catch(() => ({ records: [] }))
     ]);
 
     const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;
+
+    // Cross-reference large-flow element counts with active flow metadata for display names
+    const activeFlowMap = new Map((allFlows.records || []).map(f => [f.Id, f]));
+    const largeFlows = (largeFlowElementsResult.records || [])
+      .filter(r => activeFlowMap.has(r.FlowVersionId))
+      .map(r => ({ ...activeFlowMap.get(r.FlowVersionId), elementCount: r.expr0 }));
 
     res.json({
       allFlows: allFlows.records || [],
@@ -2116,7 +2128,9 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       flowsSystemContextWithSharing: flowsSystemContextWithSharing.records || [],
       processBuilderFlows: processBuilderFlows.records || [],
       obsoleteFlowCount,
-      flowsModifiedByInactiveUser: flowsModifiedByInactiveResult.records || []
+      flowsModifiedByInactiveUser: flowsModifiedByInactiveResult.records || [],
+      multipleActiveVersionFlows: (multipleActiveVersionsResult.records || []).map(r => ({ name: r.DeveloperName, count: r.expr0 })),
+      largeFlows
     });
   } catch (err) {
     console.error('Flow Quality assessment error:', err);

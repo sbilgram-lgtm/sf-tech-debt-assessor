@@ -391,4 +391,6 @@ export interface FlowQualityData {
   processBuilderFlows: any[];
   obsoleteFlowCount: number;
   flowsModifiedByInactiveUser: any[];
+  multipleActiveVersionFlows: { name: string; count: number }[];
+  largeFlows: any[];
 }

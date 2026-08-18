@@ -427,15 +427,15 @@ const GROUP_COLORS: Record<string, string> = {
 
 const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 32, group: 'Security & Access' },
+  { icon: '🔒',  name: 'Sharing & Security',      checks: 33, group: 'Security & Access' },
   { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
   { icon: '🌐',  name: 'Experience Cloud',        checks: 16, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
-  { icon: '💻',  name: 'Code Quality',            checks: 45, group: 'Code & Development' },
+  { icon: '💻',  name: 'Code Quality',            checks: 48, group: 'Code & Development' },
   { icon: '🧪',  name: 'Test Coverage',           checks: 7,  group: 'Code & Development' },
   { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
   { icon: '🎨',  name: 'OmniStudio',             checks: 26, group: 'Code & Development' },
-  { icon: '🔀',  name: 'Flow Quality',            checks: 7,  group: 'Code & Development' },
+  { icon: '🔀',  name: 'Flow Quality',            checks: 9,  group: 'Code & Development' },
   // ── Performance & Limits ───────────────────────────────────────
   { icon: '🚀',  name: 'Performance',             checks: 20, group: 'Performance & Limits' },
   { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },

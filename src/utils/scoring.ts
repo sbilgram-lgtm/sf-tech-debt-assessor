@@ -1051,6 +1051,56 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // CQ-46 (DebugsShouldUseLoggingLevel) removed — CQ-28 already flags all System.debug() usage at medium severity.
   // Every class that would hit CQ-46 is already penalised under CQ-28; keeping both would double-deduct.
 
+  // System.runAs() in non-test production code — privilege escalation
+  const runAsInProduction = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /System\.runAs\s*\(/gi.test(body);
+  });
+  if (runAsInProduction.length > 0) {
+    items.push(createDebtItem(
+      'code', 'critical',
+      `${runAsInProduction.length} Production Class${runAsInProduction.length !== 1 ? 'es' : ''} Use System.runAs()`,
+      'System.runAs() is intended exclusively for test code to simulate different user contexts. In production code it bypasses the running user\'s sharing rules and profile permissions, creating a privilege escalation vulnerability.',
+      'Remove System.runAs() from all non-test classes. Redesign any logic that requires user context switching to respect the running user\'s permissions natively.',
+      { records: runAsInProduction.map((c: any) => ({ name: c.Name, detail: 'System.runAs() in production code — privilege escalation' })) }
+    ));
+  }
+
+  // Schedulable classes with no try/catch in execute() — silent job failures
+  const schedulableNoCatch = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    if (!/implements\s+[\w,\s]*\bSchedulable\b/i.test(body)) return false;
+    if (!/\bexecute\s*\(\s*SchedulableContext/i.test(body)) return false;
+    return !/\btry\s*\{/i.test(body);
+  });
+  if (schedulableNoCatch.length > 0) {
+    items.push(createDebtItem(
+      'code', 'high',
+      `${schedulableNoCatch.length} Schedulable Class${schedulableNoCatch.length !== 1 ? 'es' : ''} Without Try/Catch in execute()`,
+      'Scheduled Apex jobs that throw unhandled exceptions fail silently. The scheduler marks the job as failed with no alert by default — errors appear only in Apex Jobs logs that few admins monitor.',
+      'Wrap the execute() body in a try/catch block. At minimum log the exception with System.debug(LoggingLevel.ERROR, e.getMessage()). Consider sending an email notification or writing to a custom log object on failure.',
+      { records: schedulableNoCatch.map((c: any) => ({ name: c.Name, detail: 'Schedulable.execute() without try/catch — failures are silent' })) }
+    ));
+  }
+
+  // @TestVisible in production code — implementation coupling
+  const testVisibleClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    return /@TestVisible\b/gi.test(body);
+  });
+  if (testVisibleClasses.length > 0) {
+    items.push(createDebtItem(
+      'code', 'low',
+      `${testVisibleClasses.length} Class${testVisibleClasses.length !== 1 ? 'es' : ''} Use @TestVisible`,
+      '@TestVisible exposes private or protected members specifically for test access, creating tight coupling between tests and internal implementation. This makes refactoring harder — internal changes break tests even when public behaviour is unchanged.',
+      'Refactor tests to drive behaviour through public APIs. If internal logic genuinely needs isolated testing, extract it into a public or package-private method on a dedicated class.',
+      { records: testVisibleClasses.map((c: any) => ({ name: c.Name, detail: '@TestVisible — tests coupled to internal implementation' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -5085,6 +5135,30 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
       `${flowsModifiedByInactiveUser.length} active flow${flowsModifiedByInactiveUser.length !== 1 ? 's were' : ' was'} last modified by a user who is now deactivated. This is a change control gap — there is no active owner who understands the last change made to these flows.`,
       'Assign each flow to an active admin or developer. Review the last modification to confirm the change was intentional and documented.',
       { records: flowsModifiedByInactiveUser.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `Last modified by: ${f.LastModifiedBy?.Name || 'Unknown'} — deactivated` })) }
+    ));
+  }
+
+  // Multiple active versions of the same flow
+  const multipleVersionFlows = (data as any).multipleActiveVersionFlows || [];
+  if (multipleVersionFlows.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'high',
+      `${multipleVersionFlows.length} Flow${multipleVersionFlows.length !== 1 ? 's Have' : ' Has'} Multiple Active Versions`,
+      'Salesforce normally prevents multiple active versions of the same flow, but API deployments and metadata imports can create this state. Both versions execute simultaneously, causing duplicate record creation, duplicate notifications, or conflicting updates.',
+      'Deactivate all but the latest version of each affected flow. Review execution logs to confirm which version was running and whether any duplicate records or actions need to be corrected.',
+      { records: multipleVersionFlows.map((f: any) => ({ name: f.name, detail: `${f.count} active versions — should be exactly 1` })) }
+    ));
+  }
+
+  // Flows with very high element count (>50) — maintainability risk
+  const largeFlows = (data as any).largeFlows || [];
+  if (largeFlows.length > 0) {
+    items.push(createDebtItem(
+      'flowQuality', 'medium',
+      `${largeFlows.length} Flow${largeFlows.length !== 1 ? 's' : ''} With More Than 50 Elements`,
+      'Flows with more than 50 elements are difficult to understand, debug, and maintain. High element counts indicate missing subflow decomposition and are a leading indicator of flows that break during future changes.',
+      'Refactor large flows using subflows to extract discrete business processes into reusable, independently testable units. Target no more than 30 elements per flow for maintainability.',
+      { records: largeFlows.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.elementCount} elements` })) }
     ));
   }
 
