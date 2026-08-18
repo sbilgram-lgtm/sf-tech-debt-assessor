@@ -314,8 +314,8 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // stop prematurely at the first closing paren inside list.size().
   const soqlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    const forLoopPattern = /for\s*\([\s\S]{0,300}?\)\s*\{[\s\S]*?\[SELECT/gi;
-    const whileLoopPattern = /while\s*\([\s\S]{0,200}?\)\s*\{[\s\S]*?\[SELECT/gi;
+    const forLoopPattern = /for\s*\([\s\S]{0,300}?\)\s*\{[\s\S]{0,500}?\[SELECT/gi;
+    const whileLoopPattern = /while\s*\([\s\S]{0,200}?\)\s*\{[\s\S]{0,500}?\[SELECT/gi;
     return forLoopPattern.test(body) || whileLoopPattern.test(body);
   });
   if (soqlInLoops.length > 0) {
@@ -403,7 +403,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // Schema.getGlobalDescribe() — expensive schema lookup (single call); CQ-44 will catch multi-call classes separately
   const schemaLookups = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    const callCount = (body.match(/Schema\.getGlobalDescribe\s*\(\s*\)/gi) || []).length;
+    const callCount = (body.match(/Schema\.getGlobalDescribe\s*\(\s*\)|Schema\.describeSObjects\s*\(/gi) || []).length;
     return callCount === 1;
   });
   const schemaLookupsIds = new Set(schemaLookups.map((c: any) => c.Id));
@@ -771,7 +771,6 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   const crudViolations = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    if (soqlNoFlsIds.has(c.Id)) return false; // already flagged by CQ-14, skip to avoid double-count
     const hasDmlOrSoql = /\b(insert|update|delete|upsert)\s+\w/gi.test(body) || /\[SELECT\b/gi.test(body);
     const hasCrudCheck = /\.isAccessible\(\)|\.isCreateable\(\)|\.isUpdateable\(\)|\.isDeletable\(\)|WITH\s+USER_MODE|WITH\s+SECURITY_ENFORCED/gi.test(body);
     return hasDmlOrSoql && !hasCrudCheck;
@@ -1412,7 +1411,8 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
 
   // KN-3: Stale published articles (12+ months)
   if ((data.staleArticleCount || 0) > 0) {
-    items.push(createDebtItem('serviceCloud', 'high',
+    const severity = data.staleArticleCount >= 10 ? 'high' : 'medium';
+    items.push(createDebtItem('serviceCloud', severity,
       `${data.staleArticleCount} Published Knowledge Articles Not Updated in 12+ Months`,
       'Stale published articles degrade search quality, cause incorrect agent guidance, and actively harm customer-facing deflection. Salesforce recommends a 6–12 month review cycle.',
       'Implement an article review workflow triggered by LastModifiedDate. Set article expiry dates and assign article owners responsible for periodic reviews.',
@@ -2325,7 +2325,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   }
 
   // Async Sharing Recalculation Release Update — enforced Spring '27
-  if (!data.asyncSharingUpdateActive) {
+  if (data.asyncSharingUpdateActive === false) {
     items.push(createDebtItem(
       'sharingSecurity',
       'medium',
@@ -2760,8 +2760,10 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
   // TC-5: ApexAssertionsShouldIncludeMessage (PMD)
   const assertsNoMessage = data.testClasses.filter((c: any) => {
     const body = c.Body || '';
-    return /System\.(assertEquals|assertNotEquals|assert)\s*\(\s*[^,)]+\s*,\s*[^,)]+\s*\)/gi.test(body) &&
-           !/System\.(assertEquals|assertNotEquals|assert)\s*\(\s*[^,)]+\s*,\s*[^,)]+\s*,\s*['"`]/gi.test(body);
+    return (/System\.(assertEquals|assertNotEquals)\s*\(\s*(?:[^,()]+|\([^()]*\))+\s*,\s*(?:[^,()]+|\([^()]*\))+\s*\)/gi.test(body) ||
+            /System\.assert\s*\(\s*(?:[^,()]+|\([^()]*\))+\s*\)/gi.test(body)) &&
+           !/System\.(assertEquals|assertNotEquals)\s*\(\s*(?:[^,()]+|\([^()]*\))+\s*,\s*(?:[^,()]+|\([^()]*\))+\s*,\s*['"`]/gi.test(body) &&
+           !/System\.assert\s*\(\s*(?:[^,()]+|\([^()]*\))+\s*,/gi.test(body);
   });
   if (assertsNoMessage.length > 0) {
     items.push(createDebtItem(
@@ -3142,13 +3144,13 @@ export function assessManagedPackages(data: ManagedPackagesData): CategoryScore 
       { count: data.packages.length }));
   }
 
-  const betaPackages = data.packages.filter((p: any) => p.ReleaseState === 'Beta');
+  const betaPackages = data.packages.filter((p: any) => p.SubscriberPackageVersion?.ReleaseState === 'Beta');
   if (betaPackages.length > 0) {
     items.push(createDebtItem('managedPackages', 'high',
       `${betaPackages.length} Beta Managed Packages Installed in Org`,
       'Beta packages are not supported for production use and may be unstable.',
       'Replace beta packages with GA versions or remove if no longer needed.',
-      { records: betaPackages.map((p:any) => ({ name: p.Name, detail: `v${p.MajorVersion}.${p.MinorVersion}.${p.PatchVersion} · Beta` })) }));
+      { records: betaPackages.map((p:any) => ({ name: p.SubscriberPackage?.Name, detail: `v${p.SubscriberPackageVersion?.MajorVersion}.${p.SubscriberPackageVersion?.MinorVersion}.${p.SubscriberPackageVersion?.PatchVersion} · Beta` })) }));
   }
 
   if (data.packages.length > 0) {
@@ -3156,7 +3158,7 @@ export function assessManagedPackages(data: ManagedPackagesData): CategoryScore 
       `${data.packages.length} Managed Packages — Review for Currency`,
       'Installed packages should be kept up to date to receive security patches and stay compatible with Salesforce releases.',
       'Check each package version against the AppExchange listing. Subscribe to release notes for critical packages.',
-      { records: data.packages.map((p:any) => ({ name: p.Name, detail: `v${p.MajorVersion}.${p.MinorVersion}.${p.PatchVersion} · ${p.ReleaseState}` })) }));
+      { records: data.packages.map((p:any) => ({ name: p.SubscriberPackage?.Name, detail: `v${p.SubscriberPackageVersion?.MajorVersion}.${p.SubscriberPackageVersion?.MinorVersion}.${p.SubscriberPackageVersion?.PatchVersion} · ${p.SubscriberPackageVersion?.ReleaseState}` })) }));
   }
 
   const maxScore = 100;
@@ -3273,7 +3275,7 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
       'Enable Einstein Generative AI in Setup if the org has the required licenses. Evaluate Agentforce for automation use cases.'));
   }
 
-  if (predictionBuilderEnabled && data.promptTemplates.length === 0) {
+  if (einsteinEnabled && data.promptTemplates.length === 0) {
     items.push(createDebtItem('einsteinAI', 'medium',
       'Einstein Enabled but No Prompt Templates Configured',
       'Einstein features are active but no prompt templates are defined, suggesting AI features are enabled but not implemented.',
@@ -3687,6 +3689,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
   // CA-signed certificates with lifespan >200 days — non-compliant since March 2026
   const longLivedCerts = (data.certificates || []).filter((c: any) => {
     if (!c.ValidFrom || !c.ExpirationDate) return false;
+    if (c.IsSelfSigned) return false;
     const validFrom = new Date(c.ValidFrom);
     const expiration = new Date(c.ExpirationDate);
     const lifespanDays = Math.round((expiration.getTime() - validFrom.getTime()) / (1000 * 60 * 60 * 24));
@@ -4448,17 +4451,6 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
     ));
   }
 
-  // LWC compilation not enabled (native only — IsLvtEnabled = false)
-  const notLwcCompiled = data.omniScripts.filter((s: any) => s.IsActive && s.IsLvtEnabled === false);
-  if (notLwcCompiled.length > 0) {
-    items.push(createDebtItem('omniStudio', 'medium',
-      `${notLwcCompiled.length} Active OmniScripts Without LWC Compilation`,
-      'OmniScripts without LWC (Lightning Web Runtime) compilation enabled run in the slower interpreted mode. This is a significant performance and scalability best practice violation.',
-      'Enable LWC compilation on all active OmniScripts. Go to each OmniScript and toggle "LWR Enabled" to active.',
-      { records: notLwcCompiled.map((s: any) => ({ name: s.Name, detail: `${s.Type}/${s.SubType || ''}` })) }
-    ));
-  }
-
   // ── Integration Procedures ───────────────────────────────────────────────────
 
   const inactiveIPs = data.integrationProcedures.filter((ip: any) => !ip.IsActive);
@@ -4788,7 +4780,7 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
 
   const flowsByObject: Record<string, string[]> = {};
   for (const f of data.recordTriggeredFlows) {
-    const obj = f.ApiName?.split('_')[0] || 'Unknown';
+    const obj = (f as any).TriggerObjectOrEvent?.QualifiedApiName || f.ApiName?.split('_')[0] || 'Unknown';
     if (!flowsByObject[obj]) flowsByObject[obj] = [];
     flowsByObject[obj].push(f.Label || f.ApiName);
   }
@@ -5008,9 +5000,8 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
   }
 
   // ── Files permanently shared externally ──────────────────────────────────────
-  // Only fire this as a separate finding when there are permanently-shared files
-  // that are ADDITIONAL to the externally-shared count (i.e. not all externals are permanent),
-  // avoiding a double-deduction for the same files flagged above.
+  // Fire only as a fallback when the main external check above didn't fire (external === 0),
+  // so the same files aren't double-counted.
   if ((data.permanentlySharedFileCount || 0) > 0 && data.externallySharedFileCount <= 0) {
     items.push(createDebtItem('notesAttachments', 'high',
       `${data.permanentlySharedFileCount} Files Shared Externally With No Expiry Date`,

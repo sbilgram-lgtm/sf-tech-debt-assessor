@@ -2,7 +2,7 @@
 *By Steven Bilgram, Success Architect*
 *Last updated: August 11, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **363 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **362 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,25 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — August 18, 2026 (bug fixes)
+
+24 logic fixes across server and scoring layers. Key fixes:
+
+- **F01** – `fieldCount` SOQL alias was read as `expr0`, making field-count-by-object always undefined
+- **F03** – `Order` field does not exist on `EntitlementProcessMilestone`; query was silently failing
+- **F04** – `asyncSharingUpdateActive` was always `false` when the query errored; now propagates `null`
+- **F05** – `InstalledSubscriberPackage` queried flat fields that belong to `SubscriberPackage`/`SubscriberPackageVersion` relationships
+- **F06** – OmniStudio IP error-handling check always fired on managed-package orgs (missing `else` branch)
+- **F07** – `BotDefinition` had no `BotType` filter; classic Einstein Bots incorrectly triggered Agentforce checks
+- **F08** – `OrgPreference` is Tooling API only; was queried via standard SOQL, always returning empty
+- **F09** – SOQL-in-loops regex was unbounded and could match across method boundaries
+- **F10** – CQ-31 (DML without CRUD) silently skipped classes already in CQ-14 (SOQL without FLS)
+- **F11–F25** – Additional regex accuracy, false-positive elimination, dead query removal, and API type corrections
+
+OmniStudio duplicate check removed (LWC-not-compiled was double-counted with Aura runtime check): **363 → 362**
 
 ---
 
@@ -29,7 +48,7 @@ This tool is independent and is not affiliated with or endorsed by Salesforce, I
 
 > Note: "Action elements without fault paths" was considered but requires parsing full Flow metadata XML — not achievable via SOQL/Tooling API queries.
 
-Total checks: **358 → 363**
+Total checks: **358 → 362**
 
 ---
 
@@ -319,7 +338,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | **Experience Cloud** | 16 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing (LWR & Aura), self-registration, CDN, custom domains, guest access, Aura guest page caching, high page count per site, large network member base |
 | **Connected App Security** | 12 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026, OAuth tokens for deactivated users, Connected Apps bypassing IP restrictions |
 | **LWC & Components** | 39 | See detail table below |
-| **OmniStudio** | 26 | See detail table below |
+| **OmniStudio** | 25 | See detail table below |
 | **Performance** | 20 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, total active flows (>300), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
 | **Flow Quality** | 9 | See detail table below |
@@ -450,7 +469,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 
 ---
 
-### OmniStudio — All 26 Checks
+### OmniStudio — All 25 Checks
 
 Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or managed package Vlocity (any namespace variant: `vlocity_cmt__`, `vlocity_ins__`, `vlocity_ps__`). Skips gracefully if OmniStudio is not installed.
 
@@ -462,26 +481,25 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 | 4 | Inactive OmniScripts | OmniScripts | Medium |
 | 5 | Inactive Integration Procedures | Integration Procedures | Medium |
 | 6 | Inactive DataRaptors / Data Transforms | DataRaptors | Medium |
-| 7 | Active OmniScripts without LWC compilation enabled (native orgs) | OmniScripts | Medium |
-| 8 | Extract DataRaptors without Turbo Extract enabled | DataRaptors | Medium |
-| 9 | High DataRaptor / Data Transform volume (>100) | DataRaptors | Medium |
-| 10 | Outdated OmniStudio managed package version (managed package orgs) | Package | Medium |
-| 11 | OmniScripts without descriptions | OmniScripts | Low |
-| 12 | Integration Procedures without descriptions | Integration Procedures | Low |
-| 13 | DataRaptors / Data Transforms without descriptions | DataRaptors | Low |
-| 14 | FlexCards without descriptions | FlexCards | Low |
-| 15 | OmniScripts not modified in 2+ years | OmniScripts | Low |
-| 16 | Integration Procedures not modified in 2+ years | Integration Procedures | Low |
-| 17 | DataRaptors / Data Transforms not modified in 2+ years | DataRaptors | Low |
-| 18 | Inactive FlexCards | FlexCards | Low |
-| 19 | FlexCards not modified in 2+ years | FlexCards | Low |
-| 20 | Active IPs with no error-handling elements (SetErrors/Throw) | Integration Procedures | High |
-| 21 | OmniScript naming convention violations (spaces in Type/SubType) | OmniScripts | Medium |
-| 22 | Active OmniScripts using deprecated Remote Action elements | OmniScripts | High |
-| 23 | Legacy article types in schema (pre-Spring '20 Knowledge migration) | Knowledge | Medium |
-| 24 | Over-reliance on standard Extract vs Turbo Extract DataTransforms | DataRaptors | Medium |
-| 25 | Active OmniScripts still on Aura runtime (LWC not enabled) | OmniScripts | High |
-| 26 | Active Integration Procedures with no active OmniScripts referencing them | Integration Procedures | Low |
+| 7 | Extract DataRaptors without Turbo Extract enabled | DataRaptors | Medium |
+| 8 | High DataRaptor / Data Transform volume (>100) | DataRaptors | Medium |
+| 9 | Outdated OmniStudio managed package version (managed package orgs) | Package | Medium |
+| 10 | OmniScripts without descriptions | OmniScripts | Low |
+| 11 | Integration Procedures without descriptions | Integration Procedures | Low |
+| 12 | DataRaptors / Data Transforms without descriptions | DataRaptors | Low |
+| 13 | FlexCards without descriptions | FlexCards | Low |
+| 14 | OmniScripts not modified in 2+ years | OmniScripts | Low |
+| 15 | Integration Procedures not modified in 2+ years | Integration Procedures | Low |
+| 16 | DataRaptors / Data Transforms not modified in 2+ years | DataRaptors | Low |
+| 17 | Inactive FlexCards | FlexCards | Low |
+| 18 | FlexCards not modified in 2+ years | FlexCards | Low |
+| 19 | Active IPs with no error-handling elements (SetErrors/Throw) | Integration Procedures | High |
+| 20 | OmniScript naming convention violations (spaces in Type/SubType) | OmniScripts | Medium |
+| 21 | Active OmniScripts using deprecated Remote Action elements | OmniScripts | High |
+| 22 | Legacy article types in schema (pre-Spring '20 Knowledge migration) | Knowledge | Medium |
+| 23 | Over-reliance on standard Extract vs Turbo Extract DataTransforms | DataRaptors | Medium |
+| 24 | Active OmniScripts still on Aura runtime (LWC not enabled) | OmniScripts | High |
+| 25 | Active Integration Procedures with no active OmniScripts referencing them | Integration Procedures | Low |
 
 ---
 

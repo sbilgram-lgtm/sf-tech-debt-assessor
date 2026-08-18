@@ -167,7 +167,6 @@ export interface SharingSecurityData {
   profiles: any[];
   permissionSets: any[];
   passwordPolicies: any[];
-  sessionSettings: any[];
   apiUsers: {
     all: any[];
     integrationUsers: any[];
@@ -183,7 +182,7 @@ export interface SharingSecurityData {
   usersPasswordNeverExpires: any[];
   guestAccessObjects: any[];
   privilegedPermSets: any[];
-  asyncSharingUpdateActive: boolean;
+  asyncSharingUpdateActive: boolean | null;
   activeOutboundMessages: any[];
   caseGuestProfiles: any[];
   permissionSetGroupCount: number;
@@ -305,8 +304,6 @@ export interface ExperienceCloudData {
 export interface ConnectedAppSecurityData {
   connectedApps: any[];
   oauthTokens: any[];
-  setupAccess: any[];
-  permSets: any[];
   activeOutboundMessages: any[];
   certificates: any[];
   externalClientApps: any[];

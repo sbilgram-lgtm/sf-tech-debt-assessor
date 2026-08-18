@@ -334,6 +334,8 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     });
     const noTestSetupClasses = testClassBodies.filter(c => {
       const body = c.Body || '';
+      // Skip test utility/factory classes that have no @isTest methods of their own
+      if (!/@isTest\s*(?:static\s+)?(?:void|public|private)/i.test(body)) return false;
       // Flag classes that insert test data but don't use @TestSetup
       return /Database\.insert|\binsert\s+\w/i.test(body) && !/@TestSetup/i.test(body);
     });
@@ -377,7 +379,7 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
     ).catch(() => ({ records: [] }));
     const fieldsByObject = {};
     for (const row of (fieldCountsResult.records || [])) {
-      fieldsByObject[row.TableEnumOrId] = row.expr0;
+      fieldsByObject[row.TableEnumOrId] = row.fieldCount;
     }
 
     res.json({
@@ -632,7 +634,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // E-4: Entitlement process milestones with TimeTrigger <= 5 (unrealistic / zero)
     let suspectMilestoneTriggers = { records: [] };
     try {
-      suspectMilestoneTriggers = await safeQuery(conn, "SELECT Id, Name, SlaProcessId, SlaProcess.Name, TimeTrigger, Order FROM EntitlementProcessMilestone WHERE TimeTrigger <= 5 ORDER BY SlaProcessId, Order ASC LIMIT 200");
+      suspectMilestoneTriggers = await safeQuery(conn, "SELECT Id, Name, SlaProcessId, SlaProcess.Name, TimeTrigger FROM EntitlementProcessMilestone WHERE TimeTrigger <= 5 ORDER BY SlaProcessId, TimeTrigger ASC LIMIT 200");
     } catch(e) {}
 
     // E-5: Entitlement process milestones with duplicate TimeTrigger within same process
@@ -730,7 +732,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     // SC-2: Swarming — stale open swarms (no update in 14 days)
     let staleSwarms = { records: [] };
     try {
-      staleSwarms = await safeQuery(conn, "SELECT Id, Name, Status, Subject, CaseId, OwnerId, CreatedDate, LastModifiedDate FROM Swarm WHERE Status != 'Closed' AND LastModifiedDate < LAST_N_DAYS:14 ORDER BY LastModifiedDate ASC LIMIT 200");
+      staleSwarms = await safeQuery(conn, "SELECT Id, Name, Status, CaseId, OwnerId, CreatedDate, LastModifiedDate FROM Swarm WHERE Status != 'Closed' AND LastModifiedDate < LAST_N_DAYS:14 ORDER BY LastModifiedDate ASC LIMIT 200");
     } catch(e) {}
 
     // SC-3: Work orders with no Case and no Asset
@@ -874,14 +876,6 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       "SELECT Id, Name, Label, Description, IsCustom FROM PermissionSet WHERE IsCustom = true LIMIT 500"
     );
 
-    // Connected App OAuth policies (proxy for session security)
-    let sessionSettings = { records: [] };
-    try {
-      sessionSettings = await safeToolingQuery(conn,
-        "SELECT Id, SessionTimeout, LockTimeoutMinutes FROM SecuritySettings LIMIT 1"
-      );
-    } catch (e) { /* optional */ }
-
     // Sharing rules via Metadata API describe
     let sharingRules = [];
     try {
@@ -1024,7 +1018,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
 
     const [privilegedUsersRes, asyncSharingUpdateRes, outboundMsgRes, caseGuestProfilesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name FROM PermissionSet WHERE (PermissionsModifyAllData = true OR PermissionsViewAllData = true OR PermissionsAuthorApex = true OR PermissionsCustomizeApplication = true) AND IsCustom = true LIMIT 200"),
-      safeQuery(conn, "SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName = 'AsyncSharingRecalculation' LIMIT 1"),
+      new Promise(resolve => conn.query("SELECT Id, ApiName, IsCurrentDefault FROM ReleaseUpdateActivation WHERE ApiName = 'AsyncSharingRecalculation' LIMIT 1", (err, r) => resolve(err ? null : r))),
       safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE NamespacePrefix = null LIMIT 200"),
       safeQuery(conn, "SELECT Id, PermissionsRead, PermissionsEdit, Parent.Name, Parent.UserType FROM ObjectPermissions WHERE SobjectType = 'Case' AND Parent.UserType = 'GuestUser' AND PermissionsRead = true LIMIT 100").catch(() => ({ records: [] }))
     ]);
@@ -1097,7 +1091,6 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       profiles: profiles.records || [],
       permissionSets: permSets.records || [],
       passwordPolicies: [],
-      sessionSettings: sessionSettings.records || [],
       apiUsers: {
         all: apiUsers.records || [],
         integrationUsers: integrationUsers.records || [],
@@ -1113,7 +1106,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       usersPasswordNeverExpires: usersPasswordNeverExpires.records || [],
       guestAccessObjects: guestAccessObjects.records || [],
       privilegedPermSets: privilegedUsersRes.records || [],
-      asyncSharingUpdateActive: (asyncSharingUpdateRes.records || []).length > 0,
+      asyncSharingUpdateActive: asyncSharingUpdateRes === null ? null : asyncSharingUpdateRes.records.length > 0,
       activeOutboundMessages: outboundMsgRes.records || [],
       caseGuestProfiles: caseGuestProfilesRes.records || [],
       permissionSetGroupCount: (psgCountRes.records[0] || {}).expr0 || 0,
@@ -1171,13 +1164,13 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
     let apexCallouts = { records: [] };
     try {
       apexCallouts = await safeToolingQuery(conn,
-        "SELECT Id, Name, Body FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'"
+        "SELECT Id, Name, Body FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active' AND IsTest = false"
       );
     } catch (e) { /* optional */ }
 
     const [retiredApiApex, deprecatedGraphQLComponents] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Active' AND ApiVersion <= 30 AND NamespacePrefix = null LIMIT 500"),
-      safeQuery(conn, "SELECT Id, DeveloperName FROM LightningComponentBundle WHERE IsExposed = true LIMIT 200")
+      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM LightningComponentBundle WHERE IsExposed = true LIMIT 200")
     ]);
 
     // Active PushTopics (deprecated — Summer '26)
@@ -1212,7 +1205,8 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       activePushTopics: integrationPushTopics.records || [],
       externalCredentialCount,
       externalCredentialQueryWorked,
-      dedicatedIntegrationUserCount: (dedicatedIntegrationUsers.records[0] || {}).expr0 || 0
+      dedicatedIntegrationUserCount: (dedicatedIntegrationUsers.records[0] || {}).expr0 || 0,
+      deprecatedGraphQLComponents: deprecatedGraphQLComponents.records || []
     });
   } catch (err) {
     console.error('Integrations assessment error:', err);
@@ -1410,7 +1404,7 @@ app.get('/api/assess/managed-packages', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
     const packages = await safeToolingQuery(conn,
-      "SELECT Id, Name, NamespacePrefix, MajorVersion, MinorVersion, PatchVersion, ReleaseState FROM InstalledSubscriberPackage LIMIT 100"
+      "SELECT Id, SubscriberPackage.Name, SubscriberPackage.NamespacePrefix, SubscriberPackageVersion.MajorVersion, SubscriberPackageVersion.MinorVersion, SubscriberPackageVersion.PatchVersion, SubscriberPackageVersion.ReleaseState FROM InstalledSubscriberPackage LIMIT 100"
     );
     res.json({ packages: packages.records || [] });
   } catch (err) {
@@ -1456,7 +1450,7 @@ app.get('/api/assess/einstein-ai', requireAuth, async (req, res) => {
     const [einsteinSettings, promptTemplates, bots, aiApplications, recentClosedCases] = await Promise.all([
       safeQuery(conn, "SELECT SettingName, SettingValue FROM OrganizationSetting WHERE SettingName IN ('EinsteinGptEnabled','AgentforceEnabled','EinsteinPredictionBuilderEnabled','EinsteinNextBestActionEnabled') LIMIT 20"),
       safeQuery(conn, "SELECT Id, DeveloperName, Status FROM PromptTemplate LIMIT 50"),
-      safeQuery(conn, "SELECT Id, DeveloperName, Status FROM BotDefinition LIMIT 20"),
+      safeQuery(conn, "SELECT Id, DeveloperName, Status FROM BotDefinition WHERE BotType = 'AgentBot' LIMIT 20"),
       safeQuery(conn, "SELECT Id, DeveloperName, Status FROM AiApplication LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM Case WHERE IsClosed = true AND CreatedDate = LAST_N_DAYS:365").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
@@ -1628,20 +1622,9 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
       "FROM OauthToken ORDER BY LastUsedDate DESC NULLS LAST LIMIT 500"
     );
 
-    // SetupEntityAccess — which profiles/permsets have access to each app
-    const setupAccess = await safeQuery(conn,
-      "SELECT SetupEntityId, SetupEntityType, ParentId " +
-      "FROM SetupEntityAccess WHERE SetupEntityType = 'ConnectedApplication' LIMIT 500"
-    );
-
-    // Permission sets that grant connected app access
-    const permSetAccess = await safeQuery(conn,
-      "SELECT Id, Name, Label FROM PermissionSet WHERE IsCustom = true LIMIT 200"
-    );
-
     const [activeOutboundMsgs, expiredCerts, externalClientApps, ctiConnectedAppsRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name FROM WorkflowOutboundMessage WHERE NamespacePrefix = null LIMIT 200"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName, ValidFrom, ExpirationDate FROM Certificate WHERE ExpirationDate != null LIMIT 50"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, ValidFrom, ExpirationDate, IsSelfSigned FROM Certificate WHERE ExpirationDate != null LIMIT 50"),
       safeQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM ExternalClientApplication LIMIT 50"),
       safeToolingQuery(conn, "SELECT Id, Name, MobileSessionTimeout FROM ConnectedApplication WHERE Name LIKE '%CTI%' OR Name LIKE '%Telephony%' OR Name LIKE '%OpenCTI%' OR Name LIKE '%Voice%' LIMIT 20").catch(() => ({ records: [] }))
     ]);
@@ -1649,8 +1632,6 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
     res.json({
       connectedApps: connectedApps.records || [],
       oauthTokens: oauthTokens.records || [],
-      setupAccess: setupAccess.records || [],
-      permSets: permSetAccess.records || [],
       activeOutboundMessages: activeOutboundMsgs.records || [],
       certificates: expiredCerts.records || [],
       externalClientApps: externalClientApps.records || [],
@@ -1828,6 +1809,9 @@ app.get('/api/assess/omnistudio', requireAuth, async (req, res) => {
     if (isNative && allActiveIps.length > 0) {
       const errEls = await safeQuery(conn, "SELECT OmniProcessId FROM OmniProcessElement WHERE OmniProcess.Type = 'IntegrationProcedure' AND OmniProcess.IsActive = true AND Type IN ('SetErrors','Throw') LIMIT 500").catch(() => ({ records: [] }));
       ipsWithErrors = new Set((errEls.records || []).map(r => r.OmniProcessId));
+    } else if (allActiveIps.length > 0) {
+      const errEls = await safeQuery(conn, `SELECT ${ns}OmniScriptId__c FROM ${ns}OmniScriptElement__c WHERE ${ns}OmniScript__r.${ns}Type__c = 'IntegrationProcedure' AND ${ns}OmniScript__r.${ns}IsActive__c = true AND ${ns}Type__c IN ('SetErrors','Throw') LIMIT 500`).catch(() => ({ records: [] }));
+      ipsWithErrors = new Set((errEls.records || []).map(r => r[`${ns}OmniScriptId__c`]));
     }
     const ipsNoErrorHandling = allActiveIps.filter(ip => !ipsWithErrors.has(ip.Id));
 
@@ -1922,7 +1906,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, TracedEntityId, LogType, ExpirationDate FROM TraceFlag WHERE ExpirationDate > TODAY LIMIT 100"
       ),
       safeToolingQuery(conn,
-        "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave') LIMIT 500"
+        "SELECT Id, ApiName, Label, TriggerType, ProcessType, TriggerObjectOrEvent.QualifiedApiName FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (TriggerType = 'RecordBeforeSave' OR TriggerType = 'RecordAfterSave') LIMIT 500"
       ),
       safeToolingQuery(conn,
         "SELECT Id, ApiName, Label, TriggerType, ProcessType FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND TriggerType = 'Scheduled' AND ProcessType = 'AutoLaunchedFlow' LIMIT 200"
@@ -2039,7 +2023,7 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT COUNT(Id) FROM ContentDocument WHERE LastViewedDate < LAST_N_YEARS:2 LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM ContentWorkspace LIMIT 1").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT LinkedEntityType, COUNT(Id) FROM ContentDocumentLink GROUP BY LinkedEntityType ORDER BY COUNT(Id) DESC LIMIT 20").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, Name, Value FROM OrgPreference WHERE Name = 'EnhancedNotes' LIMIT 1").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT Id, SettingName, SettingValue FROM OrgPreference WHERE SettingName = 'EnhancedNotes' LIMIT 1").catch(() => ({ records: [] }))
     ]);
 
     const topObjects = (topAttachmentObjects.records || []).map(r => ({
@@ -2047,7 +2031,7 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
       count: r.expr0
     }));
 
-    const enhancedNotesEnabled = (orgPreferences.records || []).some(r => r.Value === 'true' || r.Value === true);
+    const enhancedNotesEnabled = (orgPreferences.records || []).some(r => r.SettingValue === 'true' || r.SettingValue === true);
 
     res.json({
       legacyNoteCount: (legacyNotes.records[0] || {}).expr0 || 0,

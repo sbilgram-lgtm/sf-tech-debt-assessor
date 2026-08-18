@@ -434,7 +434,7 @@ const CATEGORIES = [
   { icon: '💻',  name: 'Code Quality',            checks: 48, group: 'Code & Development' },
   { icon: '🧪',  name: 'Test Coverage',           checks: 7,  group: 'Code & Development' },
   { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
-  { icon: '🎨',  name: 'OmniStudio',             checks: 26, group: 'Code & Development' },
+  { icon: '🎨',  name: 'OmniStudio',             checks: 25, group: 'Code & Development' },
   { icon: '🔀',  name: 'Flow Quality',            checks: 9,  group: 'Code & Development' },
   // ── Performance & Limits ───────────────────────────────────────
   { icon: '🚀',  name: 'Performance',             checks: 20, group: 'Performance & Limits' },
