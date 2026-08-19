@@ -482,7 +482,6 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       !/WITH\s+USER_MODE/i.test(q)
     );
   });
-  const soqlNoFlsIds = new Set(soqlNoFls.map((c: any) => c.Id));
   if (soqlNoFls.length > 0) {
     items.push(createDebtItem(
       'code', 'medium',
@@ -3267,7 +3266,6 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
     agentTopicCountEin > 0 ||
     botsCountEin > 0 ||
     promptCountEin > 0;
-  const predictionBuilderEnabled = settings['EinsteinPredictionBuilderEnabled'] === 'true';
   if (!einsteinEnabled) {
     items.push(createDebtItem('einsteinAI', 'low',
       'Einstein Generative AI / Agentforce Not Enabled',
@@ -3689,7 +3687,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
   // CA-signed certificates with lifespan >200 days — non-compliant since March 2026
   const longLivedCerts = (data.certificates || []).filter((c: any) => {
     if (!c.ValidFrom || !c.ExpirationDate) return false;
-    if (c.IsSelfSigned) return false;
+    if (c.IsSelfSigned || c.Type === 'Self-Signed') return false;
     const validFrom = new Date(c.ValidFrom);
     const expiration = new Date(c.ExpirationDate);
     const lifespanDays = Math.round((expiration.getTime() - validFrom.getTime()) / (1000 * 60 * 60 * 24));
