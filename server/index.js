@@ -2326,7 +2326,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
       })
     });
 
