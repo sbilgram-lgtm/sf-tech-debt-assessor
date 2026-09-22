@@ -237,6 +237,46 @@ export function assessConfiguration(
     ));
   }
 
+  // Custom Labels with no description
+  if ((automation.customLabelsNoDesc || []).length > 0) {
+    items.push(createDebtItem('configuration', 'low',
+      `${automation.customLabelsNoDesc.length} Custom Labels Without Descriptions`,
+      'Undocumented custom labels cannot be audited for purpose or owner. Developers maintaining translations or label references have no context for what each label is used for.',
+      'Add a description to every custom label explaining its purpose and where it is used.',
+      { records: automation.customLabelsNoDesc.map((l: any) => ({ name: l.Name })) }
+    ));
+  }
+
+  // Email deliverability not set to All Email
+  if (automation.emailDeliverabilityLevel && automation.emailDeliverabilityLevel !== 'All') {
+    items.push(createDebtItem('configuration', 'high',
+      `Email Deliverability Set to "${automation.emailDeliverabilityLevel === 'None' ? 'No Email' : automation.emailDeliverabilityLevel}" — Emails Not Sending`,
+      'Email deliverability is not set to "All Email". Emails triggered by workflows, flows, approval processes, and case notifications will be silently suppressed, causing missed communications.',
+      'Go to Setup → Deliverability and set the Access Level to "All Email". This is required for any production org sending automated emails.',
+      { detail: `Current setting: ${automation.emailDeliverabilityLevel}` }
+    ));
+  }
+
+  // DKIM signing not configured
+  if ((automation.emailDomainKeys || []).length === 0) {
+    items.push(createDebtItem('configuration', 'medium',
+      'DKIM Email Signing Not Configured',
+      'No DKIM (DomainKeys Identified Mail) signing keys are configured. Without DKIM, outbound emails from Salesforce are more likely to be flagged as spam or spoofed by receiving mail servers.',
+      'Go to Setup → DKIM Keys and create a DKIM key for each sending domain. Publish the DNS TXT records provided by Salesforce to your DNS provider.',
+      {}
+    ));
+  }
+
+  // Open Outbound Change Sets
+  if ((automation.openChangeSets || []).length > 0) {
+    items.push(createDebtItem('configuration', 'low',
+      `${automation.openChangeSets.length} Outbound Change Set${automation.openChangeSets.length !== 1 ? 's' : ''} in Open State`,
+      'Open outbound change sets represent in-progress manual deployments. Relying on change sets for deployments is a governance risk — changes lack automated testing, peer review, and audit trail that CI/CD pipelines provide.',
+      'Review and close or deploy open change sets. Consider adopting a CI/CD pipeline with SFDX and scratch orgs to replace manual change set deployments.',
+      { records: automation.openChangeSets.map((cs: any) => ({ name: cs.Name })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1099,6 +1139,28 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
+  // JSON.deserializeUntyped — type safety risk
+  const jsonDeserializeUntypedClasses = (apex as any).jsonDeserializeUntypedClasses || [];
+  if (jsonDeserializeUntypedClasses.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${jsonDeserializeUntypedClasses.length} Apex Classes Use JSON.deserializeUntyped()`,
+      'JSON.deserializeUntyped() returns an untyped Object that requires explicit casting. Missing casts cause runtime TypeExceptions. Typed deserialization (JSON.deserialize(body, MyClass.class)) catches schema mismatches at compile time.',
+      'Replace JSON.deserializeUntyped() with JSON.deserialize(body, TypedClass.class) using a typed wrapper class that mirrors the expected JSON structure.',
+      { records: jsonDeserializeUntypedClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'JSON.deserializeUntyped — untyped cast risk' })) }
+    ));
+  }
+
+  // Type.forName — dynamic class instantiation security risk
+  const typeForNameClasses = (apex as any).typeForNameClasses || [];
+  if (typeForNameClasses.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${typeForNameClasses.length} Apex Classes Use Type.forName() — Dynamic Class Instantiation`,
+      'Type.forName() dynamically resolves class names at runtime. If class names are derived from user-controlled input or external config, this enables arbitrary class instantiation. It also bypasses compile-time type checks and makes static analysis harder.',
+      'Review all Type.forName() calls. If the class name comes from user input or external config, validate it against an explicit allowlist of permitted class names before instantiation.',
+      { records: typeForNameClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'Type.forName() — dynamic dispatch, review class name source' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1222,6 +1284,28 @@ export function assessDataModel(data: DataModelData): CategoryScore {
       'A very high number of custom objects may indicate scope creep or abandoned features.',
       'Audit custom objects for usage. Archive or delete objects that are no longer needed.',
       { count: data.objects.length }
+    ));
+  }
+
+  // Lookup fields with cascade delete enabled
+  const cascadeDeleteFields = data.cascadeDeleteFields || [];
+  if (cascadeDeleteFields.length > 0) {
+    items.push(createDebtItem('dataModel', 'high',
+      `${cascadeDeleteFields.length} Lookup Field${cascadeDeleteFields.length !== 1 ? 's' : ''} With Cascade Delete Enabled`,
+      `${cascadeDeleteFields.length} lookup field${cascadeDeleteFields.length !== 1 ? 's' : ''} have cascade delete enabled. Deleting a parent record permanently and silently destroys all child records on this lookup. Unlike master-detail, there is no warning — bulk deletes, Data Loader operations, or automated processes can cause irreversible mass data loss.`,
+      'Audit each cascade-delete lookup. Disable cascade delete and replace with before-delete Apex triggers or Process Builder/Flow logic that either blocks the delete or moves child records to an archive status. Ensure delete operations have rollback capability.',
+      { records: cascadeDeleteFields.slice(0, 50).map((f: any) => ({ name: f.QualifiedApiName, detail: `${f.EntityDefinition?.QualifiedApiName || '?'} — cascade delete enabled` })) }
+    ));
+  }
+
+  // Large data volume objects (>1M records)
+  const ldvObjects = data.ldvObjects || [];
+  if (ldvObjects.length > 0) {
+    items.push(createDebtItem('dataModel', 'high',
+      `${ldvObjects.length} Object${ldvObjects.length !== 1 ? 's' : ''} With Large Data Volumes (>1M Records)`,
+      `${ldvObjects.length} object${ldvObjects.length !== 1 ? 's have' : ' has'} over 1 million records. Large data volumes increase report query time, SOQL governor limit exposure, and Search indexing lag. Without selective indexes and skinny tables, record-triggered Flows and Apex queries on LDV objects frequently hit query row limits or time out.`,
+      'Enable selective indexes on frequently queried fields for LDV objects. Review record-triggered automations — flows and triggers on LDV objects require highly selective WHERE clauses. Consider archiving or offloading historical records using Big Objects or Data Archival products.',
+      { records: ldvObjects.map((o: any) => ({ name: o.name, detail: `${o.count.toLocaleString()} records` })) }
     ));
   }
 
@@ -2509,6 +2593,49 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
+  // Public groups with "All Internal Users" or "All Partner Users" as members
+  const publicGroupsWithAllUsers = (data as any).publicGroupsWithAllUsers || [];
+  if (publicGroupsWithAllUsers.length > 0) {
+    items.push(createDebtItem('sharingSecurity', 'high',
+      `${publicGroupsWithAllUsers.length} Public Group${publicGroupsWithAllUsers.length !== 1 ? 's' : ''} Include "All Internal Users" or "All Partner Users"`,
+      `${publicGroupsWithAllUsers.length} public group${publicGroupsWithAllUsers.length !== 1 ? 's include' : ' includes'} the "All Internal Users" or "All Partner Users" system groups as members. Any sharing rules that grant access to these groups give that access to every user in the org, effectively making the record visible org-wide. This is a common misconfiguration that circumvents OWD settings.`,
+      'Audit sharing rules associated with these groups. Replace broad group membership with role-based or criteria-based sharing rules that target specific user populations. Remove All Internal Users from public groups used in sharing rules unless org-wide sharing is intentionally required.',
+      { records: publicGroupsWithAllUsers.slice(0, 30).map((g: any) => ({ name: g.Name, detail: `Group includes ${g.memberType || 'AllInternalUsers'} — org-wide sharing risk` })) }
+    ));
+  }
+
+  // Users whose password has not changed in over 365 days
+  const usersPasswordStale = (data as any).usersPasswordStale || [];
+  if (usersPasswordStale.length > 0) {
+    items.push(createDebtItem('sharingSecurity', 'medium',
+      `${usersPasswordStale.length} Active User${usersPasswordStale.length !== 1 ? 's' : ''} Have Not Changed Password in Over 365 Days`,
+      `${usersPasswordStale.length} active, non-SSO user${usersPasswordStale.length !== 1 ? 's have' : ' has'} not changed their password in more than a year. Stale passwords increase the blast radius of credential theft from phishing or data breaches. Industry standards (NIST 800-63B) recommend forced rotation when compromise is suspected.`,
+      'Enable password expiration in the org-wide password policy (Setup → Password Policies). Require affected users to reset their passwords immediately. Evaluate enabling MFA or SSO enforcement to reduce reliance on passwords altogether.',
+      { records: usersPasswordStale.slice(0, 50).map((u: any) => ({ name: u.Username || u.Name, detail: `Last password change: ${u.LastPasswordChangeDate ? new Date(u.LastPasswordChangeDate).toLocaleDateString() : 'never'}` })) }
+    ));
+  }
+
+  // Custom profiles with no IP restrictions configured
+  const profiles = data.profiles || [];
+  const loginIpRanges = data.loginIpRanges || [];
+  const profilesWithIpRestrictions = new Set(loginIpRanges.map((r: any) => r.ProfileId));
+  const customProfilesNoIpRange = profiles.filter((p: any) =>
+    !p.Name?.startsWith('Standard') &&
+    !p.Name?.includes('Chatter') &&
+    !p.Name?.includes('Guest') &&
+    !p.Name?.includes('Customer Community') &&
+    !p.Name?.includes('Partner Community') &&
+    !profilesWithIpRestrictions.has(p.Id)
+  );
+  if (customProfilesNoIpRange.length > 0) {
+    items.push(createDebtItem('sharingSecurity', 'medium',
+      `${customProfilesNoIpRange.length} Custom Profile${customProfilesNoIpRange.length !== 1 ? 's' : ''} Have No Login IP Restrictions`,
+      `${customProfilesNoIpRange.length} custom profile${customProfilesNoIpRange.length !== 1 ? 's have' : ' has'} no login IP range restrictions configured. Without IP restrictions, users on these profiles can authenticate from any network — including untrusted or compromised networks. IP restrictions are a key defence-in-depth control that limits the window for credential-based attacks.`,
+      'Add login IP ranges to all internal-user profiles restricting access to your corporate network ranges and trusted VPN IPs. For remote-first orgs, pair IP restrictions with MFA enforcement as a compensating control.',
+      { records: customProfilesNoIpRange.slice(0, 30).map((p: any) => ({ name: p.Name, detail: 'No login IP ranges configured' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -2659,6 +2786,17 @@ export function assessIntegrations(data: IntegrationData): CategoryScore {
       'Connected Apps exist but no dedicated integration user profiles (API Only, Integration, Service Account) were found. Integrations running as named human users cause audit trail pollution, break when the user leaves, and grant more permissions than required.',
       'Create dedicated service account users with API-only profiles for each integration. Assign minimum required permissions via Permission Sets. Disable UI login for integration user profiles.',
       { count: data.connectedApps.length }
+    ));
+  }
+
+  // Remote Site Settings with wildcard or overly broad URLs
+  const wildcardRemoteSites = (data as any).wildcardRemoteSites || [];
+  if (wildcardRemoteSites.length > 0) {
+    items.push(createDebtItem('integrations', 'high',
+      `${wildcardRemoteSites.length} Remote Site Setting${wildcardRemoteSites.length !== 1 ? 's' : ''} Use Wildcard or Root Domain URLs`,
+      `${wildcardRemoteSites.length} Remote Site Setting${wildcardRemoteSites.length !== 1 ? 's' : ''} allow callouts to an entire domain (e.g., https://example.com) rather than a specific endpoint (e.g., https://api.example.com/v2/). Overly broad Remote Site Settings allow Apex callouts to any path on that domain, widening the blast radius if the callout logic is ever manipulated or a subdomain is compromised.`,
+      'Replace root-domain Remote Site Settings with the most specific URL path required. Use Named Credentials instead of Remote Site Settings for authenticated callouts — Named Credentials enforce endpoint specificity by design and manage auth separately from callout URLs.',
+      { records: wildcardRemoteSites.slice(0, 20).map((r: any) => ({ name: r.EndpointUrl || r.Name, detail: 'Root/wildcard endpoint — overly permissive callout scope' })) }
     ));
   }
 
@@ -3051,6 +3189,17 @@ export function assessReportsDashboards(data: ReportsDashboardsData): CategorySc
       { records: unusedCRTs.slice(0, 50).map((r: any) => ({ name: r.Label || r.DeveloperName, detail: 'Custom Report Type — no reports found' })) }));
   }
 
+  // Dashboards never viewed
+  const dashboardsNeverViewedCount = (data as any).dashboardsNeverViewedCount || 0;
+  if (dashboardsNeverViewedCount > 0) {
+    items.push(createDebtItem('reportsDashboards', 'low',
+      `${dashboardsNeverViewedCount} Dashboard${dashboardsNeverViewedCount !== 1 ? 's' : ''} Have Never Been Viewed`,
+      `${dashboardsNeverViewedCount} dashboard${dashboardsNeverViewedCount !== 1 ? 's have' : ' has'} no LastViewedDate on record, meaning they have never been opened since being created (or since view tracking began). Unviewed dashboards represent wasted build effort and clutter the dashboard library, making it harder for users to find useful analytics.`,
+      'Review unviewed dashboards with their owners. Delete dashboards that were created as drafts, duplicates, or prototypes. Consider hiding dashboards that serve niche purposes in private or restricted-access folders rather than leaving them in shared folders.',
+      { count: dashboardsNeverViewedCount }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Reports & Dashboards', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -3160,6 +3309,17 @@ export function assessManagedPackages(data: ManagedPackagesData): CategoryScore 
       { records: data.packages.map((p:any) => ({ name: p.SubscriberPackage?.Name, detail: `v${p.SubscriberPackageVersion?.MajorVersion}.${p.SubscriberPackageVersion?.MinorVersion}.${p.SubscriberPackageVersion?.PatchVersion} · ${p.SubscriberPackageVersion?.ReleaseState}` })) }));
   }
 
+  // Packages with no active licensed users
+  const unusedPackages = (data as any).unusedPackages || [];
+  if (unusedPackages.length > 0) {
+    items.push(createDebtItem('managedPackages', 'medium',
+      `${unusedPackages.length} Managed Package${unusedPackages.length !== 1 ? 's' : ''} With No Active Licensed Users`,
+      `${unusedPackages.length} installed managed package${unusedPackages.length !== 1 ? 's have' : ' has'} licences assigned but no users with recent activity. Unused packages still count against your org's component limits, may slow deployments, and are a source of dependency errors if their objects appear in reports, list views, or dependent code.`,
+      'Confirm with business stakeholders whether each unused package is still required. Uninstall packages that are no longer needed. For packages retained for occasional use, consolidate licences to the minimum required.',
+      { records: unusedPackages.slice(0, 20).map((p: any) => ({ name: p.name, detail: `${p.total} licences — 0 recently active users` })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Managed Packages', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -3190,6 +3350,17 @@ export function assessCustomMetadata(data: CustomMetadataData): CategoryScore {
       'No Custom Metadata Types Found — All Config Uses Custom Settings',
       'The org relies entirely on Custom Settings for configuration, missing deployment and packaging benefits of Custom Metadata Types.',
       'Begin migrating new configuration patterns to Custom Metadata Types. Prioritise settings used in multi-environment deployments.'));
+  }
+
+  // Custom Metadata Types with no records
+  const emptyCustomMetadataTypes = (data as any).emptyCustomMetadataTypes || [];
+  if (emptyCustomMetadataTypes.length > 0) {
+    items.push(createDebtItem('customMetadata', 'low',
+      `${emptyCustomMetadataTypes.length} Custom Metadata Type${emptyCustomMetadataTypes.length !== 1 ? 's' : ''} Have No Records`,
+      `${emptyCustomMetadataTypes.length} Custom Metadata Type${emptyCustomMetadataTypes.length !== 1 ? 's were' : ' was'} created but contain no records. Empty CMTs provide no runtime value and may represent abandoned feature work, failed migrations, or placeholder types that were never populated.`,
+      'Review empty Custom Metadata Types with the teams that created them. Delete types that are no longer needed to reduce schema clutter. If the type is still planned for use, add a description explaining its intended purpose and timeline.',
+      { records: emptyCustomMetadataTypes.slice(0, 30).map((t: any) => ({ name: t.QualifiedApiName || t.DeveloperName, detail: 'Custom Metadata Type — 0 records' })) }
+    ));
   }
 
   const maxScore = 100;
@@ -3575,6 +3746,17 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
     ));
   }
 
+  // Experience Cloud users with System Administrator profile
+  const communityUsersWithSysAdmin = (data as any).communityUsersWithSysAdmin || [];
+  if (communityUsersWithSysAdmin.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'critical',
+      `${communityUsersWithSysAdmin.length} Experience Cloud User${communityUsersWithSysAdmin.length !== 1 ? 's' : ''} Have System Administrator Profile`,
+      `${communityUsersWithSysAdmin.length} Experience Cloud (community) user${communityUsersWithSysAdmin.length !== 1 ? 's are' : ' is'} assigned the System Administrator profile. This gives external users unrestricted access to all org data, configuration, and setup. This is a critical misconfiguration that bypasses all record-level and object-level security controls.`,
+      'Remove the System Administrator profile from all Experience Cloud users immediately. Assign the minimum required community profile (e.g., Customer Community, Customer Community Plus, or a custom minimal profile). Audit what these users can currently access and review the audit trail for suspicious activity.',
+      { records: communityUsersWithSysAdmin.slice(0, 30).map((u: any) => ({ name: u.Username || u.Name, detail: 'Experience Cloud user with System Administrator profile — critical access risk' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Experience Cloud', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
@@ -3751,6 +3933,24 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
       'Connected Apps with IpRelaxation set to "Relax IP Restrictions" skip the org\'s IP allowlist checks for OAuth sessions. Even if the org enforces IP restrictions for standard login, these apps allow API access from any IP address. This widens the attack surface significantly, particularly for integrations that use long-lived refresh tokens.',
       'Review each Connected App set to RelaxedForThisApp. Change IpRelaxation to "Enforce IP Restrictions" where feasible. For integrations that require broad IP access, compensate with shorter token lifetimes and IP-restricted Named Credentials.',
       { records: ipRelaxedApps.slice(0, 20).map((a: any) => ({ name: a.Name, detail: 'IpRelaxation = RelaxedForThisApp — IP allowlist bypassed' })) }
+    ));
+  }
+
+  // ── Expiring certificates (within 90 days) ────────────────────────────────────
+  const certificates = data.certificates || [];
+  const now = new Date();
+  const ninetyDaysFromNow = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  const expiringCerts = certificates.filter((c: any) => {
+    if (!c.ExpirationDate) return false;
+    const expiry = new Date(c.ExpirationDate);
+    return expiry > now && expiry <= ninetyDaysFromNow;
+  });
+  if (expiringCerts.length > 0) {
+    items.push(createDebtItem('connectedAppSecurity', 'high',
+      `${expiringCerts.length} Salesforce Certificate${expiringCerts.length !== 1 ? 's' : ''} Expiring Within 90 Days`,
+      `${expiringCerts.length} Salesforce certificate${expiringCerts.length !== 1 ? 's expire' : ' expires'} within the next 90 days. Certificates are used by Connected Apps for JWT Bearer Flow authentication, SAML SSO, and mutual TLS callouts. An expired certificate causes authentication failures, breaking integrations and potentially blocking user login for SSO-dependent users.`,
+      'Renew or replace expiring certificates before they expire. Update any Connected Apps, Named Credentials, or Auth Providers that reference the old certificate. Test authentication flows after rotation in a sandbox before applying to production.',
+      { records: expiringCerts.slice(0, 20).map((c: any) => ({ name: c.DeveloperName || c.Name, detail: `Expires: ${new Date(c.ExpirationDate).toLocaleDateString()} (${Math.ceil((new Date(c.ExpirationDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))} days)` })) }
     ));
   }
 
@@ -4891,6 +5091,28 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
     ));
   }
 
+  // Objects with both trigger AND record-triggered flow automation (dual automation)
+  const objectsWithDualAutomation = data.objectsWithDualAutomation || [];
+  if (objectsWithDualAutomation.length > 0) {
+    items.push(createDebtItem('performance', 'high',
+      `${objectsWithDualAutomation.length} Object${objectsWithDualAutomation.length !== 1 ? 's' : ''} Have Both Apex Triggers and Record-Triggered Flows`,
+      `${objectsWithDualAutomation.length} object${objectsWithDualAutomation.length !== 1 ? 's have' : ' has'} both Apex triggers and record-triggered Flows active on the same DML event. Mixed automation on the same object creates execution order complexity — the relative order of Apex and Flow execution is non-deterministic across releases and can cause duplicate processing, conflicting field updates, or unexpected governor limit consumption.`,
+      'Consolidate automation: migrate logic from Apex triggers to Flows where possible, or centralise all automation in a single trigger with a handler framework. At minimum, document the intended execution order and add comments to both the trigger and flow. Review for logic conflicts between the two automation paths.',
+      { records: objectsWithDualAutomation.slice(0, 20).map((o: any) => ({ name: o.obj, detail: `${o.triggerCount} trigger${o.triggerCount !== 1 ? 's' : ''}, ${o.flowCount} record-triggered flow${o.flowCount !== 1 ? 's' : ''}` })) }
+    ));
+  }
+
+  // Apex classes scheduled more than once (duplicate scheduled jobs)
+  const duplicateScheduledClasses = data.duplicateScheduledClasses || [];
+  if (duplicateScheduledClasses.length > 0) {
+    items.push(createDebtItem('performance', 'medium',
+      `${duplicateScheduledClasses.length} Apex Class${duplicateScheduledClasses.length !== 1 ? 'es' : ''} Scheduled More Than Once`,
+      `${duplicateScheduledClasses.length} Apex class${duplicateScheduledClasses.length !== 1 ? 'es have' : ' has'} multiple active scheduled job entries. Duplicate scheduled jobs run the same batch logic multiple times, causing double DML writes, duplicate email sends, report data skew, or double-counting in reporting. This is a common side effect of manual job re-scheduling after deployments.`,
+      'Review CronTrigger records for duplicate class names. Abort duplicate jobs in Setup → Apex Jobs. Establish a deployment runbook that aborts existing scheduled jobs before deploying changes, and reschedules exactly once post-deployment.',
+      { records: duplicateScheduledClasses.slice(0, 20).map((c: any) => ({ name: c.name, detail: `${c.count} scheduled entries` })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return {
@@ -5159,6 +5381,39 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
       'Flows without descriptions make it difficult to understand their purpose, triggering conditions, and business rules — especially for future admins who did not build them.',
       'Add a description to every flow explaining what it does, when it triggers, and any key business rules it enforces.',
       { records: data.flowsWithMissingDescriptions.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no description` })) }
+    ));
+  }
+
+  // Flows on very old API versions (< v40 / Summer '17)
+  const oldApiVersionFlows = (data as any).oldApiVersionFlows || [];
+  if (oldApiVersionFlows.length > 0) {
+    items.push(createDebtItem('flowQuality', 'medium',
+      `${oldApiVersionFlows.length} Active Flow${oldApiVersionFlows.length !== 1 ? 's' : ''} on Outdated API Versions (Pre-Summer '17)`,
+      `${oldApiVersionFlows.length} active flow${oldApiVersionFlows.length !== 1 ? 's run' : ' runs'} on API version 39.0 or earlier (pre-Summer 2017). Very old API versions may use deprecated elements, lack access to newer flow features (before-save triggers, null handling, etc.), and are flagged by Salesforce Health Check as at-risk during future releases. Salesforce may retire support for very old API versions.`,
+      'Open each affected flow in Flow Builder and save it under the current API version. Verify flow behaviour in a sandbox after version upgrade — some element behaviours change across major API versions.',
+      { records: oldApiVersionFlows.slice(0, 30).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `API v${f.ApiVersion} · ${f.ProcessType || 'Flow'}` })) }
+    ));
+  }
+
+  // Flows with no recent runs (inactive/abandoned — have versions but no recent LastModifiedDate activity)
+  const abandonedFlows = (data as any).abandonedFlows || [];
+  if (abandonedFlows.length > 0) {
+    items.push(createDebtItem('flowQuality', 'low',
+      `${abandonedFlows.length} Active Flow${abandonedFlows.length !== 1 ? 's' : ''} Have Never Been Modified After Activation`,
+      `${abandonedFlows.length} active flow${abandonedFlows.length !== 1 ? 's have' : ' has'} not been modified since initial activation and appear to have been set up once and forgotten. Flows that are never revisited may contain stale logic, hardcoded values, or broken references that go unnoticed until they cause data issues.`,
+      'Audit each flow with stakeholders to confirm it is still serving its intended purpose. Review hardcoded field values, date logic, and referenced records for staleness. Schedule a periodic flow audit cadence (at least annually) to catch abandoned flows before they cause problems.',
+      { records: abandonedFlows.slice(0, 30).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no changes since activation` })) }
+    ));
+  }
+
+  // Flows not modified in over 2 years (stale)
+  const staleFlows = (data as any).staleFlows || [];
+  if (staleFlows.length > 0) {
+    items.push(createDebtItem('flowQuality', 'low',
+      `${staleFlows.length} Active Flow${staleFlows.length !== 1 ? 's' : ''} Not Modified in Over 2 Years`,
+      `${staleFlows.length} active flow${staleFlows.length !== 1 ? 's have' : ' has'} not been modified in over two years. Stale flows may reference fields, record types, or picklist values that no longer exist, and may not reflect current business processes. They are also likely to use outdated patterns and deprecated elements.`,
+      'Review stale flows with process owners. Confirm each flow is still valid and update it to current standards. Deactivate or delete flows that are no longer relevant to current business processes.',
+      { records: staleFlows.slice(0, 30).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `Last modified: ${f.LastModifiedDate ? new Date(f.LastModifiedDate).toLocaleDateString() : 'unknown'} · ${f.ProcessType || 'Flow'}` })) }
     ));
   }
 

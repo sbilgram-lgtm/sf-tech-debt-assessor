@@ -245,6 +245,13 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT QualifiedApiName FROM EntityDefinition WHERE IsFeedEnabled = true AND IsCustomizable = true LIMIT 200").catch(() => ({ records: [] }))
     ]);
 
+    const [customLabelsNoDesc, orgEmailRes, emailDomainKeysRes, openChangeSetsRes] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name FROM ExternalString WHERE Description = null LIMIT 500").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT EmailDeliverabilityLevel FROM Organization LIMIT 1").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Domain FROM EmailDomainKey LIMIT 50").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name FROM OutboundChangeSet WHERE State = 'Open' LIMIT 50").catch(() => ({ records: [] }))
+    ]);
+
     res.json({
       workflowRules: workflowRules.records || [],
       processBuilders,
@@ -258,7 +265,11 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       pendingTimeQueueCount: (pendingTimeQueueRes.records[0] || {}).expr0 || 0,
       loginFlows: loginFlowsRes.records || [],
       jsButtons: jsButtonsRes.records || [],
-      feedEnabledObjects: feedTrackingRes.records || []
+      feedEnabledObjects: feedTrackingRes.records || [],
+      customLabelsNoDesc: customLabelsNoDesc.records || [],
+      emailDeliverabilityLevel: ((orgEmailRes.records || [])[0] || {}).EmailDeliverabilityLevel || null,
+      emailDomainKeys: emailDomainKeysRes.records || [],
+      openChangeSets: openChangeSetsRes.records || []
     });
   } catch (err) {
     console.error('Automation assessment error:', err);
@@ -340,6 +351,9 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       return /Database\.insert|\binsert\s+\w/i.test(body) && !/@TestSetup/i.test(body);
     });
 
+    const jsonDeserializeUntypedClasses = (classes.records || []).filter(c => /JSON\.deserializeUntyped\s*\(/i.test(c.Body || ''));
+    const typeForNameClasses = (classes.records || []).filter(c => /Type\.forName\s*\(\s*['"]/.test(c.Body || ''));
+
     res.json({
       classes: classes.records || [],
       triggers: triggers.records || [],
@@ -349,7 +363,9 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       seeAllDataClasses,
       noAssertClasses,
       noStartStopTestClasses,
-      noTestSetupClasses
+      noTestSetupClasses,
+      jsonDeserializeUntypedClasses,
+      typeForNameClasses
     });
   } catch (err) {
     console.error('Apex assessment error:', err);
@@ -382,11 +398,32 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
       fieldsByObject[row.TableEnumOrId] = row.fieldCount;
     }
 
+    const cascadeDeleteFields = await safeToolingQuery(conn,
+      "SELECT Id, DeveloperName, TableEnumOrId FROM CustomField WHERE NamespacePrefix = null AND CascadeDelete = true LIMIT 200"
+    ).catch(() => ({ records: [] }));
+
+    const [acctCount, contactCount, caseCount, leadCount, oppCount] = await Promise.all([
+      safeQuery(conn, "SELECT COUNT(Id) FROM Account").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Contact").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Case").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Lead").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT COUNT(Id) FROM Opportunity").catch(() => ({ records: [{ expr0: 0 }] }))
+    ]);
+    const ldvObjects = [
+      { name: 'Account', count: (acctCount.records[0] || {}).expr0 || 0 },
+      { name: 'Contact', count: (contactCount.records[0] || {}).expr0 || 0 },
+      { name: 'Case', count: (caseCount.records[0] || {}).expr0 || 0 },
+      { name: 'Lead', count: (leadCount.records[0] || {}).expr0 || 0 },
+      { name: 'Opportunity', count: (oppCount.records[0] || {}).expr0 || 0 }
+    ].filter(o => o.count > 500000);
+
     res.json({
       objects: objects.records || [],
       fields: fields.records || [],
       fieldsByObject,
-      fieldUsage: []
+      fieldUsage: [],
+      cascadeDeleteFields: cascadeDeleteFields.records || [],
+      ldvObjects
     });
   } catch (err) {
     console.error('Data model assessment error:', err);
@@ -1085,6 +1122,14 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       ).catch(() => ({ records: [] }))
     ]);
 
+    const publicGroupsWithAllUsersRes = await safeQuery(conn,
+      "SELECT GroupId, Group.Name FROM GroupMember WHERE UserOrGroup.Name = 'All Internal Users' AND Group.Type = 'Regular' LIMIT 100"
+    ).catch(() => ({ records: [] }));
+
+    const usersPasswordStaleRes = await safeQuery(conn,
+      "SELECT Id, Name, Username, LastPasswordChangeDate FROM User WHERE IsActive = true AND UserType = 'Standard' AND LastPasswordChangeDate < LAST_N_DAYS:365 LIMIT 200"
+    ).catch(() => ({ records: [] }));
+
     res.json({
       owdSettings: owdSettings.records || [],
       sharingRules,
@@ -1121,7 +1166,9 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       usersWithNoRole: usersWithNoRoleRes.records || [],
       profilesWithViewAllData: profilesWithVADRes.records || [],
       profilesWithModifyAllData: profilesWithMADRes.records || [],
-      permSetsWithObjectVADMAD: objPermsVADMADRes.records || []
+      permSetsWithObjectVADMAD: objPermsVADMADRes.records || [],
+      publicGroupsWithAllUsers: publicGroupsWithAllUsersRes.records || [],
+      usersPasswordStale: usersPasswordStaleRes.records || []
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);
@@ -1196,6 +1243,8 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       );
     } catch(e) {}
 
+    const wildcardRemoteSites = (remoteSites.records || []).filter(s => (s.EndpointUrl || '').includes('*'));
+
     res.json({
       connectedApps: connectedApps.records || [],
       namedCredentials: namedCredentials.records || [],
@@ -1206,7 +1255,8 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       externalCredentialCount,
       externalCredentialQueryWorked,
       dedicatedIntegrationUserCount: (dedicatedIntegrationUsers.records[0] || {}).expr0 || 0,
-      deprecatedGraphQLComponents: deprecatedGraphQLComponents.records || []
+      deprecatedGraphQLComponents: deprecatedGraphQLComponents.records || [],
+      wildcardRemoteSites
     });
   } catch (err) {
     console.error('Integrations assessment error:', err);
@@ -1324,6 +1374,8 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, DeveloperName, Label FROM ReportType WHERE IsCustom = true AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] }))
     ]);
 
+    const dashboardsNeverViewedRes = await safeQuery(conn, "SELECT COUNT(Id) FROM Dashboard WHERE LastViewedDate = null").catch(() => ({ records: [{ expr0: 0 }] }));
+
     // Reports and dashboards owned by deactivated users
     const [reportsOwnedByInactiveRes, dashboardsOwnedByInactiveRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, OwnerId, Owner.Name, Owner.IsActive FROM Report WHERE Owner.IsActive = false LIMIT 200").catch(() => ({ records: [] })),
@@ -1352,7 +1404,8 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
       personalFolderReportCount: (personalFolderReportsRes.records[0] || {}).expr0 || 0,
       unusedCustomReportTypes,
       reportsOwnedByInactive: reportsOwnedByInactiveRes.records || [],
-      dashboardsOwnedByInactive: dashboardsOwnedByInactiveRes.records || []
+      dashboardsOwnedByInactive: dashboardsOwnedByInactiveRes.records || [],
+      dashboardsNeverViewedCount: (dashboardsNeverViewedRes.records[0] || {}).expr0 || 0
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1406,7 +1459,26 @@ app.get('/api/assess/managed-packages', requireAuth, async (req, res) => {
     const packages = await safeToolingQuery(conn,
       "SELECT Id, SubscriberPackage.Name, SubscriberPackage.NamespacePrefix, SubscriberPackageVersion.MajorVersion, SubscriberPackageVersion.MinorVersion, SubscriberPackageVersion.PatchVersion, SubscriberPackageVersion.ReleaseState FROM InstalledSubscriberPackage LIMIT 100"
     );
-    res.json({ packages: packages.records || [] });
+
+    const packageLicenseUsage = await safeQuery(conn,
+      "SELECT PackageLicense.SubscriberPackageName, PackageLicense.SubscriberPackageId, User.IsActive, User.LastLoginDate FROM UserPackageLicense WHERE Status = 'Active' LIMIT 2000"
+    ).catch(() => ({ records: [] }));
+
+    const pkgNinetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString();
+    const packageActivity = {};
+    for (const lic of (packageLicenseUsage.records || [])) {
+      const pkgName = (lic.PackageLicense && lic.PackageLicense.SubscriberPackageName) || 'Unknown';
+      if (!packageActivity[pkgName]) packageActivity[pkgName] = { total: 0, recentlyActive: 0 };
+      packageActivity[pkgName].total++;
+      if (lic.User && lic.User.IsActive && lic.User.LastLoginDate && lic.User.LastLoginDate > pkgNinetyDaysAgo) {
+        packageActivity[pkgName].recentlyActive++;
+      }
+    }
+    const unusedPackages = Object.entries(packageActivity)
+      .filter(([_, v]) => v.recentlyActive === 0 && v.total > 0)
+      .map(([name, v]) => ({ name, total: v.total, recentlyActive: v.recentlyActive }));
+
+    res.json({ packages: packages.records || [], unusedPackages });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1420,7 +1492,19 @@ app.get('/api/assess/custom-metadata', requireAuth, async (req, res) => {
       safeToolingQuery(conn, "SELECT Id, DeveloperName, CustomSettingsType, Description FROM CustomObject WHERE CustomSettingsType IN ('Hierarchy','List') AND NamespacePrefix = null LIMIT 100"),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, Description FROM CustomObject WHERE QualifiedApiName LIKE '%__mdt' AND NamespacePrefix = null LIMIT 100")
     ]);
-    res.json({ customSettings: customSettings.records || [], customMetadataTypes: customMetadataTypes.records || [] });
+
+    const cmtRecordCounts = {};
+    for (const cmt of (customMetadataTypes.records || [])) {
+      try {
+        const countRes = await safeQuery(conn, `SELECT COUNT(Id) FROM ${cmt.DeveloperName}__mdt`).catch(() => ({ records: [{ expr0: 0 }] }));
+        cmtRecordCounts[cmt.DeveloperName] = (countRes.records[0] || {}).expr0 || 0;
+      } catch(e) {
+        cmtRecordCounts[cmt.DeveloperName] = 0;
+      }
+    }
+    const emptyCustomMetadataTypes = (customMetadataTypes.records || []).filter(cmt => (cmtRecordCounts[cmt.DeveloperName] || 0) === 0);
+
+    res.json({ customSettings: customSettings.records || [], customMetadataTypes: customMetadataTypes.records || [], emptyCustomMetadataTypes });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1581,6 +1665,10 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       contentSniffNetworks = await safeQuery(conn, "SELECT Id, Name, Template FROM Network WHERE ContentSniffingProtection = false AND Status IN ('Live', 'Active') LIMIT 50");
     } catch(e) {}
 
+    const communityUsersWithSysAdminRes = await safeQuery(conn,
+      "SELECT Id, Name, Username, UserType, Profile.Name FROM User WHERE IsActive = true AND Profile.Name = 'System Administrator' AND UserType != 'Standard' LIMIT 50"
+    ).catch(() => ({ records: [] }));
+
     res.json({
       sites: sites.records || [],
       networks: networks.records || [],
@@ -1597,7 +1685,8 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
         return !t.includes('lwr'); // GuestCacheMaxAge only applies to Aura sites
       }),
       networkPageCounts: (networkPageCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 })),
-      networkMemberCounts: (networkMemberCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 }))
+      networkMemberCounts: (networkMemberCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 })),
+      communityUsersWithSysAdmin: communityUsersWithSysAdminRes.records || []
     });
   } catch (err) {
     console.error('Experience Cloud assessment error:', err);
@@ -1954,6 +2043,30 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
     }
     const heavyEntities = Object.entries(pagesByEntity).filter(([_, count]) => count > 5).map(([eid, count]) => ({ eid, count }));
 
+    // Objects with both Record-Triggered Flows AND Apex Triggers (dual automation)
+    const rtfObjectNames = new Set(
+      (recordTriggeredFlows.records || [])
+        .map(f => f.TriggerObjectOrEvent && f.TriggerObjectOrEvent.QualifiedApiName)
+        .filter(Boolean)
+    );
+    const objectsWithDualAutomation = Object.keys(triggersByObject)
+      .filter(obj => rtfObjectNames.has(obj))
+      .map(obj => ({
+        obj,
+        triggerCount: triggersByObject[obj],
+        flowCount: (recordTriggeredFlows.records || []).filter(f => f.TriggerObjectOrEvent && f.TriggerObjectOrEvent.QualifiedApiName === obj).length
+      }));
+
+    // Scheduled Apex — same class scheduled 3+ times concurrently
+    const scheduledClassCounts = {};
+    for (const job of (scheduledApex.records || [])) {
+      const name = (job.CronJobDetail && job.CronJobDetail.Name) || 'Unknown';
+      scheduledClassCounts[name] = (scheduledClassCounts[name] || 0) + 1;
+    }
+    const duplicateScheduledClasses = Object.entries(scheduledClassCounts)
+      .filter(([_, count]) => count >= 3)
+      .map(([name, count]) => ({ name, count }));
+
     // Large static resources — oversized files slow Experience Cloud, LWC, and VF pages
     let largeStaticResources = { records: [] };
     try {
@@ -1985,7 +2098,9 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       obsoleteFlowCount: (obsoleteFlowCount.records[0] || {}).expr0 || 0,
       flowsWithLoopsIds: (flowsWithLoops.records || []).map(r => r.FlowVersionId),
       flowsWithDmlIds: (flowsWithDml.records || []).map(r => r.FlowVersionId),
-      largeStaticResources: largeStaticResources.records || []
+      largeStaticResources: largeStaticResources.records || [],
+      objectsWithDualAutomation,
+      duplicateScheduledClasses
     });
   } catch (err) {
     console.error('Performance assessment error:', err);
@@ -2058,6 +2173,8 @@ app.get('/api/assess/notes-attachments', requireAuth, async (req, res) => {
 app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
+    const twoYearsAgo = new Date(Date.now() - 730 * 86400000).toISOString();
+
     const [
       allFlows,
       flowsWithDmlInLoops,
@@ -2068,7 +2185,10 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       obsoleteFlowCountResult,
       flowsModifiedByInactiveResult,
       multipleActiveVersionsResult,
-      largeFlowElementsResult
+      largeFlowElementsResult,
+      oldApiVersionFlowsRes,
+      abandonedFlowsRes,
+      staleFlowsRes
     ] = await Promise.all([
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
       // FlowElement is Tooling API only — must use safeToolingQuery here.
@@ -2093,7 +2213,13 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       // Multiple active versions of the same flow — API/deploy anomaly that causes duplicate execution
       safeToolingQuery(conn, "SELECT DeveloperName, COUNT(Id) FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null GROUP BY DeveloperName HAVING COUNT(Id) > 1 LIMIT 100").catch(() => ({ records: [] })),
       // Large flows — more than 50 elements is a maintainability signal; filter to active flows in JS
-      safeToolingQuery(conn, "SELECT FlowVersionId, COUNT(Id) FROM FlowElement GROUP BY FlowVersionId HAVING COUNT(Id) > 50 LIMIT 100").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT FlowVersionId, COUNT(Id) FROM FlowElement GROUP BY FlowVersionId HAVING COUNT(Id) > 50 LIMIT 100").catch(() => ({ records: [] })),
+      // Flows on outdated API version (< 52.0)
+      safeToolingQuery(conn, "SELECT Id, ApiName, MasterLabel, ApiVersion FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND ApiVersion < 52.0 LIMIT 200").catch(() => ({ records: [] })),
+      // Flow definitions with no active version (abandoned drafts)
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM FlowDefinition WHERE ActiveVersionId = null AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      // Active flows not modified in 2+ years
+      safeToolingQuery(conn, `SELECT Id, MasterLabel, DeveloperName, ProcessType, LastModifiedDate FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND LastModifiedDate < ${twoYearsAgo} LIMIT 200`).catch(() => ({ records: [] }))
     ]);
 
     const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;
@@ -2114,7 +2240,10 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       obsoleteFlowCount,
       flowsModifiedByInactiveUser: flowsModifiedByInactiveResult.records || [],
       multipleActiveVersionFlows: (multipleActiveVersionsResult.records || []).map(r => ({ name: r.DeveloperName, count: r.expr0 })),
-      largeFlows
+      largeFlows,
+      oldApiVersionFlows: oldApiVersionFlowsRes.records || [],
+      abandonedFlows: abandonedFlowsRes.records || [],
+      staleFlows: staleFlowsRes.records || []
     });
   } catch (err) {
     console.error('Flow Quality assessment error:', err);

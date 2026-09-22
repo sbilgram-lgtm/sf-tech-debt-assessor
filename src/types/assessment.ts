@@ -43,6 +43,10 @@ export interface AutomationData {
   loginFlows: any[];
   jsButtons: any[];
   feedEnabledObjects: any[];
+  customLabelsNoDesc: any[];
+  emailDeliverabilityLevel: string | null;
+  emailDomainKeys: any[];
+  openChangeSets: any[];
 }
 
 export interface ApexData {
@@ -55,6 +59,8 @@ export interface ApexData {
   noAssertClasses: any[];
   noStartStopTestClasses: any[];
   noTestSetupClasses: any[];
+  jsonDeserializeUntypedClasses: any[];
+  typeForNameClasses: any[];
 }
 
 export interface DataModelData {
@@ -62,6 +68,8 @@ export interface DataModelData {
   fields: any[];
   fieldsByObject?: Record<string, number>;
   fieldUsage: any[];
+  cascadeDeleteFields: any[];
+  ldvObjects: { name: string; count: number }[];
 }
 
 export interface ServiceCloudData {
@@ -197,6 +205,8 @@ export interface SharingSecurityData {
   profilesWithViewAllData: any[];
   profilesWithModifyAllData: any[];
   permSetsWithObjectVADMAD: any[];
+  publicGroupsWithAllUsers: any[];
+  usersPasswordStale: any[];
 }
 
 export interface IntegrationData {
@@ -208,6 +218,7 @@ export interface IntegrationData {
   activePushTopics: any[];
   externalCredentialCount: number;
   dedicatedIntegrationUserCount: number;
+  wildcardRemoteSites: any[];
 }
 
 export interface TestCoverageData {
@@ -245,6 +256,7 @@ export interface ReportsDashboardsData {
   unusedCustomReportTypes: any[];
   reportsOwnedByInactive: any[];
   dashboardsOwnedByInactive: any[];
+  dashboardsNeverViewedCount: number;
 }
 
 export interface EmailTemplatesData {
@@ -261,11 +273,13 @@ export interface PlatformEventsData {
 
 export interface ManagedPackagesData {
   packages: any[];
+  unusedPackages: { name: string; total: number; recentlyActive: number }[];
 }
 
 export interface CustomMetadataData {
   customSettings: any[];
   customMetadataTypes: any[];
+  emptyCustomMetadataTypes: any[];
 }
 
 export interface RecordTypesLayoutsData {
@@ -299,6 +313,7 @@ export interface ExperienceCloudData {
   guestCacheDisabledNetworks: any[];
   networkPageCounts: { networkId: string; count: number }[];
   networkMemberCounts: { networkId: string; count: number }[];
+  communityUsersWithSysAdmin: any[];
 }
 
 export interface ConnectedAppSecurityData {
@@ -348,6 +363,8 @@ export interface PerformanceData {
   flowsWithLoopsIds: string[];
   flowsWithDmlIds: string[];
   largeStaticResources: any[];
+  objectsWithDualAutomation: { obj: string; triggerCount: number; flowCount: number }[];
+  duplicateScheduledClasses: { name: string; count: number }[];
 }
 
 export interface NotesAttachmentsData {
@@ -390,4 +407,7 @@ export interface FlowQualityData {
   flowsModifiedByInactiveUser: any[];
   multipleActiveVersionFlows: { name: string; count: number }[];
   largeFlows: any[];
+  oldApiVersionFlows: any[];
+  abandonedFlows: any[];
+  staleFlows: any[];
 }

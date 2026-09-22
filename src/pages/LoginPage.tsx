@@ -427,32 +427,32 @@ const GROUP_COLORS: Record<string, string> = {
 
 const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 33, group: 'Security & Access' },
-  { icon: '🛡️',  name: 'Connected App Security',  checks: 12, group: 'Security & Access' },
-  { icon: '🌐',  name: 'Experience Cloud',        checks: 16, group: 'Security & Access' },
+  { icon: '🔒',  name: 'Sharing & Security',      checks: 36, group: 'Security & Access' },
+  { icon: '🛡️',  name: 'Connected App Security',  checks: 13, group: 'Security & Access' },
+  { icon: '🌐',  name: 'Experience Cloud',        checks: 17, group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
-  { icon: '💻',  name: 'Code Quality',            checks: 48, group: 'Code & Development' },
+  { icon: '💻',  name: 'Code Quality',            checks: 50, group: 'Code & Development' },
   { icon: '🧪',  name: 'Test Coverage',           checks: 7,  group: 'Code & Development' },
   { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
   { icon: '🎨',  name: 'OmniStudio',             checks: 25, group: 'Code & Development' },
-  { icon: '🔀',  name: 'Flow Quality',            checks: 9,  group: 'Code & Development' },
+  { icon: '🔀',  name: 'Flow Quality',            checks: 12, group: 'Code & Development' },
   // ── Performance & Limits ───────────────────────────────────────
-  { icon: '🚀',  name: 'Performance',             checks: 20, group: 'Performance & Limits' },
+  { icon: '🚀',  name: 'Performance',             checks: 22, group: 'Performance & Limits' },
   { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },
   { icon: '⚡',  name: 'Platform Events',         checks: 3,  group: 'Performance & Limits' },
   // ── Configuration & Architecture ──────────────────────────────
-  { icon: '⚙️',  name: 'Configuration',          checks: 14, group: 'Configuration & Architecture' },
-  { icon: '🗄️',  name: 'Data Model',              checks: 5,  group: 'Configuration & Architecture' },
+  { icon: '⚙️',  name: 'Configuration',          checks: 18, group: 'Configuration & Architecture' },
+  { icon: '🗄️',  name: 'Data Model',              checks: 7,  group: 'Configuration & Architecture' },
   { icon: '📋',  name: 'Record Types & Layouts',  checks: 5,  group: 'Configuration & Architecture' },
-  { icon: '🔧',  name: 'Custom Metadata',         checks: 3,  group: 'Configuration & Architecture' },
+  { icon: '🔧',  name: 'Custom Metadata',         checks: 4,  group: 'Configuration & Architecture' },
   { icon: '🔁',  name: 'Duplicate Rules',         checks: 4,  group: 'Configuration & Architecture' },
-  { icon: '🔌',  name: 'Integrations',            checks: 10, group: 'Configuration & Architecture' },
+  { icon: '🔌',  name: 'Integrations',            checks: 11, group: 'Configuration & Architecture' },
   // ── CRM & Service ──────────────────────────────────────────────
   { icon: '🎧',  name: 'Service Cloud',           checks: 70, group: 'CRM & Service' },
   { icon: '🤖',  name: 'Einstein & AI',           checks: 9,  group: 'CRM & Service' },
-  { icon: '📦',  name: 'Managed Packages',        checks: 3,  group: 'CRM & Service' },
+  { icon: '📦',  name: 'Managed Packages',        checks: 4,  group: 'CRM & Service' },
   // ── Governance & Hygiene ───────────────────────────────────────
-  { icon: '📈',  name: 'Reports & Dashboards',    checks: 7,  group: 'Governance & Hygiene' },
+  { icon: '📈',  name: 'Reports & Dashboards',    checks: 8,  group: 'Governance & Hygiene' },
   { icon: '📧',  name: 'Email Templates',         checks: 3,  group: 'Governance & Hygiene' },
   { icon: '📎',  name: 'Notes & Attachments',     checks: 12, group: 'Governance & Hygiene' },
 ];
