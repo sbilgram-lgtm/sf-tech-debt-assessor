@@ -2317,7 +2317,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
   try {
     const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
+    const geminiApiVersion = process.env.GEMINI_API_VERSION || 'v1beta';
+    const geminiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
 
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
@@ -2330,7 +2331,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     });
 
     if (!geminiRes.ok) {
-      res.write(`data: ${JSON.stringify({ error: 'Gemini API error: ' + geminiRes.status })}\n\n`);
+      const errBody = await geminiRes.text();
+      console.error('Gemini API error', geminiRes.status, errBody);
+      res.write(`data: ${JSON.stringify({ error: `Gemini API error: ${geminiRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
       return;
