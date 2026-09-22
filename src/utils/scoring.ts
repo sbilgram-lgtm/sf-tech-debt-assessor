@@ -1294,7 +1294,7 @@ export function assessDataModel(data: DataModelData): CategoryScore {
       `${cascadeDeleteFields.length} Lookup Field${cascadeDeleteFields.length !== 1 ? 's' : ''} With Cascade Delete Enabled`,
       `${cascadeDeleteFields.length} lookup field${cascadeDeleteFields.length !== 1 ? 's' : ''} have cascade delete enabled. Deleting a parent record permanently and silently destroys all child records on this lookup. Unlike master-detail, there is no warning — bulk deletes, Data Loader operations, or automated processes can cause irreversible mass data loss.`,
       'Audit each cascade-delete lookup. Disable cascade delete and replace with before-delete Apex triggers or Process Builder/Flow logic that either blocks the delete or moves child records to an archive status. Ensure delete operations have rollback capability.',
-      { records: cascadeDeleteFields.slice(0, 50).map((f: any) => ({ name: f.QualifiedApiName, detail: `${f.EntityDefinition?.QualifiedApiName || '?'} — cascade delete enabled` })) }
+      { records: cascadeDeleteFields.slice(0, 50).map((f: any) => ({ name: f.DeveloperName, detail: `${f.TableEnumOrId} — cascade delete enabled` })) }
     ));
   }
 
@@ -1302,8 +1302,8 @@ export function assessDataModel(data: DataModelData): CategoryScore {
   const ldvObjects = data.ldvObjects || [];
   if (ldvObjects.length > 0) {
     items.push(createDebtItem('dataModel', 'high',
-      `${ldvObjects.length} Object${ldvObjects.length !== 1 ? 's' : ''} With Large Data Volumes (>1M Records)`,
-      `${ldvObjects.length} object${ldvObjects.length !== 1 ? 's have' : ' has'} over 1 million records. Large data volumes increase report query time, SOQL governor limit exposure, and Search indexing lag. Without selective indexes and skinny tables, record-triggered Flows and Apex queries on LDV objects frequently hit query row limits or time out.`,
+      `${ldvObjects.length} Object${ldvObjects.length !== 1 ? 's' : ''} With Large Data Volumes (500k+ Records)`,
+      `${ldvObjects.length} object${ldvObjects.length !== 1 ? 's have' : ' has'} over 500,000 records. Large data volumes increase report query time, SOQL governor limit exposure, and Search indexing lag. Without selective indexes and skinny tables, record-triggered Flows and Apex queries on LDV objects frequently hit query row limits or time out.`,
       'Enable selective indexes on frequently queried fields for LDV objects. Review record-triggered automations — flows and triggers on LDV objects require highly selective WHERE clauses. Consider archiving or offloading historical records using Big Objects or Data Archival products.',
       { records: ldvObjects.map((o: any) => ({ name: o.name, detail: `${o.count.toLocaleString()} records` })) }
     ));
@@ -2600,7 +2600,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
       `${publicGroupsWithAllUsers.length} Public Group${publicGroupsWithAllUsers.length !== 1 ? 's' : ''} Include "All Internal Users" or "All Partner Users"`,
       `${publicGroupsWithAllUsers.length} public group${publicGroupsWithAllUsers.length !== 1 ? 's include' : ' includes'} the "All Internal Users" or "All Partner Users" system groups as members. Any sharing rules that grant access to these groups give that access to every user in the org, effectively making the record visible org-wide. This is a common misconfiguration that circumvents OWD settings.`,
       'Audit sharing rules associated with these groups. Replace broad group membership with role-based or criteria-based sharing rules that target specific user populations. Remove All Internal Users from public groups used in sharing rules unless org-wide sharing is intentionally required.',
-      { records: publicGroupsWithAllUsers.slice(0, 30).map((g: any) => ({ name: g.Name, detail: `Group includes ${g.memberType || 'AllInternalUsers'} — org-wide sharing risk` })) }
+      { records: publicGroupsWithAllUsers.slice(0, 30).map((g: any) => ({ name: g.Group?.Name || 'Unknown Group', detail: 'Contains All Internal Users — org-wide sharing risk' })) }
     ));
   }
 

@@ -1243,7 +1243,9 @@ app.get('/api/assess/integrations', requireAuth, async (req, res) => {
       );
     } catch(e) {}
 
-    const wildcardRemoteSites = (remoteSites.records || []).filter(s => (s.EndpointUrl || '').includes('*'));
+    const wildcardRemoteSites = (remoteSites.records || []).filter(s => {
+      try { return new URL(s.EndpointUrl || '').pathname === '/'; } catch(e) { return false; }
+    });
 
     res.json({
       connectedApps: connectedApps.records || [],
