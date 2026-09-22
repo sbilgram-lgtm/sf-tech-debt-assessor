@@ -47,6 +47,7 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) =
           severity: item.severity,
           title: item.title,
           description: item.description,
+          metadata: item.metadata,
         }))
       }))
     };

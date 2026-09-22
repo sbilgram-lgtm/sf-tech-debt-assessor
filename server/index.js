@@ -21,23 +21,39 @@ function buildChatSystemPrompt(ctx) {
     (c.items || []).map(item => ({ ...item, categoryName: c.category }))
   );
 
-  const findingsSummary = allItems.slice(0, 80).map(item =>
-    `[${(item.severity || 'info').toUpperCase()}] ${item.categoryName} — ${item.title}: ${(item.description || '').slice(0, 120)}`
-  ).join('\n');
+  const findingsSummary = allItems.slice(0, 80).map(item => {
+    let metaSummary = '';
+    if (item.metadata && typeof item.metadata === 'object') {
+      const parts = [];
+      for (const [key, val] of Object.entries(item.metadata)) {
+        if (Array.isArray(val)) {
+          const preview = val.slice(0, 15).map(v =>
+            typeof v === 'object' ? JSON.stringify(v).slice(0, 80) : String(v).slice(0, 80)
+          );
+          parts.push(`${key}: [${preview.join(', ')}${val.length > 15 ? `, ...+${val.length - 15} more` : ''}]`);
+        } else if (val !== null && val !== undefined) {
+          parts.push(`${key}: ${String(val).slice(0, 100)}`);
+        }
+      }
+      if (parts.length) metaSummary = `\n    Details: ${parts.join(' | ')}`;
+    }
+    return `[${(item.severity || 'info').toUpperCase()}] ${item.categoryName} — ${item.title}: ${(item.description || '').slice(0, 150)}${metaSummary}`;
+  }).join('\n');
 
   const categoryScores = (categories || []).map(c =>
     `  ${c.category}: ${c.percentage}% — ${(c.items || []).length} issues`
   ).join('\n');
 
-  return `You are a Salesforce technical architect assistant analyzing assessment results for a specific org.
+  return `You are a Salesforce technical architect assistant helping analyze a specific org's assessment results.
 
-Answer questions based specifically on the findings below. Be direct, specific, and actionable.
+PRIMARY ROLE: Answer questions using the assessment findings below as your primary source for org-specific facts. For general Salesforce knowledge questions, draw on your training knowledge freely.
 
 Guidelines:
-- Reference specific findings by name when answering
+- For org-specific questions: reference exact findings, names, and details from the metadata below
+- For general Salesforce questions (how to fix X, what is Y, best practices): answer from your knowledge even if not in the findings
 - Remediation effort: Low = 1-2 days, Medium = 1-2 sprints, High = 1-2 months, Critical = dedicated project
 - For AppExchange readiness: flag dynamic SOQL without bind vars, XSS via outputText/apex:outputText, System.setPassword(), PageReference from user input, non-HTTPS endpoints, getSessionId() in Visualforce pages
-- If something is not determinable from these findings, say so clearly rather than guessing
+- When org-specific data is not in the findings (e.g. counts of healthy items that passed all checks), say what you can see from the findings and answer the broader question from your Salesforce knowledge
 - Prioritize Critical and High severity items in recommendations
 
 ASSESSMENT CONTEXT:
@@ -47,8 +63,8 @@ Overall Health: ${overallPercentage || 0}%
 CATEGORY SCORES:
 ${categoryScores}
 
-TRIGGERED FINDINGS (${allItems.length} total issues):
-${findingsSummary || 'No findings available'}`;
+TRIGGERED FINDINGS (${allItems.length} total issues — these are only the checks that flagged problems):
+${findingsSummary || 'No findings — org passed all checks'}`;
 }
 
 const app = express();
@@ -2323,7 +2339,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const geminiBody = JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
-      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 2048 } }
     });
 
     let geminiRes;
