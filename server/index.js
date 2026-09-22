@@ -2320,18 +2320,28 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const geminiApiVersion = process.env.GEMINI_API_VERSION || 'v1beta';
     const geminiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
 
-    const geminiRes = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
-      })
+    const geminiBody = JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
     });
 
+    let geminiRes;
+    let lastErrBody = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
+      geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: geminiBody
+      });
+      if (geminiRes.ok || geminiRes.status !== 503) break;
+      lastErrBody = await geminiRes.text();
+      console.warn(`Gemini 503 attempt ${attempt + 1}, retrying...`);
+    }
+
     if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
+      const errBody = geminiRes.status === 503 ? lastErrBody : await geminiRes.text();
       console.error('Gemini API error', geminiRes.status, errBody);
       res.write(`data: ${JSON.stringify({ error: `Gemini API error: ${geminiRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
       res.write('data: [DONE]\n\n');
@@ -2357,7 +2367,11 @@ app.post('/api/chat', requireAuth, async (req, res) => {
           if (!data || data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
-            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+            const parts = parsed.candidates?.[0]?.content?.parts || [];
+            const text = parts
+              .filter(p => !p.thought)
+              .map(p => p.text || '')
+              .join('');
             if (text) {
               res.write(`data: ${JSON.stringify({ text })}\n\n`);
             }

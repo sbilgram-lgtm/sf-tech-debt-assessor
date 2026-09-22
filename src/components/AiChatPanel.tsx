@@ -19,6 +19,7 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) =
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
+  const lastUserMessageRef = useRef<string>('');
 
   useEffect(() => {
     if (visible && assessment && !initializedRef.current && messages.length === 0) {
@@ -53,6 +54,7 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) =
 
   const sendMessage = async (text: string) => {
     if (isStreaming) return;
+    lastUserMessageRef.current = text;
 
     const userMsg: Message = { role: 'user', text };
     const updatedMessages = [...messages, userMsg];
@@ -212,22 +214,43 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) =
         {messages.map((msg, i) => (
           <div key={i} style={{
             display: 'flex',
-            justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
+            flexDirection: 'column',
+            alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start'
           }}>
             <div style={{
               maxWidth: '85%',
               padding: '10px 14px',
               borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-              backgroundColor: msg.role === 'user' ? '#3498db' : '#f8f9fa',
-              color: msg.role === 'user' ? 'white' : '#2c3e50',
+              backgroundColor: msg.role === 'user' ? '#3498db' : (msg.text.startsWith('Error:') ? '#fdf0ed' : '#f8f9fa'),
+              color: msg.role === 'user' ? 'white' : (msg.text.startsWith('Error:') ? '#c0392b' : '#2c3e50'),
               fontSize: '0.875rem',
               lineHeight: 1.5,
               whiteSpace: 'pre-wrap',
-              border: msg.role === 'assistant' ? '1px solid #ecf0f1' : 'none'
+              border: msg.role === 'assistant' ? (msg.text.startsWith('Error:') ? '1px solid #c0392b' : '1px solid #ecf0f1') : 'none'
             }}>
               {msg.text}
               {msg.streaming && <span style={{ opacity: 0.5 }}>▊</span>}
             </div>
+            {msg.role === 'assistant' && msg.text.startsWith('Error:') && !isStreaming && (
+              <button
+                onClick={() => {
+                  setMessages(prev => prev.slice(0, -1));
+                  sendMessage(lastUserMessageRef.current);
+                }}
+                style={{
+                  marginTop: '6px',
+                  fontSize: '0.75rem',
+                  padding: '4px 12px',
+                  borderRadius: '12px',
+                  border: '1px solid #c0392b',
+                  backgroundColor: 'white',
+                  color: '#c0392b',
+                  cursor: 'pointer'
+                }}
+              >
+                Try again
+              </button>
+            )}
           </div>
         ))}
         <div ref={messagesEndRef} />
