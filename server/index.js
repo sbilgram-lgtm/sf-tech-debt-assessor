@@ -2316,7 +2316,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   res.flushHeaders();
 
   try {
-    const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const geminiModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
     const geminiApiVersion = process.env.GEMINI_API_VERSION || 'v1beta';
     const geminiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
 
