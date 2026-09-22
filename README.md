@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: August 11, 2026*
+*Last updated: September 22, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **362 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritised, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **384 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,16 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — September 22, 2026 (AI chat)
+
+**Gemini AI chat panel** — After running an assessment, click **Ask AI** (top-right of the results toolbar) to open a side panel powered by Gemini 1.5 Flash. The AI receives the full assessment context — org info, all category scores, and every triggered finding — and can answer questions like "What are the quick wins?", "Estimate total remediation effort", or "What are the AppExchange readiness risks?". Responses stream in token-by-token.
+
+- Feature-flagged via `GEMINI_API_KEY` Railway env var — panel is hidden when the key is not set; no deployment needed to toggle
+- Uses Gemini 1.5 Flash free tier (15 RPM, 1 M tokens/day)
+- To enable: add `GEMINI_API_KEY` to your Railway environment variables (get a free key at [Google AI Studio](https://aistudio.google.com))
 
 ---
 
@@ -407,7 +417,7 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 |---|---|---|
 | **Case Configuration** | 6 | Excessive record types, inactive record types, excessive queues, legacy assignment/escalation rules, unverified OWAs ⚠️ Spring '26 |
 | **Omni-Channel** | 6 | No service channels, tab-based capacity, no push timeout, availability-only routing, no presence capacity limit, no presence configs |
-| **Knowledge** | 6 | No published articles, stalled drafts, stale published articles, no data categories, uncategorised articles, no validation status |
+| **Knowledge** | 6 | No published articles, stalled drafts, stale published articles, no data categories, uncategorized articles, no validation status |
 | **Entitlements** | 4 | No business hours on processes, no milestone actions, open cases with no SLA start date, service contracts without entitlements |
 | **Email-to-Case** | 4 | Routing addresses without TLS, no default owner, email threading gaps, unrestricted email service addresses |
 | **Live Chat & Messaging** | 4 | Non-Omni-Channel chat buttons, legacy Live Agent deployments, MIAW not adopted, chat buttons pointing to empty queues |
