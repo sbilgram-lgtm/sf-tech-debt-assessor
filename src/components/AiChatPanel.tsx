@@ -175,7 +175,7 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) =
       }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: '1rem' }}>Ask AI</div>
-          <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '2px' }}>Powered by Gemini 1.5 Flash</div>
+          <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '2px' }}>Powered by Gemini 3.6 Flash</div>
         </div>
         <button
           onClick={onClose}
