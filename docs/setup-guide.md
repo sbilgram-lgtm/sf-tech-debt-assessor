@@ -49,7 +49,6 @@ Salesforce introduced **External Client Apps** in Spring '25 as the new way to c
    - **OAuth Scopes:** Add both:
      - `Access and manage your data (api)`
      - `Perform requests on your behalf at any time (refresh_token, offline_access)`
-   - **Require Proof Key for Code Exchange (PKCE):** Leave **unchecked** ⚠️ This must be OFF — if enabled, the app will fail with a `missing required code challenge` error
 2. Click **Save**
 
 > **Note:** Allow 2–10 minutes for the app to activate after saving.
@@ -91,8 +90,6 @@ Salesforce introduced **External Client Apps** in Spring '25 as the new way to c
    - **Selected OAuth Scopes:** Add both:
      - `Access and manage your data (api)`
      - `Perform requests on your behalf at any time (refresh_token, offline_access)`
-   - **Require Proof Key for Code Exchange (PKCE):** Leave **unchecked** ⚠️ This must be OFF — if enabled, the app will fail with a `missing required code challenge` error
-
 4. Click **Save** → Click **Continue**
 
 > **Note:** Allow 2–10 minutes for the Connected App to activate after saving.
@@ -208,7 +205,6 @@ A **System Administrator** profile will work for all checks. If using a non-admi
 
 | Issue | Fix |
 |-------|-----|
-| `error=missing required code challenge` | PKCE is enabled on your app — go to Setup → External Client Apps (or App Manager for classic) → find your app → Edit → uncheck **Require Proof Key for Code Exchange (PKCE)** → Save. Wait 5 minutes then retry. |
 | Redirected back to login with no error | Wait 5–10 minutes for the app to activate, then try again |
 | `error=invalid_client` | Copy the Consumer Key and Secret fresh from Manage Consumer Details |
 | `error=redirect_uri_mismatch` | Verify the Callback URL matches the URL you're running from — `https://sf-tech-debt-assessor-production.up.railway.app/auth/callback` for Railway, or `http://localhost:3000/auth/callback` for local dev. Both can be added to the same app. |

@@ -1000,7 +1000,7 @@ export const LoginPage: React.FC = () => {
                       https://sf-tech-debt-assessor-production.up.railway.app/auth/callback
                     </code>
                   </>,
-                  <>Under <strong>OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token)</em></>,
+                  <>Under <strong>OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token, offline_access)</em></>,
                   <>Click <strong>Save</strong> — wait ~10 minutes for Salesforce to activate it</>,
                   <>Go back to the External Client App → <strong>View Consumer Details</strong> to retrieve your <strong>Consumer Key</strong> (Client ID) and <strong>Consumer Secret</strong></>,
                 ].map((step, i) => (
@@ -1022,7 +1022,7 @@ export const LoginPage: React.FC = () => {
                       https://sf-tech-debt-assessor-production.up.railway.app/auth/callback
                     </code>
                   </>,
-                  <>Under <strong>Selected OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token)</em></>,
+                  <>Under <strong>Selected OAuth Scopes</strong>, add: <em>Access and manage your data (api)</em> and <em>Perform requests on your behalf at any time (refresh_token, offline_access)</em></>,
                   <>Click <strong>Save</strong> — wait ~10 minutes for Salesforce to activate the app</>,
                   <>Go back to the Connected App → <strong>Manage Consumer Details</strong> to retrieve your <strong>Consumer Key</strong> (Client ID) and <strong>Consumer Secret</strong></>,
                 ].map((step, i) => (
