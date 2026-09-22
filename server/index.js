@@ -12,6 +12,45 @@ function generatePkce() {
   return { verifier, challenge };
 }
 
+function buildChatSystemPrompt(ctx) {
+  if (!ctx) return 'You are a Salesforce technical architect assistant. The assessment results have not been shared yet.';
+
+  const { orgName, orgType, isSandbox, overallPercentage, categories } = ctx;
+
+  const allItems = (categories || []).flatMap(c =>
+    (c.items || []).map(item => ({ ...item, categoryName: c.category }))
+  );
+
+  const findingsSummary = allItems.slice(0, 80).map(item =>
+    `[${(item.severity || 'info').toUpperCase()}] ${item.categoryName} — ${item.title}: ${(item.description || '').slice(0, 120)}`
+  ).join('\n');
+
+  const categoryScores = (categories || []).map(c =>
+    `  ${c.category}: ${c.percentage}% — ${(c.items || []).length} issues`
+  ).join('\n');
+
+  return `You are a Salesforce technical architect assistant analyzing assessment results for a specific org.
+
+Answer questions based specifically on the findings below. Be direct, specific, and actionable.
+
+Guidelines:
+- Reference specific findings by name when answering
+- Remediation effort: Low = 1-2 days, Medium = 1-2 sprints, High = 1-2 months, Critical = dedicated project
+- For AppExchange readiness: flag dynamic SOQL without bind vars, XSS via outputText/apex:outputText, System.setPassword(), PageReference from user input, non-HTTPS endpoints, getSessionId() in Visualforce pages
+- If something is not determinable from these findings, say so clearly rather than guessing
+- Prioritize Critical and High severity items in recommendations
+
+ASSESSMENT CONTEXT:
+Org: ${orgName || 'Unknown'} | Type: ${orgType || 'Unknown'} | Sandbox: ${isSandbox ? 'Yes' : 'No'}
+Overall Health: ${overallPercentage || 0}%
+
+CATEGORY SCORES:
+${categoryScores}
+
+TRIGGERED FINDINGS (${allItems.length} total issues):
+${findingsSummary || 'No findings available'}`;
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -2250,6 +2289,87 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Flow Quality assessment error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// AI Chat endpoints
+app.get('/api/chat/status', (req, res) => {
+  res.json({ available: !!process.env.GEMINI_API_KEY });
+});
+
+app.post('/api/chat', requireAuth, async (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({ error: 'AI chat not configured' });
+  }
+
+  const { message, history = [], assessmentContext } = req.body;
+  const systemPrompt = buildChatSystemPrompt(assessmentContext);
+
+  const contents = [
+    ...history.map(h => ({ role: h.role, parts: [{ text: h.text }] })),
+    { role: 'user', parts: [{ text: message }] }
+  ];
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
+
+    const geminiRes = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+      })
+    });
+
+    if (!geminiRes.ok) {
+      res.write(`data: ${JSON.stringify({ error: 'Gemini API error: ' + geminiRes.status })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
+
+    const reader = geminiRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (!data || data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data);
+            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            }
+          } catch (e) {
+            // ignore malformed JSON chunks
+          }
+        }
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
   }
 });
 

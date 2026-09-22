@@ -8,6 +8,8 @@ import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceC
 import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 import { RemediationRoadmap } from '../components/RemediationRoadmap';
+import { AiChatPanel } from '../components/AiChatPanel';
+import { getAiChatStatus } from '../services/api';
 
 const COLORS = ['#27ae60', '#f39c12', '#d35400', '#c0392b'];
 
@@ -17,6 +19,8 @@ export const DashboardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const [showRoadmap, setShowRoadmap] = useState(false);
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,6 +31,7 @@ export const DashboardPage: React.FC = () => {
         runAssessment();
       }
     }).catch(() => navigate('/login'));
+    getAiChatStatus().then(status => setAiAvailable(status.available)).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -301,6 +306,22 @@ setProgress('Assessing Experience Cloud sites...');
               >
                 Remediation Roadmap
               </button>
+              {aiAvailable && (
+                <button
+                  onClick={() => setShowChat(true)}
+                  style={{
+                    backgroundColor: '#1a73e8',
+                    color: 'white',
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: 500
+                  }}
+                >
+                  Ask AI
+                </button>
+              )}
             </div>
           </div>
 
@@ -372,6 +393,11 @@ setProgress('Assessing Experience Cloud sites...');
           {showRoadmap && (
             <RemediationRoadmap assessment={assessment} onClose={() => setShowRoadmap(false)} />
           )}
+          <AiChatPanel
+            visible={showChat}
+            onClose={() => setShowChat(false)}
+            assessment={assessment}
+          />
         </>
       )}
     </div>
