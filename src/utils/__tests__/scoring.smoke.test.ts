@@ -42,6 +42,10 @@ const emptyAutomation = {
   approvalProcesses: [], einsteinFlowActions: [], webToCaseSettings: null,
   caseAutoResponseRules: [], sControls: [], pendingTimeQueueCount: 0,
   loginFlows: [{}], jsButtons: [], feedEnabledObjects: [],
+  customLabelsNoDesc: [],
+  emailDeliverabilityLevel: 'All',
+  emailDomainKeys: [{ Domain: 'example.com' }],
+  openChangeSets: [],
 };
 const emptyValidation = { validationRules: [] };
 const emptyApex = {
