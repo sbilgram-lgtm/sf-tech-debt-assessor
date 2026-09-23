@@ -2458,7 +2458,10 @@ async function streamGemini(systemPrompt, history, message, res) {
   if (!geminiRes.ok) {
     const errBody = geminiRes.status === 503 ? lastErrBody : await geminiRes.text();
     console.error('Gemini API error', geminiRes.status, errBody);
-    res.write(`data: ${JSON.stringify({ error: `Gemini API error: ${geminiRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
+    const friendlyError = geminiRes.status === 503
+      ? 'Gemini is currently busy. Please wait a moment and try again.'
+      : `AI service error (${geminiRes.status}). Please try again.`;
+    res.write(`data: ${JSON.stringify({ error: friendlyError })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
     return;
