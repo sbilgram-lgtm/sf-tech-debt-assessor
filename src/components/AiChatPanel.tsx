@@ -11,9 +11,10 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   assessment: AssessmentResult | null;
+  provider?: string | null;
 }
 
-export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) => {
+export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment, provider }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -178,7 +179,9 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment }) =
       }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: '1rem' }}>Ask AI</div>
-          <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '2px' }}>Powered by Gemini</div>
+          <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '2px' }}>
+            {provider === 'groq' ? 'Powered by Groq (Llama 3.3)' : provider === 'gemini' ? 'Powered by Gemini' : 'AI Assistant'}
+          </div>
         </div>
         <button
           onClick={onClose}

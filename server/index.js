@@ -2351,13 +2351,160 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
   }
 });
 
+// AI Chat — provider abstraction
+function getActiveProvider() {
+  const explicit = process.env.LLM_PROVIDER;
+  if (explicit) return explicit.toLowerCase();
+  if (process.env.GROQ_API_KEY) return 'groq';
+  if (process.env.GEMINI_API_KEY) return 'gemini';
+  return null;
+}
+
+async function streamGroq(systemPrompt, history, message, res) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map(h => ({
+      role: h.role === 'model' ? 'assistant' : 'user',
+      content: h.text
+    })),
+    { role: 'user', content: message }
+  ];
+
+  const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+      messages,
+      stream: true,
+      temperature: 0.3,
+      max_tokens: 8192
+    })
+  });
+
+  if (!groqRes.ok) {
+    const errBody = await groqRes.text();
+    console.error('Groq API error', groqRes.status, errBody);
+    res.write(`data: ${JSON.stringify({ error: `Groq API error: ${groqRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return;
+  }
+
+  const reader = groqRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          const text = parsed.choices?.[0]?.delta?.content;
+          if (text) {
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
+        } catch (e) {}
+      }
+    }
+  }
+
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+async function streamGemini(systemPrompt, history, message, res) {
+  const contents = [
+    ...history.map(h => ({ role: h.role, parts: [{ text: h.text }] })),
+    { role: 'user', parts: [{ text: message }] }
+  ];
+
+  const geminiModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  const geminiApiVersion = process.env.GEMINI_API_VERSION || 'v1beta';
+  const geminiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
+
+  const geminiBody = JSON.stringify({
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents,
+    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+  });
+
+  let geminiRes;
+  let lastErrBody = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
+    geminiRes = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: geminiBody
+    });
+    if (geminiRes.ok || geminiRes.status !== 503) break;
+    lastErrBody = await geminiRes.text();
+    console.warn(`Gemini 503 attempt ${attempt + 1}, retrying...`);
+  }
+
+  if (!geminiRes.ok) {
+    const errBody = geminiRes.status === 503 ? lastErrBody : await geminiRes.text();
+    console.error('Gemini API error', geminiRes.status, errBody);
+    res.write(`data: ${JSON.stringify({ error: `Gemini API error: ${geminiRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return;
+  }
+
+  const reader = geminiRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          const parts = parsed.candidates?.[0]?.content?.parts || [];
+          const text = parts.filter(p => !p.thought).map(p => p.text || '').join('');
+          if (text) {
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
+        } catch (e) {}
+      }
+    }
+  }
+
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
 // AI Chat endpoints
 app.get('/api/chat/status', (req, res) => {
-  res.json({ available: !!process.env.GEMINI_API_KEY });
+  const provider = getActiveProvider();
+  res.json({ available: !!provider, provider: provider || null });
 });
 
 app.post('/api/chat', requireAuth, async (req, res) => {
-  if (!process.env.GEMINI_API_KEY) {
+  const provider = getActiveProvider();
+  if (!provider) {
     return res.status(503).json({ error: 'AI chat not configured' });
   }
 
@@ -2365,85 +2512,17 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   const orgStats = await fetchOrgStats(req.session).catch(() => null);
   const systemPrompt = buildChatSystemPrompt(assessmentContext, orgStats);
 
-  const contents = [
-    ...history.map(h => ({ role: h.role, parts: [{ text: h.text }] })),
-    { role: 'user', parts: [{ text: message }] }
-  ];
-
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
   try {
-    const geminiModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-    const geminiApiVersion = process.env.GEMINI_API_VERSION || 'v1beta';
-    const geminiUrl = `https://generativelanguage.googleapis.com/${geminiApiVersion}/models/${geminiModel}:streamGenerateContent?key=${process.env.GEMINI_API_KEY}&alt=sse`;
-
-    const geminiBody = JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
-    });
-
-    let geminiRes;
-    let lastErrBody = '';
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
-      geminiRes = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: geminiBody
-      });
-      if (geminiRes.ok || geminiRes.status !== 503) break;
-      lastErrBody = await geminiRes.text();
-      console.warn(`Gemini 503 attempt ${attempt + 1}, retrying...`);
+    if (provider === 'groq') {
+      await streamGroq(systemPrompt, history, message, res);
+    } else {
+      await streamGemini(systemPrompt, history, message, res);
     }
-
-    if (!geminiRes.ok) {
-      const errBody = geminiRes.status === 503 ? lastErrBody : await geminiRes.text();
-      console.error('Gemini API error', geminiRes.status, errBody);
-      res.write(`data: ${JSON.stringify({ error: `Gemini API error: ${geminiRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
-      return;
-    }
-
-    const reader = geminiRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (!data || data === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(data);
-            const parts = parsed.candidates?.[0]?.content?.parts || [];
-            const text = parts
-              .filter(p => !p.thought)
-              .map(p => p.text || '')
-              .join('');
-            if (text) {
-              res.write(`data: ${JSON.stringify({ text })}\n\n`);
-            }
-          } catch (e) {
-            // ignore malformed JSON chunks
-          }
-        }
-      }
-    }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
     res.write('data: [DONE]\n\n');
