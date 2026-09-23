@@ -21,23 +21,23 @@ function buildChatSystemPrompt(ctx, orgStats) {
     (c.items || []).map(item => ({ ...item, categoryName: c.category }))
   );
 
-  const findingsSummary = allItems.slice(0, 80).map(item => {
+  const findingsSummary = allItems.slice(0, 40).map(item => {
     let metaSummary = '';
     if (item.metadata && typeof item.metadata === 'object') {
       const parts = [];
       for (const [key, val] of Object.entries(item.metadata)) {
         if (Array.isArray(val)) {
-          const preview = val.slice(0, 15).map(v =>
-            typeof v === 'object' ? JSON.stringify(v).slice(0, 80) : String(v).slice(0, 80)
+          const preview = val.slice(0, 5).map(v =>
+            typeof v === 'object' ? JSON.stringify(v).slice(0, 40) : String(v).slice(0, 40)
           );
-          parts.push(`${key}: [${preview.join(', ')}${val.length > 15 ? `, ...+${val.length - 15} more` : ''}]`);
+          parts.push(`${key}(${val.length}): [${preview.join(', ')}${val.length > 5 ? '...' : ''}]`);
         } else if (val !== null && val !== undefined) {
-          parts.push(`${key}: ${String(val).slice(0, 100)}`);
+          parts.push(`${key}: ${String(val).slice(0, 50)}`);
         }
       }
-      if (parts.length) metaSummary = `\n    Details: ${parts.join(' | ')}`;
+      if (parts.length) metaSummary = ` | ${parts.join(' | ')}`;
     }
-    return `[${(item.severity || 'info').toUpperCase()}] ${item.categoryName} — ${item.title}: ${(item.description || '').slice(0, 150)}${metaSummary}`;
+    return `[${(item.severity || 'info').toUpperCase()}] ${item.categoryName} — ${item.title}: ${(item.description || '').slice(0, 80)}${metaSummary}`;
   }).join('\n');
 
   const categoryScores = (categories || []).map(c =>
