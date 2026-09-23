@@ -67,7 +67,7 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment, pro
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
     setMessages([...updatedMessages, assistantMsg]);
 
-    const history = updatedMessages.slice(0, -1).map(m => ({
+    const history = updatedMessages.slice(0, -1).slice(-8).map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       text: m.text
     }));
