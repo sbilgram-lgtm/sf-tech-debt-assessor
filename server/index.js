@@ -12,7 +12,7 @@ function generatePkce() {
   return { verifier, challenge };
 }
 
-function buildChatSystemPrompt(ctx) {
+function buildChatSystemPrompt(ctx, orgStats) {
   if (!ctx) return 'You are a Salesforce technical architect assistant. The assessment results have not been shared yet.';
 
   const { orgName, orgType, isSandbox, overallPercentage, categories } = ctx;
@@ -63,8 +63,51 @@ Overall Health: ${overallPercentage || 0}%
 CATEGORY SCORES:
 ${categoryScores}
 
-TRIGGERED FINDINGS (${allItems.length} total issues — these are only the checks that flagged problems):
+${orgStats ? `ORG SUMMARY STATS (live from Salesforce):
+- Custom Objects (non-managed): ${orgStats.customObjects}
+- Active Flows: ${orgStats.activeFlows}
+- Custom Apex Classes: ${orgStats.apexClasses}
+- Active Standard Users: ${orgStats.activeUsers}
+- Custom Tabs: ${orgStats.customTabs}
+- Custom Profiles: ${orgStats.profiles}
+
+` : ''}TRIGGERED FINDINGS (${allItems.length} total issues — these are only the checks that flagged problems):
 ${findingsSummary || 'No findings — org passed all checks'}`;
+}
+
+async function fetchOrgStats(session) {
+  if (session.orgStats) return session.orgStats;
+
+  const jsforce = require('jsforce');
+  const conn = new jsforce.Connection({
+    accessToken: session.accessToken,
+    instanceUrl: session.instanceUrl
+  });
+
+  const run = (soql) => new Promise((resolve) => {
+    conn.query(soql, (err, result) => resolve(err ? null : result));
+  });
+
+  const [customObjects, activeFlows, apexClasses, activeUsers, customTabs, profiles] = await Promise.all([
+    run("SELECT COUNT() FROM EntityDefinition WHERE IsCustomizable = true AND NamespacePrefix = null"),
+    run("SELECT COUNT() FROM FlowDefinition WHERE ActiveVersionId != null"),
+    run("SELECT COUNT() FROM ApexClass WHERE NamespacePrefix = null AND Status = 'Active'"),
+    run("SELECT COUNT() FROM User WHERE IsActive = true AND UserType = 'Standard'"),
+    run("SELECT COUNT() FROM CustomTab WHERE NamespacePrefix = null"),
+    run("SELECT COUNT() FROM Profile WHERE NamespacePrefix = null"),
+  ]);
+
+  const stats = {
+    customObjects: customObjects?.totalSize ?? 'unknown',
+    activeFlows: activeFlows?.totalSize ?? 'unknown',
+    apexClasses: apexClasses?.totalSize ?? 'unknown',
+    activeUsers: activeUsers?.totalSize ?? 'unknown',
+    customTabs: customTabs?.totalSize ?? 'unknown',
+    profiles: profiles?.totalSize ?? 'unknown',
+  };
+
+  session.orgStats = stats;
+  return stats;
 }
 
 const app = express();
@@ -2319,7 +2362,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   }
 
   const { message, history = [], assessmentContext } = req.body;
-  const systemPrompt = buildChatSystemPrompt(assessmentContext);
+  const orgStats = await fetchOrgStats(req.session).catch(() => null);
+  const systemPrompt = buildChatSystemPrompt(assessmentContext, orgStats);
 
   const contents = [
     ...history.map(h => ({ role: h.role, parts: [{ text: h.text }] })),
@@ -2339,7 +2383,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     const geminiBody = JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
-      generationConfig: { temperature: 0.3, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 2048 } }
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
     });
 
     let geminiRes;
