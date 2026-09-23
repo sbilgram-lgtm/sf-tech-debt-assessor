@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { AssessmentResult } from '../types/assessment';
 
 interface Message {
@@ -229,11 +230,30 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment, pro
               color: msg.role === 'user' ? 'white' : (msg.text.startsWith('Error:') ? '#c0392b' : '#2c3e50'),
               fontSize: '0.875rem',
               lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
               border: msg.role === 'assistant' ? (msg.text.startsWith('Error:') ? '1px solid #c0392b' : '1px solid #ecf0f1') : 'none'
             }}>
-              {msg.text}
-              {msg.streaming && <span style={{ opacity: 0.5 }}>▊</span>}
+              {msg.role === 'user' ? (
+                <span style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</span>
+              ) : (
+                <div style={{ whiteSpace: 'pre-wrap' }}>
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => <p style={{ margin: '0 0 8px' }}>{children}</p>,
+                      ul: ({ children }) => <ul style={{ margin: '4px 0 8px', paddingLeft: '20px' }}>{children}</ul>,
+                      ol: ({ children }) => <ol style={{ margin: '4px 0 8px', paddingLeft: '20px' }}>{children}</ol>,
+                      li: ({ children }) => <li style={{ margin: '2px 0' }}>{children}</li>,
+                      strong: ({ children }) => <strong style={{ fontWeight: 600 }}>{children}</strong>,
+                      h1: ({ children }) => <h1 style={{ fontSize: '1rem', fontWeight: 700, margin: '8px 0 4px' }}>{children}</h1>,
+                      h2: ({ children }) => <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '8px 0 4px' }}>{children}</h2>,
+                      h3: ({ children }) => <h3 style={{ fontSize: '0.875rem', fontWeight: 700, margin: '6px 0 4px' }}>{children}</h3>,
+                      code: ({ children }) => <code style={{ backgroundColor: '#e8ecf0', padding: '1px 4px', borderRadius: '3px', fontSize: '0.8rem' }}>{children}</code>,
+                    }}
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
+                  {msg.streaming && <span style={{ opacity: 0.5 }}>▊</span>}
+                </div>
+              )}
             </div>
             {msg.role === 'assistant' && msg.text.startsWith('Error:') && !isStreaming && (
               <button
