@@ -180,7 +180,7 @@ export const AiChatPanel: React.FC<Props> = ({ visible, onClose, assessment, pro
         <div>
           <div style={{ fontWeight: 600, fontSize: '1rem' }}>Ask AI</div>
           <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '2px' }}>
-            {provider === 'groq' ? 'Powered by Groq (Llama 3.3)' : provider === 'gemini' ? 'Powered by Gemini' : 'AI Assistant'}
+            {provider === 'openrouter' ? 'Powered by OpenRouter' : provider === 'groq' ? 'Powered by Groq' : provider === 'gemini' ? 'Powered by Gemini' : 'AI Assistant'}
           </div>
         </div>
         <button
