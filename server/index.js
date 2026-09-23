@@ -2355,7 +2355,6 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
 function getActiveProvider() {
   const explicit = process.env.LLM_PROVIDER;
   if (explicit) return explicit.toLowerCase();
-  if (process.env.OPENROUTER_API_KEY) return 'openrouter';
   if (process.env.GROQ_API_KEY) return 'groq';
   if (process.env.GEMINI_API_KEY) return 'gemini';
   return null;
@@ -2396,72 +2395,6 @@ async function streamGroq(systemPrompt, history, message, res) {
   }
 
   const reader = groqRes.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim();
-        if (!data || data === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(data);
-          const text = parsed.choices?.[0]?.delta?.content;
-          if (text) {
-            res.write(`data: ${JSON.stringify({ text })}\n\n`);
-          }
-        } catch (e) {}
-      }
-    }
-  }
-
-  res.write('data: [DONE]\n\n');
-  res.end();
-}
-
-async function streamOpenRouter(systemPrompt, history, message, res) {
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history.map(h => ({
-      role: h.role === 'model' ? 'assistant' : 'user',
-      content: h.text
-    })),
-    { role: 'user', content: message }
-  ];
-
-  const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'HTTP-Referer': 'https://sf-tech-debt-assessor-production.up.railway.app'
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
-      messages,
-      stream: true,
-      temperature: 0.3,
-      max_tokens: 8192
-    })
-  });
-
-  if (!orRes.ok) {
-    const errBody = await orRes.text();
-    console.error('OpenRouter API error', orRes.status, errBody);
-    res.write(`data: ${JSON.stringify({ error: `OpenRouter API error: ${orRes.status} — ${errBody.slice(0, 200)}` })}\n\n`);
-    res.write('data: [DONE]\n\n');
-    res.end();
-    return;
-  }
-
-  const reader = orRes.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 
@@ -2585,9 +2518,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   res.flushHeaders();
 
   try {
-    if (provider === 'openrouter') {
-      await streamOpenRouter(systemPrompt, history, message, res);
-    } else if (provider === 'groq') {
+    if (provider === 'groq') {
       await streamGroq(systemPrompt, history, message, res);
     } else {
       await streamGemini(systemPrompt, history, message, res);
