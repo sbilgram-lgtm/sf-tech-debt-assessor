@@ -20,7 +20,6 @@ export const DashboardPage: React.FC = () => {
   const [progress, setProgress] = useState('');
   const [showRoadmap, setShowRoadmap] = useState(false);
   const [aiAvailable, setAiAvailable] = useState(false);
-  const [aiProvider, setAiProvider] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const navigate = useNavigate();
 
@@ -32,10 +31,7 @@ export const DashboardPage: React.FC = () => {
         runAssessment();
       }
     }).catch(() => navigate('/login'));
-    getAiChatStatus().then(status => {
-      setAiAvailable(status.available);
-      setAiProvider(status.provider);
-    }).catch(() => {});
+    getAiChatStatus().then(status => setAiAvailable(status.available)).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -401,7 +397,7 @@ setProgress('Assessing Experience Cloud sites...');
             visible={showChat}
             onClose={() => setShowChat(false)}
             assessment={assessment}
-            provider={aiProvider}
+
           />
         </>
       )}
