@@ -570,7 +570,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       'code', 'critical',
       `${soqlInjectionRisk.length} Classes May Have SOQL Injection Vulnerabilities`,
       'Dynamic SOQL built by concatenating user-controlled strings is vulnerable to SOQL injection attacks. Attackers can exfiltrate or modify data beyond their intended access.',
-      'Use String.escapeSingleQuotes() on all user input before including in dynamic SOQL. Prefer bind variables (:variable) or Database.queryWithBinds() for parameterised queries.',
+      'Use String.escapeSingleQuotes() on all user input before including in dynamic SOQL. Prefer bind variables (:variable) or Database.queryWithBinds() for parameterized queries.',
       { records: soqlInjectionRisk.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'Dynamic SOQL string concatenation — SOQL injection risk' })) }
     ));
   }
@@ -630,7 +630,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     items.push(createDebtItem(
       'code', 'high',
       `${noAssertClasses.length} Test Class${noAssertClasses.length !== 1 ? 'es' : ''} Have No Assert Statements`,
-      'Test classes without System.assert(), System.assertEquals(), or Assert.* calls provide no actual verification — they only exercise code paths for coverage numbers but never confirm correct behaviour. This is a PMD rule (ApexUnitTestClassShouldHaveAsserts) violation.',
+      'Test classes without System.assert(), System.assertEquals(), or Assert.* calls provide no actual verification — they only exercise code paths for coverage numbers but never confirm correct behavior. This is a PMD rule (ApexUnitTestClassShouldHaveAsserts) violation.',
       'Add at minimum one meaningful assert per test method. Test the actual output values, not just that no exception was thrown.',
       { records: noAssertClasses.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'No assert statements — coverage-only test, no verification' })) }
     ));
@@ -655,7 +655,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       'code', 'low',
       `${noTestSetupClasses.length} Test Class${noTestSetupClasses.length !== 1 ? 'es' : ''} Insert Data Without @TestSetup`,
       'Test classes that insert records in each test method repeat expensive DML on every test run. @TestSetup creates test data once and rolls back between methods, significantly reducing test execution time.',
-      'Consolidate shared test data creation into a @TestSetup method. This reduces test runtime and standardises test data across all methods in the class.',
+      'Consolidate shared test data creation into a @TestSetup method. This reduces test runtime and standardizes test data across all methods in the class.',
       { records: noTestSetupClasses.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Data insertion without @TestSetup — repeated DML per test method' })) }
     ));
   }
@@ -1133,8 +1133,8 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     items.push(createDebtItem(
       'code', 'low',
       `${testVisibleClasses.length} Class${testVisibleClasses.length !== 1 ? 'es' : ''} Use @TestVisible`,
-      '@TestVisible exposes private or protected members specifically for test access, creating tight coupling between tests and internal implementation. This makes refactoring harder — internal changes break tests even when public behaviour is unchanged.',
-      'Refactor tests to drive behaviour through public APIs. If internal logic genuinely needs isolated testing, extract it into a public or package-private method on a dedicated class.',
+      '@TestVisible exposes private or protected members specifically for test access, creating tight coupling between tests and internal implementation. This makes refactoring harder — internal changes break tests even when public behavior is unchanged.',
+      'Refactor tests to drive behavior through public APIs. If internal logic genuinely needs isolated testing, extract it into a public or package-private method on a dedicated class.',
       { records: testVisibleClasses.map((c: any) => ({ name: c.Name, detail: '@TestVisible — tests coupled to internal implementation' })) }
     ));
   }
@@ -1930,7 +1930,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     const pct = Math.round(((data.articlesNoSummaryCount || 0) / publishedCount) * 100);
     items.push(createDebtItem('serviceCloud', 'low',
       `${data.articlesNoSummaryCount} Published Articles Have No Summary (${pct}% of library)`,
-      'Articles without a Summary field produce poor search result snippets in the Lightning console, help centres, and Einstein Search — reducing agent and customer ability to identify relevant content before opening the article.',
+      'Articles without a Summary field produce poor search result snippets in the Lightning console, help centers, and Einstein Search — reducing agent and customer ability to identify relevant content before opening the article.',
       'Add Summary text to all published articles. Aim for 1–2 sentences describing the article\'s content and the scenario it addresses.',
       { count: data.articlesNoSummaryCount }
     ));
@@ -2630,7 +2630,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
   if (customProfilesNoIpRange.length > 0) {
     items.push(createDebtItem('sharingSecurity', 'medium',
       `${customProfilesNoIpRange.length} Custom Profile${customProfilesNoIpRange.length !== 1 ? 's' : ''} Have No Login IP Restrictions`,
-      `${customProfilesNoIpRange.length} custom profile${customProfilesNoIpRange.length !== 1 ? 's have' : ' has'} no login IP range restrictions configured. Without IP restrictions, users on these profiles can authenticate from any network — including untrusted or compromised networks. IP restrictions are a key defence-in-depth control that limits the window for credential-based attacks.`,
+      `${customProfilesNoIpRange.length} custom profile${customProfilesNoIpRange.length !== 1 ? 's have' : ' has'} no login IP range restrictions configured. Without IP restrictions, users on these profiles can authenticate from any network — including untrusted or compromised networks. IP restrictions are a key defense-in-depth control that limits the window for credential-based attacks.`,
       'Add login IP ranges to all internal-user profiles restricting access to your corporate network ranges and trusted VPN IPs. For remote-first orgs, pair IP restrictions with MFA enforcement as a compensating control.',
       { records: customProfilesNoIpRange.slice(0, 30).map((p: any) => ({ name: p.Name, detail: 'No login IP ranges configured' })) }
     ));
@@ -2922,7 +2922,7 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
     items.push(createDebtItem(
       'testCoverage', 'medium',
       `${noRunAs.length} Test Class${noRunAs.length !== 1 ? 'es' : ''} Do Not Use System.runAs()`,
-      'Test classes that never use System.runAs() only test code under the System Administrator context. Multi-user scenarios, sharing rules, and permission-based behaviour are untested. This is flagged by PMD (ApexUnitTestClassShouldHaveRunAs).',
+      'Test classes that never use System.runAs() only test code under the System Administrator context. Multi-user scenarios, sharing rules, and permission-based behavior are untested. This is flagged by PMD (ApexUnitTestClassShouldHaveRunAs).',
       'Add at least one test method per class that uses System.runAs(testUser) with a user that has restricted permissions. This validates that sharing rules and FLS are enforced correctly.',
       { records: noRunAs.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'No System.runAs() — multi-user scenarios untested' })) }
     ));
@@ -3230,7 +3230,7 @@ export function assessEmailTemplates(data: EmailTemplatesData): CategoryScore {
 
   if (allTemplates.length === 0) {
     items.push(createDebtItem('emailTemplates', 'low', 'No Email Templates Found',
-      'No email templates detected. If email is used in automation or Service Cloud, templates should be standardised.',
+      'No email templates detected. If email is used in automation or Service Cloud, templates should be standardized.',
       'Create and standardise Lightning Email Templates for common communications.'));
   }
 
@@ -3314,9 +3314,9 @@ export function assessManagedPackages(data: ManagedPackagesData): CategoryScore 
   if (unusedPackages.length > 0) {
     items.push(createDebtItem('managedPackages', 'medium',
       `${unusedPackages.length} Managed Package${unusedPackages.length !== 1 ? 's' : ''} With No Active Licensed Users`,
-      `${unusedPackages.length} installed managed package${unusedPackages.length !== 1 ? 's have' : ' has'} licences assigned but no users with recent activity. Unused packages still count against your org's component limits, may slow deployments, and are a source of dependency errors if their objects appear in reports, list views, or dependent code.`,
-      'Confirm with business stakeholders whether each unused package is still required. Uninstall packages that are no longer needed. For packages retained for occasional use, consolidate licences to the minimum required.',
-      { records: unusedPackages.slice(0, 20).map((p: any) => ({ name: p.name, detail: `${p.total} licences — 0 recently active users` })) }
+      `${unusedPackages.length} installed managed package${unusedPackages.length !== 1 ? 's have' : ' has'} licenses assigned but no users with recent activity. Unused packages still count against your org's component limits, may slow deployments, and are a source of dependency errors if their objects appear in reports, list views, or dependent code.`,
+      'Confirm with business stakeholders whether each unused package is still required. Uninstall packages that are no longer needed. For packages retained for occasional use, consolidate licenses to the minimum required.',
+      { records: unusedPackages.slice(0, 20).map((p: any) => ({ name: p.name, detail: `${p.total} licenses — 0 recently active users` })) }
     ));
   }
 
@@ -3518,7 +3518,7 @@ export function assessEinsteinAI(data: EinsteinAIData): CategoryScore {
   if (einsteinEnabled && !data.dataCloudConnected && (data.bots || []).length > 0) {
     items.push(createDebtItem('einsteinAI', 'medium',
       'Agentforce Active but Data Cloud Not Connected — AI Running on Incomplete Customer Data',
-      'Agentforce agents without Data Cloud access can only use Salesforce CRM data for grounding. Data Cloud provides unified customer profiles (web behaviour, purchase history, third-party data) that significantly improve response relevance and personalisation.',
+      'Agentforce agents without Data Cloud access can only use Salesforce CRM data for grounding. Data Cloud provides unified customer profiles (web behavior, purchase history, third-party data) that significantly improve response relevance and personalization.',
       'Connect Data Cloud to the org in Setup → Data Cloud. Create Data Cloud data streams for key customer data sources. Use Data Cloud segments and calculated insights as grounding context for Agentforce agents.',
       {}
     ));
@@ -4530,7 +4530,7 @@ export function assessLwc(data: LwcData): CategoryScore {
       'lwc', 'high',
       `${vfOutdated.length} Visualforce Page${vfOutdated.length !== 1 ? 's' : ''} on Old API Versions (< v50)`,
       'Visualforce pages on API versions below v50 miss significant platform security patches and SLDS updates. These pages may not render correctly in modern browsers or Salesforce mobile.',
-      'Update VF page API versions to the current version (v62+). Test each page after updating as API version changes can affect controller behaviour.',
+      'Update VF page API versions to the current version (v62+). Test each page after updating as API version changes can affect controller behavior.',
       { records: vfOutdated.slice(0, 30).map((p: any) => ({ name: p.Name, detail: `API v${p.ApiVersion}` })) }
     ));
   }
@@ -5071,7 +5071,7 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
     items.push(createDebtItem('performance', 'high',
       `${veryLargeApexClasses.length} Apex Classes Exceed 5,000 Lines`,
       'Apex classes over 5,000 lines are extreme outliers that severely violate the Single Responsibility Principle. They slow Apex compilation, make test coverage requirements harder to meet, and are prime candidates for governor limit failures due to method complexity.',
-      'Immediately prioritise refactoring these classes. Break into domain-specific service classes, extract utilities, and adopt a layered architecture (handler, service, selector, domain).',
+      'Immediately prioritize refactoring these classes. Break into domain-specific service classes, extract utilities, and adopt a layered architecture (handler, service, selector, domain).',
       { records: veryLargeApexClasses.map((c: any) => ({ name: c.Name, detail: `${c.LengthWithoutComments} lines` })) }
     ));
   }
@@ -5097,7 +5097,7 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
     items.push(createDebtItem('performance', 'high',
       `${objectsWithDualAutomation.length} Object${objectsWithDualAutomation.length !== 1 ? 's' : ''} Have Both Apex Triggers and Record-Triggered Flows`,
       `${objectsWithDualAutomation.length} object${objectsWithDualAutomation.length !== 1 ? 's have' : ' has'} both Apex triggers and record-triggered Flows active on the same DML event. Mixed automation on the same object creates execution order complexity — the relative order of Apex and Flow execution is non-deterministic across releases and can cause duplicate processing, conflicting field updates, or unexpected governor limit consumption.`,
-      'Consolidate automation: migrate logic from Apex triggers to Flows where possible, or centralise all automation in a single trigger with a handler framework. At minimum, document the intended execution order and add comments to both the trigger and flow. Review for logic conflicts between the two automation paths.',
+      'Consolidate automation: migrate logic from Apex triggers to Flows where possible, or centralize all automation in a single trigger with a handler framework. At minimum, document the intended execution order and add comments to both the trigger and flow. Review for logic conflicts between the two automation paths.',
       { records: objectsWithDualAutomation.slice(0, 20).map((o: any) => ({ name: o.obj, detail: `${o.triggerCount} trigger${o.triggerCount !== 1 ? 's' : ''}, ${o.flowCount} record-triggered flow${o.flowCount !== 1 ? 's' : ''}` })) }
     ));
   }
@@ -5236,7 +5236,7 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
   if (highVolumeObjects.length > 0) {
     items.push(createDebtItem('notesAttachments', 'medium',
       `${highVolumeObjects.length} Object${highVolumeObjects.length !== 1 ? 's' : ''} with 10,000+ File Attachments`,
-      'Objects with extremely high ContentDocumentLink counts indicate uncontrolled file attachment behaviour. This drives up Salesforce file storage consumption (billed separately), slows record page load times when the Files related list loads, and complicates data migration or archiving efforts.',
+      'Objects with extremely high ContentDocumentLink counts indicate uncontrolled file attachment behavior. This drives up Salesforce file storage consumption (billed separately), slows record page load times when the Files related list loads, and complicates data migration or archiving efforts.',
       'Review attachment patterns for high-volume objects. Implement file governance policies (max file size, allowed file types). Consider routing large file volumes to external storage (SharePoint, Box) via Files Connect. Archive or delete files older than your retention policy.',
       { records: highVolumeObjects.map((o: any) => ({ name: o.obj, detail: `${o.count.toLocaleString()} files` })) }
     ));
@@ -5259,7 +5259,7 @@ export function assessNotesAttachments(data: NotesAttachmentsData): CategoryScor
     if (totalLinked > 5000) {
       items.push(createDebtItem('notesAttachments', 'low',
         `File Distribution Across Objects — Top Objects Identified`,
-        `The top ${top5.length} objects account for ${totalLinked.toLocaleString()} file links. Understanding which objects accumulate the most files helps prioritise storage governance and archiving efforts.`,
+        `The top ${top5.length} objects account for ${totalLinked.toLocaleString()} file links. Understanding which objects accumulate the most files helps prioritize storage governance and archiving efforts.`,
         'Review file attachment volumes per object. Apply object-specific governance rules: enforce file type restrictions, implement automated archiving for old attachments on closed records, and set storage budgets per object type.',
         { records: top5.map((o: any) => ({ name: o.obj, detail: `${o.count.toLocaleString()} files` })) }
       ));
@@ -5390,7 +5390,7 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
     items.push(createDebtItem('flowQuality', 'medium',
       `${oldApiVersionFlows.length} Active Flow${oldApiVersionFlows.length !== 1 ? 's' : ''} on Outdated API Versions (Pre-Summer '17)`,
       `${oldApiVersionFlows.length} active flow${oldApiVersionFlows.length !== 1 ? 's run' : ' runs'} on API version 39.0 or earlier (pre-Summer 2017). Very old API versions may use deprecated elements, lack access to newer flow features (before-save triggers, null handling, etc.), and are flagged by Salesforce Health Check as at-risk during future releases. Salesforce may retire support for very old API versions.`,
-      'Open each affected flow in Flow Builder and save it under the current API version. Verify flow behaviour in a sandbox after version upgrade — some element behaviours change across major API versions.',
+      'Open each affected flow in Flow Builder and save it under the current API version. Verify flow behavior in a sandbox after version upgrade — some element behaviors change across major API versions.',
       { records: oldApiVersionFlows.slice(0, 30).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `API v${f.ApiVersion} · ${f.ProcessType || 'Flow'}` })) }
     ));
   }

@@ -74,7 +74,7 @@ export const DashboardPage: React.FC = () => {
       setProgress('Checking duplicate & matching rules...');
       const duplicateRulesData = await getDuplicateRulesData();
 
-      setProgress('Analysing reports & dashboards...');
+      setProgress('Analyzing reports & dashboards...');
       const reportsDashboardsData = await getReportsDashboardsData();
 
       setProgress('Reviewing email templates...');

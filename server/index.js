@@ -786,7 +786,7 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       legacyChannelArticles = await safeQuery(conn, "SELECT COUNT(Id) FROM KnowledgeArticleVersion WHERE PublishStatus = 'Online' AND IsLatestVersion = true AND IsVisibleInCsp = true");
     } catch(e) {}
 
-    // K-2: Promoted search terms count (zero = Knowledge search not optimised)
+    // K-2: Promoted search terms count (zero = Knowledge search not optimized)
     let promotedSearchTermCount = { records: [{ expr0: 0 }] };
     let synonymDictCount = { records: [{ expr0: 0 }] };
     try {
