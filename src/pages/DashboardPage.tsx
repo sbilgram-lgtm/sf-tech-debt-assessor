@@ -340,6 +340,9 @@ setProgress('Assessing Experience Cloud sites...');
               justifyContent: 'center'
             }}>
               <ScoreGauge percentage={assessment.overallPercentage} label="Overall Health" size="large" />
+              <p style={{ margin: '12px 0 0', fontSize: '0.75rem', color: '#7f8c8d', textAlign: 'center', lineHeight: 1.4 }}>
+                Score reflects findings across 23 categories. Focus on Critical and High severity items regardless of overall score.
+              </p>
             </div>
 
             <div style={{

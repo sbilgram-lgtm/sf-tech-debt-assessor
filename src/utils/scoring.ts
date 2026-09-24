@@ -1787,7 +1787,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     items.push(createDebtItem('serviceCloud', 'medium',
       'No Active Quick Texts Configured',
       'Zero active Quick Texts means all agent responses are typed freeform — inconsistent language, higher AHT, and no foundation for Einstein Reply Recommendations. Salesforce positions Quick Texts as a baseline AHT reduction tool for any Service Cloud org.',
-      'Create Quick Texts for the top 20 most common agent responses (greetings, holds, closings, standard resolutions). Organise by Channel and Category for easy discovery in the console.',
+      'Create Quick Texts for the top 20 most common agent responses (greetings, holds, closings, standard resolutions). Organize by Channel and Category for easy discovery in the console.',
       {}));
   } else if (data.staleQuickTextCount > 0 && (data.staleQuickTextCount / Math.max(quickTexts.length, 1)) > 0.5) {
     items.push(createDebtItem('serviceCloud', 'low',
@@ -1909,7 +1909,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   const publishedCount = data.publishedArticleCount || 0;
   if (publishedCount > 10 && (data.promotedSearchTermCount || 0) === 0 && (data.synonymDictCount || 0) === 0) {
     items.push(createDebtItem('serviceCloud', 'medium',
-      'Knowledge Search Not Optimised — No Promoted Terms or Synonym Groups Configured',
+      'Knowledge Search Not Optimized — No Promoted Terms or Synonym Groups Configured',
       'The org has a published Knowledge library but zero promoted search terms (SearchPromotionRule) and zero synonym groups. High-value deflection articles will not surface for variations in customer search terminology, reducing deflection rates.',
       'Configure promoted search terms in Setup → Knowledge → Promoted Search Terms for top-category articles. Add synonym groups in Setup → Knowledge → Synonyms for common terminology variants (e.g., "invoice" = "bill" = "receipt").',
       {}
@@ -2006,7 +2006,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   if ((data.openIncidents || []).length > 0 && (data.incidentsNoRelatedItemCount || 0) > 0) {
     items.push(createDebtItem('serviceCloud', 'medium',
       `${data.incidentsNoRelatedItemCount} Open Incident${data.incidentsNoRelatedItemCount !== 1 ? 's' : ''} With No Related Items`,
-      'Incident Management is in use but active incidents have no IncidentRelatedItem records — no impacted cases or assets are linked. These incidents have no defined scope and cannot drive impact-based prioritisation or mass case updates.',
+      'Incident Management is in use but active incidents have no IncidentRelatedItem records — no impacted cases or assets are linked. These incidents have no defined scope and cannot drive impact-based prioritization or mass case updates.',
       'For each open incident, link all impacted cases, assets, or accounts via the IncidentRelatedItem junction. This enables impact count reporting and mass status updates to affected customers.',
       { records: (data.openIncidents || []).slice(0, 30).map((i: any) => ({ name: i.IncidentNumber || i.Id, detail: i.Subject || '' })) }
     ));
@@ -2025,7 +2025,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   if ((data.unlinkedWorkOrderCount || 0) > 0) {
     items.push(createDebtItem('serviceCloud', 'medium',
       `${data.unlinkedWorkOrderCount} Open Work Order${data.unlinkedWorkOrderCount !== 1 ? 's' : ''} With No Case and No Asset`,
-      'Work orders with neither a Case nor an Asset link have no service context — they are excluded from asset service history, cannot be tracked against case resolution, and are invisible to FSL scheduling optimisation.',
+      'Work orders with neither a Case nor an Asset link have no service context — they are excluded from asset service history, cannot be tracked against case resolution, and are invisible to FSL scheduling optimization.',
       'Update work order creation flows to always populate CaseId or AssetId. Review existing unlinked work orders and manually associate them with the correct case or asset.',
       { count: data.unlinkedWorkOrderCount }
     ));
@@ -3056,7 +3056,7 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
     items.push(createDebtItem('orgLimits', 'high',
       `${apexCount.toLocaleString()} Active Apex Classes — Approaching Org Limit (~5,000)`,
       `Salesforce orgs have an effective ceiling of ~5,000 Apex classes (the documented limit is per-namespace, but org-wide performance degrades significantly above this threshold). At ${apexCount} classes, the org is critically close to triggering deployment failures.`,
-      'Audit all Apex classes. Delete unused classes, consolidate overly-fragmented utility classes, and evaluate managed packages that contribute to class count. Prioritise deletion of test-only classes that are no longer relevant.',
+      'Audit all Apex classes. Delete unused classes, consolidate overly-fragmented utility classes, and evaluate managed packages that contribute to class count. Prioritize deletion of test-only classes that are no longer relevant.',
       {}
     ));
   } else if (apexCount > 4000) {
@@ -3231,7 +3231,7 @@ export function assessEmailTemplates(data: EmailTemplatesData): CategoryScore {
   if (allTemplates.length === 0) {
     items.push(createDebtItem('emailTemplates', 'low', 'No Email Templates Found',
       'No email templates detected. If email is used in automation or Service Cloud, templates should be standardized.',
-      'Create and standardise Lightning Email Templates for common communications.'));
+      'Create and standardize Lightning Email Templates for common communications.'));
   }
 
   const maxScore = 100;
@@ -3349,7 +3349,7 @@ export function assessCustomMetadata(data: CustomMetadataData): CategoryScore {
     items.push(createDebtItem('customMetadata', 'medium',
       'No Custom Metadata Types Found — All Config Uses Custom Settings',
       'The org relies entirely on Custom Settings for configuration, missing deployment and packaging benefits of Custom Metadata Types.',
-      'Begin migrating new configuration patterns to Custom Metadata Types. Prioritise settings used in multi-environment deployments.'));
+      'Begin migrating new configuration patterns to Custom Metadata Types. Prioritize settings used in multi-environment deployments.'));
   }
 
   // Custom Metadata Types with no records
@@ -4518,7 +4518,7 @@ export function assessLwc(data: LwcData): CategoryScore {
       'lwc', 'medium',
       `${vfPages.length} Visualforce Page${vfPages.length !== 1 ? 's' : ''} in Org — Legacy UI Technology`,
       'Visualforce is a legacy page framework. Pages on old API versions are incompatible with newer platform features, SLDS theming, and mobile accessibility. Salesforce has no plans to retire VF but all new development should use LWC.',
-      'Audit Visualforce pages by usage. Replace high-traffic pages with LWC-based Lightning pages. Remove unused VF pages. Prioritise any VF pages in the Service Console or Experience Cloud.',
+      'Audit Visualforce pages by usage. Replace high-traffic pages with LWC-based Lightning pages. Remove unused VF pages. Prioritize any VF pages in the Service Console or Experience Cloud.',
       { records: vfPages.slice(0, 50).map((p: any) => ({ name: p.Name, detail: `API v${p.ApiVersion}${!p.Description ? ' — no description' : ''}` })) }
     ));
   }
@@ -4554,7 +4554,7 @@ export function assessLwc(data: LwcData): CategoryScore {
       'lwc', 'medium',
       `${vfMobileEnabled.length} Visualforce Page${vfMobileEnabled.length !== 1 ? 's' : ''} Enabled for Salesforce Mobile — Poor UX`,
       'Visualforce pages enabled for Salesforce Mobile deliver poor mobile user experience. VF was never designed for mobile and lacks responsive layouts, native mobile gestures, and offline support.',
-      'Migrate mobile-enabled VF pages to LWC which renders natively in the Salesforce mobile app. Prioritise these over desktop-only VF pages.',
+      'Migrate mobile-enabled VF pages to LWC which renders natively in the Salesforce mobile app. Prioritize these over desktop-only VF pages.',
       { records: vfMobileEnabled.slice(0, 30).map((p: any) => ({ name: p.Name, detail: 'IsAvailableInTouch = true — VF in mobile app' })) }
     ));
   }
@@ -4816,7 +4816,7 @@ export function assessOmniStudio(data: OmniStudioData): CategoryScore {
   if (extractCount > 0 && turboCount === 0) {
     items.push(createDebtItem('omniStudio', 'medium',
       `${extractCount} Standard Extract DataRaptors — No Turbo Extract in Use`,
-      'All Extract DataRaptors use the standard extraction engine. Salesforce recommends Turbo Extract for read-only SOQL retrievals — it bypasses the transformation engine and is significantly faster. Zero Turbo Extract usage signals a missed performance optimisation opportunity.',
+      'All Extract DataRaptors use the standard extraction engine. Salesforce recommends Turbo Extract for read-only SOQL retrievals — it bypasses the transformation engine and is significantly faster. Zero Turbo Extract usage signals a missed performance optimization opportunity.',
       'Audit Extract DataRaptors for candidates to convert to Turbo Extract. Any DataRaptor that only reads data (no complex mappings) is a conversion candidate.',
       { count: extractCount }
     ));
