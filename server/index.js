@@ -2514,7 +2514,10 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   }
 
   const { message, history = [], assessmentContext } = req.body;
-  const orgStats = await fetchOrgStats(req.session).catch(() => null);
+  const orgStats = await Promise.race([
+    fetchOrgStats(req.session),
+    new Promise(resolve => setTimeout(() => resolve(null), 8000))
+  ]).catch(() => null);
   const systemPrompt = buildChatSystemPrompt(assessmentContext, orgStats);
 
   res.setHeader('Content-Type', 'text/event-stream');
