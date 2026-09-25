@@ -2077,7 +2077,7 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
         "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 LIMIT 200"
       ),
       safeQuery(conn,
-        "SELECT TableEnumOrId, COUNT(Id) FROM ApexTrigger WHERE Status = 'Active' AND NamespacePrefix = null GROUP BY TableEnumOrId LIMIT 200"
+        "SELECT Id, Name, TableEnumOrId FROM ApexTrigger WHERE Status = 'Active' AND NamespacePrefix = null LIMIT 500"
       ),
       safeQuery(conn,
         "SELECT Id, ApexClass.Name, JobType, Status FROM AsyncApexJob WHERE Status = 'Queued' AND JobType IN ('BatchApex','Queueable','Future') LIMIT 500"
@@ -2125,14 +2125,16 @@ app.get('/api/assess/performance', requireAuth, async (req, res) => {
       safeToolingQuery(conn, "SELECT FlowVersionId FROM FlowElement WHERE Type IN ('RecordCreate','RecordUpdate','RecordDelete') GROUP BY FlowVersionId LIMIT 500").catch(() => ({ records: [] }))
     ]);
 
-    // Calculate trigger counts per object (aggregate alias not supported in REST API — use expr0)
+    // Group triggers by object, collecting names
     const triggersByObject = {};
     for (const row of (apexTriggersPerObject.records || [])) {
-      triggersByObject[row.TableEnumOrId] = row.expr0;
+      const obj = row.TableEnumOrId;
+      if (!triggersByObject[obj]) triggersByObject[obj] = [];
+      triggersByObject[obj].push(row.Name);
     }
     const multiTriggerObjects = Object.entries(triggersByObject)
-      .filter(([_, count]) => count > 1)
-      .map(([obj, count]) => ({ obj, count }));
+      .filter(([_, names]) => names.length > 1)
+      .map(([obj, names]) => ({ obj, count: names.length, triggers: names }));
 
     // FlexiPage component count — approximate from component count per page via metadata
     // We query FlexiPage separately and flag those on the same object with high counts (proxy via total page count per EntityDefinitionId)

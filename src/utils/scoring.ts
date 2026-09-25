@@ -4886,7 +4886,7 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
       `${data.multiTriggerObjects.length} Objects with Multiple Active Triggers`,
       'Multiple triggers on the same object execute in an unpredictable order and can cause recursive firing, governor limit exhaustion, and hard-to-diagnose bugs.',
       'Consolidate all triggers per object into a single trigger using a trigger handler framework (e.g., FFLIB, TriggerHandler).',
-      { records: data.multiTriggerObjects.map((t: any) => ({ name: t.obj, detail: `${t.count} triggers` })) }
+      { records: data.multiTriggerObjects.map((t: any) => ({ name: t.obj, detail: `${t.count} triggers: ${(t.triggers || []).join(', ')}` })) }
     ));
   }
 
