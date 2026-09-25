@@ -375,10 +375,12 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // This prevents false positives from constants, hash values, or arbitrary string literals.
   const hardcodedIds = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    if (/@isTest/i.test(body)) return false; // mock IDs in test classes are intentional
-    const idPattern = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{14}['"]/g;
+    const idPattern15 = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{14}['"]/g;
     const idPattern18 = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{17}['"]/g;
-    return idPattern.test(body) || idPattern18.test(body);
+    const candidates = [...(body.match(idPattern15) || []), ...(body.match(idPattern18) || [])];
+    // Filter out obviously fake mock IDs — real IDs won't have 6+ consecutive identical chars
+    const realIds = candidates.filter(s => !/(.)\1{5,}/.test(s));
+    return realIds.length > 0;
   });
   if (hardcodedIds.length > 0) {
     items.push(createDebtItem(
