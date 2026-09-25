@@ -375,7 +375,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // This prevents false positives from constants, hash values, or arbitrary string literals.
   const hardcodedIds = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    // Must start with a digit to match Salesforce record ID key prefix pattern
+    if (/@isTest/i.test(body)) return false; // mock IDs in test classes are intentional
     const idPattern = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{14}['"]/g;
     const idPattern18 = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{17}['"]/g;
     return idPattern.test(body) || idPattern18.test(body);
