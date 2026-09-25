@@ -29,6 +29,10 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Email Deliverability Not Set to "All Email" — Emails Not Sending', severity: 'high' },
     { title: 'Outbound Change Set in Open State', severity: 'low' },
     { title: 'DKIM Email Signing Not Configured', severity: 'medium' },
+    { title: 'Inactive Validation Rules', severity: 'low' },
+    { title: 'Inactive Workflow Rules', severity: 'low' },
+    { title: 'Inactive Assignment Rules', severity: 'low' },
+    { title: 'Inactive Approval Processes', severity: 'low' },
   ],
   'Code Quality': [
     { title: 'Triggers with Business Logic', severity: 'high' },
@@ -81,6 +85,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Classes Use @TestVisible Annotation', severity: 'low' },
     { title: 'Apex Classes Use JSON.deserializeUntyped()', severity: 'medium' },
     { title: 'Apex Classes Use Type.forName() — Dynamic Class Instantiation', severity: 'medium' },
+    { title: 'Inactive Apex Triggers', severity: 'medium' },
+    { title: 'Inactive Apex Classes', severity: 'medium' },
   ],
   'Data Model': [
     { title: 'Custom Objects Without Descriptions', severity: 'low' },
@@ -243,6 +249,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Reports Owned by Deactivated Users', severity: 'high' },
     { title: 'Dashboards Owned by Deactivated Users', severity: 'high' },
     { title: 'Custom Report Types With No Reports Built on Them', severity: 'low' },
+    { title: 'Reports Never Run', severity: 'low' },
+    { title: 'Dashboards Have Never Been Viewed', severity: 'low' },
   ],
   'Email Templates': [
     { title: 'Classic (Non-Lightning) Email Templates', severity: 'medium' },
@@ -435,7 +443,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Flows Missing Descriptions', severity: 'low' },
     { title: 'Flow With More Than 50 Elements', severity: 'medium' },
     { title: 'Active Flows on Outdated API Versions (Pre-Summer \'17)', severity: 'medium' },
-    { title: 'Active Flows Never Modified After Activation', severity: 'low' },
+    { title: 'Abandoned Flows — No Active Version', severity: 'medium' },
     { title: 'Active Flows Not Modified in Over 2 Years', severity: 'low' },
   ],
 };

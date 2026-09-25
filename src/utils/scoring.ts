@@ -277,6 +277,50 @@ export function assessConfiguration(
     ));
   }
 
+  // Inactive Validation Rules — disabled rules left after migrations
+  const inactiveValidationRules = (automation as any).inactiveValidationRules || [];
+  if (inactiveValidationRules.length > 0) {
+    items.push(createDebtItem('configuration', 'low',
+      `${inactiveValidationRules.length} Inactive Validation Rule${inactiveValidationRules.length !== 1 ? 's' : ''}`,
+      `${inactiveValidationRules.length} validation rule${inactiveValidationRules.length !== 1 ? 's are' : ' is'} deployed but disabled. Rules are commonly disabled during data migrations and left inactive, creating dead configuration that obscures the org's true data quality controls.`,
+      'Review each inactive validation rule. Re-activate rules that should be enforced. Delete rules that are permanently obsolete to reduce configuration noise.',
+      { records: inactiveValidationRules.map((r: any) => ({ name: r.ValidationName, detail: r.EntityDefinition?.QualifiedApiName || 'Unknown object' })) }
+    ));
+  }
+
+  // Inactive Workflow Rules — legacy automation that is disabled
+  const inactiveWorkflowRules = (automation as any).inactiveWorkflowRules || [];
+  if (inactiveWorkflowRules.length > 0) {
+    items.push(createDebtItem('configuration', 'low',
+      `${inactiveWorkflowRules.length} Inactive Workflow Rule${inactiveWorkflowRules.length !== 1 ? 's' : ''}`,
+      `${inactiveWorkflowRules.length} workflow rule${inactiveWorkflowRules.length !== 1 ? 's are' : ' is'} inactive. As Salesforce retires Workflow Rules in favor of Flow, inactive workflow rules represent dead automation that should be either migrated to Flow or deleted.`,
+      'Audit inactive workflow rules. Migrate any that represent needed business logic to Flow. Delete those that are obsolete.',
+      { records: inactiveWorkflowRules.map((r: any) => ({ name: r.Name, detail: r.TableEnumOrId || 'Unknown object' })) }
+    ));
+  }
+
+  // Inactive Assignment Rules — abandoned routing logic
+  const inactiveAssignmentRules = (automation as any).inactiveAssignmentRules || [];
+  if (inactiveAssignmentRules.length > 0) {
+    items.push(createDebtItem('configuration', 'low',
+      `${inactiveAssignmentRules.length} Inactive Assignment Rule${inactiveAssignmentRules.length !== 1 ? 's' : ''}`,
+      `${inactiveAssignmentRules.length} assignment rule${inactiveAssignmentRules.length !== 1 ? 's are' : ' is'} inactive. Inactive assignment rules represent abandoned routing logic that adds confusion during audits and may mask gaps in the current active routing configuration.`,
+      'Review inactive assignment rules. Delete those that are no longer relevant. Document why active rules were changed if history context is needed.',
+      { records: inactiveAssignmentRules.map((r: any) => ({ name: r.Name, detail: r.SobjectType || 'Unknown object' })) }
+    ));
+  }
+
+  // Inactive Approval Processes — abandoned business logic
+  const inactiveApprovalProcesses = (automation as any).inactiveApprovalProcesses || [];
+  if (inactiveApprovalProcesses.length > 0) {
+    items.push(createDebtItem('configuration', 'low',
+      `${inactiveApprovalProcesses.length} Inactive Approval Process${inactiveApprovalProcesses.length !== 1 ? 'es' : ''}`,
+      `${inactiveApprovalProcesses.length} approval process${inactiveApprovalProcesses.length !== 1 ? 'es are' : ' is'} inactive. Inactive approval processes represent abandoned business logic and add noise to the automation inventory, making it harder to understand the org's active governance controls.`,
+      'Review inactive approval processes. Delete those that are permanently retired. Document those kept for audit trail purposes.',
+      { records: inactiveApprovalProcesses.map((r: any) => ({ name: r.Name, detail: 'Inactive approval process' })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1149,6 +1193,28 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       'Type.forName() dynamically resolves class names at runtime. If class names are derived from user-controlled input or external config, this enables arbitrary class instantiation. It also bypasses compile-time type checks and makes static analysis harder.',
       'Review all Type.forName() calls. If the class name comes from user input or external config, validate it against an explicit allowlist of permitted class names before instantiation.',
       { records: typeForNameClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'Type.forName() — dynamic dispatch, review class name source' })) }
+    ));
+  }
+
+  // Inactive Apex Triggers — deployed but disabled, dead code
+  const inactiveTriggers = (apex as any).inactiveTriggers || [];
+  if (inactiveTriggers.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${inactiveTriggers.length} Inactive Apex Trigger${inactiveTriggers.length !== 1 ? 's' : ''}`,
+      `${inactiveTriggers.length} trigger${inactiveTriggers.length !== 1 ? 's are' : ' is'} deployed but set to Inactive. Inactive triggers are typically disabled to suppress a bug and never re-enabled or deleted, leaving dead code in the org that misleads developers and adds maintenance overhead.`,
+      'Review each inactive trigger. If the underlying bug is fixed, re-enable it. If the trigger is obsolete, delete it to reduce org clutter.',
+      { records: inactiveTriggers.map((t: any) => ({ name: t.Name, detail: t.TableEnumOrId || 'Unknown object' })) }
+    ));
+  }
+
+  // Inactive Apex Classes — deployed but disabled, dead code
+  const inactiveClasses = (apex as any).inactiveClasses || [];
+  if (inactiveClasses.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${inactiveClasses.length} Inactive Apex Class${inactiveClasses.length !== 1 ? 'es' : ''}`,
+      `${inactiveClasses.length} Apex class${inactiveClasses.length !== 1 ? 'es are' : ' is'} deployed but set to Inactive. These classes cannot execute even if called, and represent dead code that should be removed or re-evaluated.`,
+      'Review each inactive class. Delete those no longer needed. Re-enable any that were temporarily deactivated if the underlying issue is resolved.',
+      { records: inactiveClasses.map((c: any) => ({ name: c.Name, detail: `API v${c.ApiVersion}` })) }
     ));
   }
 
@@ -3188,6 +3254,17 @@ export function assessReportsDashboards(data: ReportsDashboardsData): CategorySc
       `${dashboardsNeverViewedCount} dashboard${dashboardsNeverViewedCount !== 1 ? 's have' : ' has'} no LastViewedDate on record, meaning they have never been opened since being created (or since view tracking began). Unviewed dashboards represent wasted build effort and clutter the dashboard library, making it harder for users to find useful analytics.`,
       'Review unviewed dashboards with their owners. Delete dashboards that were created as drafts, duplicates, or prototypes. Consider hiding dashboards that serve niche purposes in private or restricted-access folders rather than leaving them in shared folders.',
       { count: dashboardsNeverViewedCount }
+    ));
+  }
+
+  // Reports never run — created but never executed
+  const reportsNeverRun = (data as any).reportsNeverRun || [];
+  if (reportsNeverRun.length > 0) {
+    items.push(createDebtItem('reportsDashboards', 'low',
+      `${reportsNeverRun.length} Report${reportsNeverRun.length !== 1 ? 's' : ''} Never Run`,
+      `${reportsNeverRun.length} report${reportsNeverRun.length !== 1 ? 's have' : ' has'} never been run since being created. These are dead reports that consume storage and clutter report folders, making it harder to find actively used reports.`,
+      'Audit never-run reports. Delete those that are clearly obsolete. Move useful-but-unrun reports to an archive folder for review.',
+      { records: reportsNeverRun.slice(0, 50).map((r: any) => ({ name: r.Name, detail: r.FolderName || 'Unknown folder' })) }
     ));
   }
 
@@ -5386,14 +5463,14 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
     ));
   }
 
-  // Flows with no recent runs (inactive/abandoned — have versions but no recent LastModifiedDate activity)
+  // Abandoned flows — flow definitions with no active version
   const abandonedFlows = (data as any).abandonedFlows || [];
   if (abandonedFlows.length > 0) {
-    items.push(createDebtItem('flowQuality', 'low',
-      `${abandonedFlows.length} Active Flow${abandonedFlows.length !== 1 ? 's' : ''} Have Never Been Modified After Activation`,
-      `${abandonedFlows.length} active flow${abandonedFlows.length !== 1 ? 's have' : ' has'} not been modified since initial activation and appear to have been set up once and forgotten. Flows that are never revisited may contain stale logic, hardcoded values, or broken references that go unnoticed until they cause data issues.`,
-      'Audit each flow with stakeholders to confirm it is still serving its intended purpose. Review hardcoded field values, date logic, and referenced records for staleness. Schedule a periodic flow audit cadence (at least annually) to catch abandoned flows before they cause problems.',
-      { records: abandonedFlows.slice(0, 30).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `${f.ProcessType || 'Flow'} — no changes since activation` })) }
+    items.push(createDebtItem('flowQuality', 'medium',
+      `${abandonedFlows.length} Abandoned Flow${abandonedFlows.length !== 1 ? 's' : ''} — No Active Version`,
+      `${abandonedFlows.length} flow definition${abandonedFlows.length !== 1 ? 's have' : ' has'} no active version. These flows were created or previously activated but are now fully deactivated with no active replacement, representing dead automation that clutters the org's flow inventory.`,
+      'Review abandoned flows. Delete those that are obsolete. If business logic should be restored, create a new active version.',
+      { records: abandonedFlows.slice(0, 50).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: 'No active version' })) }
     ));
   }
 

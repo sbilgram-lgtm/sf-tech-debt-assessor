@@ -350,6 +350,13 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, Name FROM OutboundChangeSet WHERE State = 'Open' LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
+    const [inactiveValidationRulesRes, inactiveWorkflowRulesRes, inactiveAssignmentRulesRes, inactiveApprovalProcessesRes] = await Promise.all([
+      safeToolingQuery(conn, "SELECT Id, ValidationName, EntityDefinition.QualifiedApiName FROM ValidationRule WHERE Active = false AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, Name, TableEnumOrId FROM WorkflowRule WHERE Active = false AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name, SobjectType FROM AssignmentRule WHERE Active = false LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = false LIMIT 200").catch(() => ({ records: [] }))
+    ]);
+
     res.json({
       workflowRules: workflowRules.records || [],
       processBuilders,
@@ -367,7 +374,11 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
       customLabelsNoDesc: customLabelsNoDesc.records || [],
       emailDeliverabilityLevel: ((orgEmailRes.records || [])[0] || {}).EmailDeliverabilityLevel || null,
       emailDomainKeys: emailDomainKeysRes.records || [],
-      openChangeSets: openChangeSetsRes.records || []
+      openChangeSets: openChangeSetsRes.records || [],
+      inactiveValidationRules: inactiveValidationRulesRes.records || [],
+      inactiveWorkflowRules: inactiveWorkflowRulesRes.records || [],
+      inactiveAssignmentRules: inactiveAssignmentRulesRes.records || [],
+      inactiveApprovalProcesses: inactiveApprovalProcessesRes.records || []
     });
   } catch (err) {
     console.error('Automation assessment error:', err);
@@ -452,6 +463,11 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const jsonDeserializeUntypedClasses = (classes.records || []).filter(c => /JSON\.deserializeUntyped\s*\(/i.test(c.Body || ''));
     const typeForNameClasses = (classes.records || []).filter(c => /Type\.forName\s*\(\s*['"]/.test(c.Body || ''));
 
+    const [inactiveTriggersRes, inactiveClassesRes] = await Promise.all([
+      safeQuery(conn, "SELECT Id, Name, TableEnumOrId FROM ApexTrigger WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] }))
+    ]);
+
     res.json({
       classes: classes.records || [],
       triggers: triggers.records || [],
@@ -463,7 +479,9 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       noStartStopTestClasses,
       noTestSetupClasses,
       jsonDeserializeUntypedClasses,
-      typeForNameClasses
+      typeForNameClasses,
+      inactiveTriggers: inactiveTriggersRes.records || [],
+      inactiveClasses: inactiveClassesRes.records || []
     });
   } catch (err) {
     console.error('Apex assessment error:', err);
@@ -1475,6 +1493,7 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
     ]);
 
     const dashboardsNeverViewedRes = await safeQuery(conn, "SELECT COUNT(Id) FROM Dashboard WHERE LastViewedDate = null").catch(() => ({ records: [{ expr0: 0 }] }));
+    const reportsNeverRunRes = await safeQuery(conn, "SELECT Id, Name, FolderName FROM Report WHERE LastRunDate = null AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] }));
 
     // Reports and dashboards owned by deactivated users
     const [reportsOwnedByInactiveRes, dashboardsOwnedByInactiveRes] = await Promise.all([
@@ -1505,7 +1524,8 @@ app.get('/api/assess/reports-dashboards', requireAuth, async (req, res) => {
       unusedCustomReportTypes,
       reportsOwnedByInactive: reportsOwnedByInactiveRes.records || [],
       dashboardsOwnedByInactive: dashboardsOwnedByInactiveRes.records || [],
-      dashboardsNeverViewedCount: (dashboardsNeverViewedRes.records[0] || {}).expr0 || 0
+      dashboardsNeverViewedCount: (dashboardsNeverViewedRes.records[0] || {}).expr0 || 0,
+      reportsNeverRun: reportsNeverRunRes.records || []
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
