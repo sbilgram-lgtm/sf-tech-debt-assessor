@@ -40,7 +40,7 @@ export const RemediationRoadmap: React.FC<Props> = ({ assessment, onClose }) => 
   });
 
   return (
-    <div style={{
+    <div className="roadmap-overlay" style={{
       position: 'fixed', inset: 0, zIndex: 1000,
       backgroundColor: 'rgba(0,0,0,0.5)',
       overflowY: 'auto'
@@ -49,8 +49,20 @@ export const RemediationRoadmap: React.FC<Props> = ({ assessment, onClose }) => 
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          body { margin: 0; }
-          .roadmap-page { box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; }
+          body, html { margin: 0; overflow: visible !important; height: auto !important; }
+          .roadmap-overlay {
+            position: static !important;
+            overflow: visible !important;
+            background: none !important;
+            height: auto !important;
+          }
+          .roadmap-page {
+            box-shadow: none !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            max-width: 100% !important;
+            padding: 0 !important;
+          }
         }
         @page { margin: 15mm; }
       `}</style>
