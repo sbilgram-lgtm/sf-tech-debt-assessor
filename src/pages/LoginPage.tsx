@@ -427,37 +427,37 @@ const GROUP_COLORS: Record<string, string> = {
 
 const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
-  { icon: '🔒',  name: 'Sharing & Security',      checks: 36, group: 'Security & Access' },
-  { icon: '🛡️',  name: 'Connected App Security',  checks: 13, group: 'Security & Access' },
-  { icon: '🌐',  name: 'Experience Cloud',        checks: 17, group: 'Security & Access' },
+  { icon: '🔒',  name: 'Sharing & Security',      group: 'Security & Access' },
+  { icon: '🛡️',  name: 'Connected App Security',  group: 'Security & Access' },
+  { icon: '🌐',  name: 'Experience Cloud',        group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
-  { icon: '💻',  name: 'Code Quality',            checks: 50, group: 'Code & Development' },
-  { icon: '🧪',  name: 'Test Coverage',           checks: 7,  group: 'Code & Development' },
-  { icon: '⚡',  name: 'LWC & Components',        checks: 39, group: 'Code & Development' },
-  { icon: '🎨',  name: 'OmniStudio',             checks: 25, group: 'Code & Development' },
-  { icon: '🔀',  name: 'Flow Quality',            checks: 12, group: 'Code & Development' },
+  { icon: '💻',  name: 'Code Quality',            group: 'Code & Development' },
+  { icon: '🧪',  name: 'Test Coverage',           group: 'Code & Development' },
+  { icon: '⚡',  name: 'LWC & Components',        group: 'Code & Development' },
+  { icon: '🎨',  name: 'OmniStudio',             group: 'Code & Development' },
+  { icon: '🔀',  name: 'Flow Quality',            group: 'Code & Development' },
   // ── Performance & Limits ───────────────────────────────────────
-  { icon: '🚀',  name: 'Performance',             checks: 22, group: 'Performance & Limits' },
-  { icon: '📊',  name: 'Org Limits',              checks: 5,  group: 'Performance & Limits' },
-  { icon: '⚡',  name: 'Platform Events',         checks: 3,  group: 'Performance & Limits' },
+  { icon: '🚀',  name: 'Performance',             group: 'Performance & Limits' },
+  { icon: '📊',  name: 'Org Limits',              group: 'Performance & Limits' },
+  { icon: '⚡',  name: 'Platform Events',         group: 'Performance & Limits' },
   // ── Configuration & Architecture ──────────────────────────────
-  { icon: '⚙️',  name: 'Configuration',          checks: 18, group: 'Configuration & Architecture' },
-  { icon: '🗄️',  name: 'Data Model',              checks: 7,  group: 'Configuration & Architecture' },
-  { icon: '📋',  name: 'Record Types & Layouts',  checks: 5,  group: 'Configuration & Architecture' },
-  { icon: '🔧',  name: 'Custom Metadata',         checks: 4,  group: 'Configuration & Architecture' },
-  { icon: '🔁',  name: 'Duplicate Rules',         checks: 4,  group: 'Configuration & Architecture' },
-  { icon: '🔌',  name: 'Integrations',            checks: 11, group: 'Configuration & Architecture' },
+  { icon: '⚙️',  name: 'Configuration',          group: 'Configuration & Architecture' },
+  { icon: '🗄️',  name: 'Data Model',              group: 'Configuration & Architecture' },
+  { icon: '📋',  name: 'Record Types & Layouts',  group: 'Configuration & Architecture' },
+  { icon: '🔧',  name: 'Custom Metadata',         group: 'Configuration & Architecture' },
+  { icon: '🔁',  name: 'Duplicate Rules',         group: 'Configuration & Architecture' },
+  { icon: '🔌',  name: 'Integrations',            group: 'Configuration & Architecture' },
   // ── CRM & Service ──────────────────────────────────────────────
-  { icon: '🎧',  name: 'Service Cloud',           checks: 70, group: 'CRM & Service' },
-  { icon: '🤖',  name: 'Einstein & AI',           checks: 9,  group: 'CRM & Service' },
-  { icon: '📦',  name: 'Managed Packages',        checks: 4,  group: 'CRM & Service' },
+  { icon: '🎧',  name: 'Service Cloud',           group: 'CRM & Service' },
+  { icon: '🤖',  name: 'Einstein & AI',           group: 'CRM & Service' },
+  { icon: '📦',  name: 'Managed Packages',        group: 'CRM & Service' },
   // ── Governance & Hygiene ───────────────────────────────────────
-  { icon: '📈',  name: 'Reports & Dashboards',    checks: 8,  group: 'Governance & Hygiene' },
-  { icon: '📧',  name: 'Email Templates',         checks: 3,  group: 'Governance & Hygiene' },
-  { icon: '📎',  name: 'Notes & Attachments',     checks: 12, group: 'Governance & Hygiene' },
+  { icon: '📈',  name: 'Reports & Dashboards',    group: 'Governance & Hygiene' },
+  { icon: '📧',  name: 'Email Templates',         group: 'Governance & Hygiene' },
+  { icon: '📎',  name: 'Notes & Attachments',     group: 'Governance & Hygiene' },
 ];
 
-const TOTAL_CHECKS = CATEGORIES.reduce((sum, c) => sum + c.checks, 0);
+const TOTAL_CHECKS = Object.values(CATEGORY_CHECKS).reduce((sum, arr) => sum + arr.length, 0);
 
 const SEVERITY_COLORS: Record<Severity, { bg: string; color: string; label: string }> = {
   critical: { bg: '#fde8e8', color: '#c0392b', label: 'Critical' },
@@ -682,7 +682,7 @@ export const LoginPage: React.FC = () => {
                       opacity: 0.65,
                       marginTop: '1px',
                     }}>
-                      {cat.checks} check{cat.checks !== 1 ? 's' : ''}
+                      {(CATEGORY_CHECKS[cat.name] || []).length} check{(CATEGORY_CHECKS[cat.name] || []).length !== 1 ? 's' : ''}
                     </div>
                   </div>
                 </div>
