@@ -25,6 +25,10 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'No Login Flows Configured', severity: 'low' },
     { title: 'JavaScript Buttons or Custom Links — Broken in Lightning Experience', severity: 'high' },
     { title: 'Feed Tracking Enabled on Objects — Review Scope', severity: 'medium' },
+    { title: 'Custom Labels Without Descriptions', severity: 'low' },
+    { title: 'Email Deliverability Not Set to "All Email" — Emails Not Sending', severity: 'high' },
+    { title: 'Outbound Change Set in Open State', severity: 'low' },
+    { title: 'DKIM Email Signing Not Configured', severity: 'medium' },
   ],
   'Code Quality': [
     { title: 'Triggers with Business Logic', severity: 'high' },
@@ -72,6 +76,11 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Methods with 6+ Parameters — Use Wrapper Objects (PMD: ExcessiveParameterList)', severity: 'medium' },
     { title: 'If Statements Nested 4+ Levels Deep (PMD: AvoidDeeplyNestedIfStmts)', severity: 'medium' },
     { title: 'Abstract Classes or Interfaces Without Concrete Implementation (Graph Engine: UnimplementedType)', severity: 'medium' },
+    { title: 'Production Classes Use System.runAs()', severity: 'critical' },
+    { title: 'Schedulable Class Without Try/Catch in execute()', severity: 'high' },
+    { title: 'Classes Use @TestVisible Annotation', severity: 'low' },
+    { title: 'Apex Classes Use JSON.deserializeUntyped()', severity: 'medium' },
+    { title: 'Apex Classes Use Type.forName() — Dynamic Class Instantiation', severity: 'medium' },
   ],
   'Data Model': [
     { title: 'Custom Objects Without Descriptions', severity: 'low' },
@@ -79,6 +88,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Objects with 100+ Custom Fields', severity: 'high' },
     { title: 'Objects Above 80% Custom Field Limit', severity: 'medium' },
     { title: 'Custom Object Count (>200)', severity: 'medium' },
+    { title: 'Lookup Field With Cascade Delete Enabled', severity: 'high' },
+    { title: 'Object With Large Data Volumes (500k+ Records)', severity: 'high' },
   ],
   'Service Cloud': [
     { title: 'Excessive Case Record Types (>10)', severity: 'medium' },
@@ -135,7 +146,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Entitlement Milestones With 5-Minute or Less Target Time', severity: 'high' },
     { title: 'Entitlement Processes With Duplicate Milestone Target Times', severity: 'high' },
     { title: 'Articles Visible in Legacy Self-Service Portal Channel', severity: 'low' },
-    { title: 'Knowledge Search Not Optimised (No Promoted Terms/Synonyms)', severity: 'medium' },
+    { title: 'Knowledge Search Not Optimized (No Promoted Terms/Synonyms)', severity: 'medium' },
     { title: 'Duplicate Published Article Titles', severity: 'medium' },
     { title: 'Published Articles Have No Summary', severity: 'low' },
     { title: 'No Knowledge Articles Attached to Any Case', severity: 'medium' },
@@ -185,6 +196,9 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Profiles With "View All Data" Permission', severity: 'critical' },
     { title: 'Profiles With "Modify All Data" Permission', severity: 'critical' },
     { title: 'Permission Sets With Both View All and Modify All on an Object', severity: 'high' },
+    { title: 'Public Groups Include "All Internal Users" or "All Partner Users"', severity: 'high' },
+    { title: 'Active Users Have Not Changed Password in 365+ Days', severity: 'medium' },
+    { title: 'Custom Profiles Have No Login IP Restrictions', severity: 'medium' },
   ],
   'Integrations': [
     { title: 'Remote Sites with Protocol Security Disabled', severity: 'critical' },
@@ -197,6 +211,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: "Active PushTopics — Streaming API Deprecated Summer '26", severity: 'high' },
     { title: 'No External Credentials Configured', severity: 'medium' },
     { title: 'No Dedicated Integration User Profiles Found', severity: 'medium' },
+    { title: 'Remote Site Settings Use Wildcard or Root Domain URLs', severity: 'high' },
   ],
   'Test Coverage': [
     { title: 'Low Test Class Ratio (<30%)', severity: 'high' },
@@ -243,11 +258,13 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Managed Packages Installed (>20)', severity: 'medium' },
     { title: 'Beta Managed Packages Installed in Org', severity: 'high' },
     { title: 'Managed Packages — Review for Currency', severity: 'low' },
+    { title: 'Managed Packages With No Active Licensed Users', severity: 'medium' },
   ],
   'Custom Metadata': [
     { title: 'Custom Settings in Use — Legacy Configuration Pattern', severity: 'medium' },
     { title: 'Custom Settings Without Descriptions', severity: 'low' },
     { title: 'No Custom Metadata Types Found', severity: 'medium' },
+    { title: 'Custom Metadata Types With No Records', severity: 'low' },
   ],
   'Record Types & Layouts': [
     { title: 'Inactive Record Types', severity: 'medium' },
@@ -284,6 +301,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Sites with More Than 30 Experience Builder Pages', severity: 'medium' },
     { title: 'Experience Cloud Sites with Over 100,000 Members', severity: 'medium' },
     { title: 'Live Sites with Unknown Template Type', severity: 'low' },
+    { title: 'Experience Cloud Users With System Administrator Profile', severity: 'critical' },
   ],
   'Connected App Security': [
     { title: 'Connected Apps Without Session Timeout', severity: 'high' },
@@ -298,6 +316,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: "Traditional Connected Apps — External Client Apps Are Spring '26 Standard", severity: 'medium' },
     { title: 'OAuth Tokens Belonging to Deactivated Users', severity: 'high' },
     { title: 'Connected Apps Bypassing IP Login Restrictions', severity: 'medium' },
+    { title: 'Salesforce Certificate Expiring Within 90 Days', severity: 'high' },
   ],
   'LWC & Components': [
     { title: 'LWC Bundles Without Descriptions', severity: 'low' },
@@ -389,6 +408,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Total Active Flows Exceeds 300', severity: 'medium' },
     { title: 'Apex Classes Exceed 5,000 Lines', severity: 'high' },
     { title: 'Large Static Resources Over 500 KB', severity: 'medium' },
+    { title: 'Objects Have Both Apex Triggers and Record-Triggered Flows', severity: 'high' },
+    { title: 'Apex Class Scheduled More Than Once', severity: 'medium' },
   ],
   'Notes & Attachments': [
     { title: 'Legacy Note Records Found', severity: 'high' },
@@ -409,9 +430,13 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Flows with Database Operations Inside Loops', severity: 'high' },
     { title: 'Flows Perform CRUD in System Context Without Sharing', severity: 'high' },
     { title: 'Flows Perform CRUD in System Context With Sharing', severity: 'low' },
-    { title: 'Obsolete Flow Versions Accumulating', severity: 'low' },
+    { title: 'Flow With Multiple Active Versions', severity: 'high' },
     { title: 'Active Flows Last Modified by a Deactivated User', severity: 'low' },
     { title: 'Flows Missing Descriptions', severity: 'low' },
+    { title: 'Flow With More Than 50 Elements', severity: 'medium' },
+    { title: 'Active Flows on Outdated API Versions (Pre-Summer \'17)', severity: 'medium' },
+    { title: 'Active Flows Never Modified After Activation', severity: 'low' },
+    { title: 'Active Flows Not Modified in Over 2 Years', severity: 'low' },
   ],
 };
 
