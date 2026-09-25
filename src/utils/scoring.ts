@@ -405,26 +405,13 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // DML operations in loops (insert/update/delete/upsert/merge in for/while)
-  // Split on method boundaries to avoid cross-method false positives.
+  // Uses proximity matching: DML keyword must appear within ~600 chars of the loop
+  // opening brace, meaning it's likely inside the loop body. This avoids the common
+  // false positive where DML appears after the loop closes in the same method.
   function hasDmlInLoopPerMethod(body: string): boolean {
-    const dmlKeywords = /\b(insert|update|delete|upsert|merge)\b/i;
-    const forPattern = /\bfor\s*\(/i;
-    const whilePattern = /\bwhile\s*\(/i;
-    // Find method start positions by scanning for method-signature-like declarations
-    const methodPattern = /\b(?:public|private|protected|global|override|static|void|String|Integer|Boolean|List|Map|Set|\w+)\s+\w+\s*\([^)]{0,300}\)\s*\{/gi;
-    const starts: number[] = [];
-    let m: RegExpExecArray | null;
-    const mp = new RegExp(methodPattern.source, 'gi');
-    while ((m = mp.exec(body)) !== null) starts.push(m.index);
-    if (starts.length === 0) {
-      // No method boundaries found — fall back to checking whole body
-      return (forPattern.test(body) || whilePattern.test(body)) && dmlKeywords.test(body);
-    }
-    for (let i = 0; i < starts.length; i++) {
-      const segment = body.slice(starts[i], starts[i + 1] ?? body.length);
-      if ((forPattern.test(segment) || whilePattern.test(segment)) && dmlKeywords.test(segment)) return true;
-    }
-    return false;
+    const dmlInForPattern = /\bfor\s*\([\s\S]{0,400}?\)\s*\{[\s\S]{0,600}?\b(insert|update|delete|upsert|merge)\b/gi;
+    const dmlInWhilePattern = /\bwhile\s*\([\s\S]{0,200}?\)\s*\{[\s\S]{0,600}?\b(insert|update|delete|upsert|merge)\b/gi;
+    return dmlInForPattern.test(body) || dmlInWhilePattern.test(body);
   }
   const dmlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
