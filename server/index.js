@@ -118,7 +118,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 if (!isProduction) {
   app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 }
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
   resave: false,
