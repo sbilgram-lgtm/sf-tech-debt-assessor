@@ -370,13 +370,15 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // Check for hardcoded IDs — Salesforce IDs are 15 or 18 chars, alphanumeric only (no underscores),
-  // and must not be part of a longer identifier. Require them to appear after = or in an explicit Id/string context.
+  // and must not be part of a longer identifier. Require the string to start with a digit since
+  // all standard Salesforce key prefixes (001, 003, 005, 006, 00Q, etc.) begin with a digit.
+  // This prevents false positives from constants, hash values, or arbitrary string literals.
   const hardcodedIds = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    // 15-char or 18-char purely alphanumeric strings in quotes preceded by = or , or ( — avoids API names with underscores
-    const idPattern = /(?:=\s*|,\s*|\(\s*)['"]([a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})['"]/g;
-    const matches = body.match(idPattern) || [];
-    return matches.length > 0;
+    // Must start with a digit to match Salesforce record ID key prefix pattern
+    const idPattern = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{14}['"]/g;
+    const idPattern18 = /(?:=\s*|,\s*|\(\s*)['"]\d[a-zA-Z0-9]{17}['"]/g;
+    return idPattern.test(body) || idPattern18.test(body);
   });
   if (hardcodedIds.length > 0) {
     items.push(createDebtItem(
