@@ -105,7 +105,7 @@ add_text(slide, "SF Tech Debt Assessor", 0.6, 1.4, 12, 1.1,
          size=44, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 add_text(slide, "Automated Salesforce Org Health Assessment", 0.6, 2.6, 12, 0.6,
          size=22, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
-add_text(slide, "23 Categories  ·  349 Checks  ·  Read-Only OAuth", 0.6, 3.2, 12, 0.5,
+add_text(slide, "23 Categories  ·  390 Checks  ·  Read-Only OAuth", 0.6, 3.2, 12, 0.5,
          size=15, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER, italic=True)
 add_text(slide, "Steven Bilgram, Success Architect  |  2026",
          0.6, 6.05, 12, 0.5,
@@ -155,14 +155,14 @@ footer(slide, 3)
 
 add_text(slide,
          "A web app that connects directly to any Salesforce org via OAuth and automatically "
-         "runs a scored technical debt assessment across 23 categories and 349 checks — producing a "
+         "runs a scored technical debt assessment across 23 categories and 390 checks — producing a "
          "stakeholder-ready report, drill-down record detail, and a phased remediation roadmap.",
          0.4, 1.3, 12.5, 0.9, size=14, color=NAVY)
 
 steps = [
     ("1", "Register",  "Set up a Connected App\nor External Client App\n(one-time, ~5 min)"),
     ("2", "Connect",   "Authenticate via OAuth\nusing your org credentials"),
-    ("3", "Assess",    "23-category scan across\n349 checks runs automatically"),
+    ("3", "Assess",    "23-category scan across\n390 checks runs automatically"),
     ("4", "Export",    "PDF · Excel · CSV ·\nRemediation Roadmap"),
 ]
 
@@ -211,7 +211,7 @@ add_text(slide, "Option A — External Client App (Spring '25+)", 0.5, 2.73, 5.8
          size=11.5, bold=True, color=WHITE)
 add_bullet_box(slide, [
     "Setup → External Client Apps → New",
-    "Enable OAuth  ·  Disable PKCE",
+    "Enable OAuth (PKCE handled automatically — no changes needed)",
     "Callback URL: sf-tech-debt-assessor-production.up.railway.app/auth/callback",
     "Scopes: api  +  refresh_token",
     "Save → wait ~10 min → View Consumer Details for Key & Secret",
@@ -224,7 +224,7 @@ add_text(slide, "Option B — Connected App (older orgs)", 0.5, 4.91, 5.8, 0.34,
          size=11.5, bold=True, color=WHITE)
 add_bullet_box(slide, [
     "Setup → App Manager → New Connected App",
-    "Enable OAuth Settings  ·  Disable PKCE",
+    "Enable OAuth Settings (PKCE handled automatically — no changes needed)",
     "Callback URL: sf-tech-debt-assessor-production.up.railway.app/auth/callback",
     "Scopes: api  +  refresh_token",
     "Save → wait ~10 min → Manage Consumer Details for Key & Secret",
@@ -279,31 +279,31 @@ add_bullet_box(slide, [
 slide = prs.slides.add_slide(BLANK)
 add_rect(slide, 0, 0, 13.33, 7.5, fill=LIGHT_BG)
 header_band(slide, "What It Assesses",
-            "23 categories · 349 checks covering the full Salesforce technical stack")
+            "23 categories · 390 checks covering the full Salesforce technical stack")
 footer(slide, 5)
 
 categories = [
-    ("Sharing & Security",        29),
-    ("Connected App Security",    12),
-    ("Experience Cloud",          16),
-    ("Code Quality",              45),
+    ("Sharing & Security",        35),
+    ("Connected App Security",    13),
+    ("Experience Cloud",          17),
+    ("Code Quality",              52),
     ("Test Coverage",              7),
     ("LWC & Components",          39),
     ("OmniStudio",                26),
-    ("Flow Quality",               6),
-    ("Performance",               20),
+    ("Flow Quality",              11),
+    ("Performance",               22),
     ("Org Limits",                 5),
     ("Platform Events",            3),
-    ("Configuration",             13),
-    ("Data Model",                 5),
+    ("Configuration",             22),
+    ("Data Model",                 7),
     ("Record Types & Layouts",     5),
-    ("Custom Metadata",            3),
+    ("Custom Metadata",            4),
     ("Duplicate Rules",            4),
-    ("Integrations",               9),
+    ("Integrations",              11),
     ("Service Cloud",             70),
     ("Einstein & AI",              9),
-    ("Managed Packages",           3),
-    ("Reports & Dashboards",       5),
+    ("Managed Packages",           4),
+    ("Reports & Dashboards",       9),
     ("Email Templates",            3),
     ("Notes & Attachments",       12),
 ]
@@ -334,14 +334,11 @@ footer(slide, 6)
 
 ux_features = [
     (SF_BLUE,  "Branded Split-Screen Landing Page",
-     "Salesforce blue gradient hero panel with headline, stats bar, and 22-category grid "
+     "Salesforce blue gradient hero panel with headline, stats bar, and 23-category grid "
      "displayed alongside the OAuth credential form — value proposition visible at the moment of login."),
     (PURPLE,   "Category Detail Modals",
      "Click any category card on the landing page to instantly see all checks for that "
      "category, each with a color-coded severity badge (Critical · High · Medium · Low)."),
-    (GREEN,    "In-App Setup Guide",
-     "'Need Instructions?' opens a full step-by-step Connected App / External Client App "
-     "setup walkthrough — including troubleshooting — without leaving the app."),
     (SF_BLUE,  "Auto-Run on Login",
      "The assessment starts immediately after OAuth completion — no intermediate screen, "
      "no extra button click. Progress is shown category by category as the scan runs."),
@@ -352,6 +349,10 @@ ux_features = [
      "Full-screen phased action plan ordered by severity then category. "
      "Every item includes title, description, recommendation, and record count. "
      "Print or save as PDF in one click."),
+    (GREEN,    "AI Chat Panel (Powered by Gemini)",
+     "Ask AI opens a side panel with the full assessment context pre-loaded. "
+     "Ask questions like 'What are the quick wins?' or 'Estimate total remediation effort' "
+     "and get streamed, markdown-formatted answers grounded in the org's findings."),
 ]
 
 for i, (color, title, body) in enumerate(ux_features):
@@ -510,12 +511,12 @@ add_text(slide, "Ready to See It in Action?", 0.6, 1.1, 12, 0.9,
          size=36, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 add_text(slide,
          "SF Tech Debt Assessor is live and available today.\n"
-         "Connect any Salesforce org and run a full 23-category, 349-check assessment in under 5 minutes.",
+         "Connect any Salesforce org and run a full 23-category, 390-check assessment in under 5 minutes.",
          0.6, 2.1, 12, 0.9,
          size=16, color=RGBColor(0xAB, 0xB2, 0xB9), align=PP_ALIGN.CENTER)
 
 # Stat bar
-stats = [("23", "Categories"), ("349", "Checks"), ("100%", "Read-Only")]
+stats = [("23", "Categories"), ("390", "Checks"), ("100%", "Read-Only")]
 for i, (val, lbl) in enumerate(stats):
     x = 1.5 + i * 3.5
     add_rect(slide, x, 3.2, 3.0, 1.3, fill=RGBColor(0x07, 0x50, 0x9A))
@@ -539,7 +540,7 @@ add_text(slide, "Independent tool — not affiliated with or endorsed by Salesfo
 
 # ── Save ─────────────────────────────────────────────────────────
 out = os.path.expanduser(
-    "~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-08-01.pptx"
+    "~/Desktop/SF_Tech_Debt_Assessor_Executive_Presentation_2026-09-27.pptx"
 )
 prs.save(out)
 print(f"Saved: {out}")
