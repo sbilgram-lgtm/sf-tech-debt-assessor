@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: September 22, 2026*
+*Last updated: September 27, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **384 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **390 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,31 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — September 27, 2026
+
+**9 dead/inactive metadata checks added across 4 categories** — total checks: 382 → 390
+
+These checks detect deployed configuration and code that is explicitly disabled or has never been used, reducing org clutter and surfacing items that indicate historical issues (e.g. triggers disabled due to a bug and never re-enabled).
+
+**Code Quality (2 new):**
+- **Inactive Apex Triggers** (Medium) — triggers deployed but set to `Status = Inactive`; commonly disabled during a bug and forgotten
+- **Inactive Apex Classes** (Medium) — classes deployed but set to `Status = Inactive`; cannot execute even if called
+
+**Configuration (4 new):**
+- **Inactive Validation Rules** (Low) — rules disabled during data migrations and left off
+- **Inactive Workflow Rules** (Low) — dead automation; especially relevant as Salesforce retires Workflow Rules
+- **Inactive Approval Processes** (Low) — abandoned approval logic that adds noise to the automation inventory
+- **Inactive Assignment Rules** (Low) — disabled routing logic for Case and Lead
+
+**Reports & Dashboards (1 new):**
+- **Reports Never Run** (Low) — reports with `LastRunDate = null`; built, never used
+
+**Bug fixes also included in this release:**
+- AI chat "Service Not Available" in customer orgs: root cause was Express's default 100 kb JSON body limit — large orgs' assessment context exceeded it, causing a 413 before Gemini was ever called. Fixed with `express.json({ limit: '10mb' })`.
+- Login page modal check lists synced with scoring.ts — 27 missing check entries added across 11 categories, plus a missing "Dashboards Never Viewed" entry. Total checks: 371 → 382 (prior release).
 
 ---
 
@@ -329,33 +354,33 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 
 | Category | Checks | What it checks |
 |---|---|---|
-| **Configuration** | 14 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, validation rules with no error message, JavaScript buttons/links broken in LEX, excessive Feed Tracking |
-| **Code Quality** | 48 | See detail table below |
-| **Data Model** | 5 | Object/field descriptions, field sprawl, object count |
+| **Configuration** | 22 | Workflow Rules, Process Builders, s-Controls ⚠️ deprecated, active PushTopics ⚠️ Summer '26, pending time-based WF actions, Login Flows, Classic Approval Processes ⚠️ Spring '26, legacy Einstein for Flow actions, Web-to-Case without CAPTCHA, legacy Case Auto-Response Rules, validation rules, validation rules with no error message, JavaScript buttons/links broken in LEX, excessive Feed Tracking, inactive validation rules, inactive workflow rules, inactive approval processes, inactive assignment rules |
+| **Code Quality** | 52 | See detail table below |
+| **Data Model** | 7 | Object/field descriptions, field sprawl, object count, cascade delete relationships, large data volumes |
 | **Service Cloud** | 70 | See detail table below |
-| **Sharing & Security** | 33 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth, users with no role assigned, profiles with View All Data, profiles with Modify All Data, permission sets with object-level View All + Modify All |
-| **Integrations** | 10 | Named vs External Credentials, Named Credentials using Password auth, hardcoded endpoints, remote site SSL, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
+| **Sharing & Security** | 35 | OWD, MFA enrollment, stale users, Password Never Expires, guest sites, Security Health Check, OAuth tokens, guest profiles with Case access, privileged users ⚠️ phishing-resistant MFA enforced May 2026, PSG adoption, cloned SysAdmin profiles, Transaction Security Policies, users with excessive permission sets, profiles with no active users, permission sets assigned to no users, roles with no active users, role hierarchy depth, users with no role assigned, profiles with View All Data, profiles with Modify All Data, permission sets with object-level View All + Modify All |
+| **Integrations** | 11 | Named vs External Credentials, Named Credentials using Password auth, hardcoded endpoints, remote site SSL, wildcard remote site URLs, retired API Apex, active PushTopics ⚠️ Summer '26, dedicated integration users |
 | **Test Coverage** | 7 | Zero-coverage classes, below-75% components, test class ratio, assert messages, runAs usage, deprecated testMethod keyword |
 | **Org Limits** | 5 | All org limits — flags anything ≥50% consumed; Apex class count approaching ~5,000 limit; custom object count approaching ~900 limit |
 | **Duplicate & Matching Rules** | 4 | Missing rules, inactive rules, undocumented rules |
-| **Reports & Dashboards** | 7 | Stale reports/dashboards, report proliferation, reports in personal folders, unused Custom Report Types, reports owned by deactivated users, dashboards owned by deactivated users |
+| **Reports & Dashboards** | 9 | Stale reports/dashboards, report proliferation, reports in personal folders, unused Custom Report Types, reports owned by deactivated users, dashboards owned by deactivated users, dashboards never viewed, reports never run |
 | **Email Templates** | 3 | Classic (legacy) templates, templates not updated in 2+ years |
 | **Platform Events & CDC** | 3 | Unsubscribed event channels, excessive CDC entities |
-| **Managed Packages** | 3 | Beta packages, package count, version currency |
-| **Custom Metadata & Settings** | 3 | Custom Settings vs Custom Metadata Types, undocumented settings |
+| **Managed Packages** | 4 | Beta packages, package count, version currency, no active licensed users |
+| **Custom Metadata & Settings** | 4 | Custom Settings vs Custom Metadata Types, undocumented settings, types with no records |
 | **Record Types & Page Layouts** | 5 | Inactive record types, excessive layouts, undocumented types, orphaned page layouts not assigned to any profile |
 | **Einstein & AI** | 9 | Einstein/Agentforce enablement, prompt templates, inactive bots, inactive AI Applications, Case Classification training data, Agent Topics, Agent Actions, Data Cloud connection |
-| **Experience Cloud** | 16 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing (LWR & Aura), self-registration, CDN, custom domains, guest access, Aura guest page caching, high page count per site, large network member base |
-| **Connected App Security** | 12 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026, OAuth tokens for deactivated users, Connected Apps bypassing IP restrictions |
+| **Experience Cloud** | 17 | WCAG 2.2 ⚠️ Summer '26, clickjack protection, XSS/content-sniffing (LWR & Aura), self-registration, CDN, custom domains, guest access, Aura guest page caching, high page count per site, large network member base, SysAdmin profile users |
+| **Connected App Security** | 13 | Session timeouts, stale OAuth tokens, certificates ⚠️ 200-day cap March 2026, CTI adapters, External Client Apps, Outbound Messages ⚠️ Session ID retired Feb 2026, OAuth tokens for deactivated users, Connected Apps bypassing IP restrictions, certificate expiring within 90 days |
 | **LWC & Components** | 39 | See detail table below |
-| **OmniStudio** | 25 | See detail table below |
-| **Performance** | 20 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, total active flows (>300), Platform Cache, wide objects, event log files, large static resources (>500 KB) |
+| **OmniStudio** | 26 | See detail table below |
+| **Performance** | 22 | Large Apex classes (>1,000 and >5,000 lines), multi-trigger objects, async job queue depth, stuck jobs (>24h), failed jobs, scheduled Apex, active trace flags, record-triggered flows, total active flows (>300), Platform Cache, wide objects, event log files, large static resources (>500 KB), triggers and flows on same object, class scheduled more than once |
 | **Notes & Attachments** | 12 | Legacy Note/Attachment records, Enhanced Notes enablement, orphaned ContentDocuments, oversized files (>25 MB), untitled files, externally shared files, files with no expiry date, objects with 10k+ attachments, files not viewed in 2+ years, file distribution by object, Content Libraries |
-| **Flow Quality** | 9 | See detail table below |
+| **Flow Quality** | 11 | See detail table below |
 
 ---
 
-### Code Quality — All 48 Checks
+### Code Quality — All 52 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -407,7 +432,10 @@ Checks are validated against Salesforce Spring '26 and Summer '26 release notes.
 | 46 | `System.runAs()` in production code — privilege escalation (test-only method) | Critical |
 | 47 | Schedulable classes without try/catch in `execute()` — silent job failures | High |
 | 48 | `@TestVisible` usage — tests coupled to internal implementation | Low |
-| 46 | `System.debug()` without `LoggingLevel` parameter (PMD: DebugsShouldUseLoggingLevel) | Low |
+| 49 | `JSON.deserializeUntyped()` usage — loses type safety, prefer typed deserialization | Medium |
+| 50 | `Type.forName()` usage — dynamic class loading bypasses compiler checks | Medium |
+| 51 | Inactive Apex Triggers — deployed but disabled | Medium |
+| 52 | Inactive Apex Classes — deployed but disabled, cannot execute | Medium |
 
 ---
 
@@ -527,7 +555,7 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 
 ---
 
-### Flow Quality — All 9 Checks
+### Flow Quality — All 11 Checks
 
 | # | Check | Severity |
 |---|---|---|
@@ -540,6 +568,8 @@ Automatically detects whether the org uses native OmniStudio (`OmniProcess`) or 
 | 7 | Active flows with no description | Low |
 | 8 | Flows with multiple active versions — API/deploy anomaly causing duplicate execution | High |
 | 9 | Flows with more than 50 elements — maintainability and debugging risk | Medium |
+| 10 | Flows on outdated API versions (pre-Summer '17, v39 or earlier) | Medium |
+| 11 | Abandoned flows — no active version exists | Medium |
 
 ---
 
