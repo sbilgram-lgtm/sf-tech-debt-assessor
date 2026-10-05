@@ -87,6 +87,10 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Apex Classes Use Type.forName() — Dynamic Class Instantiation', severity: 'medium' },
     { title: 'Inactive Apex Triggers', severity: 'medium' },
     { title: 'Inactive Apex Classes', severity: 'medium' },
+    { title: 'Failed Async Apex Jobs in Last 7 Days', severity: 'low' },
+    { title: 'Async Apex Jobs Stuck in Queue for Over 24 Hours', severity: 'medium' },
+    { title: 'Active Debug Trace Flags on Production Users', severity: 'medium' },
+    { title: 'Apex Classes Over 1,000 Lines', severity: 'low' },
   ],
   'Data Model': [
     { title: 'Custom Objects Without Descriptions', severity: 'low' },
@@ -122,6 +126,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Service Contracts Have No Linked Entitlements', severity: 'high' },
     { title: 'Email-to-Case Routing Addresses Without TLS', severity: 'critical' },
     { title: 'Email-to-Case Routing Addresses Have No Default Owner', severity: 'high' },
+    { title: 'Email-to-Case Threading Not Enabled', severity: 'high' },
     { title: 'Inbound Emails Creating New Cases Instead of Threading', severity: 'high' },
     { title: 'Email Service Addresses Accept Emails from Any Sender', severity: 'medium' },
     { title: 'Live Chat Buttons Not Routed Through Omni-Channel', severity: 'critical' },
@@ -234,6 +239,9 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Org Limit 50–74% Consumed', severity: 'medium' },
     { title: 'Active Apex Classes Approaching Org Limit', severity: 'high' },
     { title: 'Custom Objects Approaching Org Limit', severity: 'high' },
+    { title: 'Scheduled Apex Jobs Approaching 100-Job Limit', severity: 'medium' },
+    { title: 'Custom Fields Per Object Approaching 500-Field Limit', severity: 'medium' },
+    { title: 'No Platform Cache Partitions Configured', severity: 'low' },
   ],
   'Duplicate Rules': [
     { title: 'No Duplicate Rules Configured', severity: 'high' },
@@ -445,6 +453,10 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Active Flows on Outdated API Versions (Pre-Summer \'17)', severity: 'medium' },
     { title: 'Abandoned Flows — No Active Version', severity: 'medium' },
     { title: 'Active Flows Not Modified in Over 2 Years', severity: 'low' },
+    { title: 'Flows Approaching 50-Version Limit', severity: 'medium' },
+    { title: 'Flow Interviews Paused for Over 30 Days', severity: 'low' },
+    { title: 'Paused Flow Interviews Owned by Deactivated Users', severity: 'medium' },
+    { title: 'Record-Triggered Flows on High-Volume Objects', severity: 'low' },
   ],
 };
 

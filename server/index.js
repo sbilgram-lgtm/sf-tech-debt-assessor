@@ -463,9 +463,13 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const jsonDeserializeUntypedClasses = (classes.records || []).filter(c => /JSON\.deserializeUntyped\s*\(/i.test(c.Body || ''));
     const typeForNameClasses = (classes.records || []).filter(c => /Type\.forName\s*\(\s*['"]/.test(c.Body || ''));
 
-    const [inactiveTriggersRes, inactiveClassesRes] = await Promise.all([
+    const [inactiveTriggersRes, inactiveClassesRes, failedAsyncJobsRes, stuckAsyncJobsRes, traceFlagsRes, largeApexClassesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, TableEnumOrId FROM ApexTrigger WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, ApexClass.Name, Status, NumberOfErrors, CreatedDate FROM AsyncApexJob WHERE Status = 'Failed' AND CreatedDate = LAST_N_DAYS:7 AND JobType IN ('BatchApex','Future','Queueable','ScheduledApex') LIMIT 100").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, ApexClass.Name, Status, CreatedDate FROM AsyncApexJob WHERE Status IN ('Holding','Queued') AND CreatedDate < LAST_N_DAYS:1 AND JobType IN ('BatchApex','Queueable') LIMIT 50").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, LogType, StartDate, ExpirationDate, TracedEntityId, TracedEntity.Name FROM TraceFlag WHERE ExpirationDate > TODAY AND LogType = 'USER_DEBUG' LIMIT 50").catch(() => ({ records: [] })),
+      safeQuery(conn, "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 ORDER BY LengthWithoutComments DESC LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
     res.json({
@@ -481,7 +485,11 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       jsonDeserializeUntypedClasses,
       typeForNameClasses,
       inactiveTriggers: inactiveTriggersRes.records || [],
-      inactiveClasses: inactiveClassesRes.records || []
+      inactiveClasses: inactiveClassesRes.records || [],
+      failedAsyncJobs: failedAsyncJobsRes.records || [],
+      stuckAsyncJobs: stuckAsyncJobsRes.records || [],
+      activeTraceFlags: traceFlagsRes.records || [],
+      largeApexClasses: largeApexClassesRes.records || []
     });
   } catch (err) {
     console.error('Apex assessment error:', err);
@@ -628,10 +636,17 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
     const serviceContractsWithoutEntitlements = (serviceContractsRaw.records || []).filter(sc => !contractIdsWithEntitlements.has(sc.Id));
 
     // Email-to-Case
-    const [emailRoutingAddresses, emailServicesAddresses] = await Promise.all([
+    const [emailRoutingAddresses, emailServicesAddresses, emailToCaseSettingsRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, RoutingName, EmailAddress, TlsMode, OwnerId, IsVerified FROM CaseEmailRoutingAddress LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, LocalPart, AuthorizedSenders FROM EmailServicesAddress WHERE Function.IsActive = true LIMIT 200").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, LocalPart, AuthorizedSenders FROM EmailServicesAddress WHERE Function.IsActive = true LIMIT 200").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, SettingName, SettingValue FROM OrgPreference WHERE SettingName IN ('EmailToCaseEnabled', 'EmailToCaseThreadingEnabled') LIMIT 10").catch(() => ({ records: [] }))
     ]);
+    const emailToCaseEnabled = (emailToCaseSettingsRes.records || []).some(
+      r => r.SettingName === 'EmailToCaseEnabled' && (r.SettingValue === 'true' || r.SettingValue === true)
+    );
+    const emailToCaseThreadingEnabled = (emailToCaseSettingsRes.records || []).some(
+      r => r.SettingName === 'EmailToCaseThreadingEnabled' && (r.SettingValue === 'true' || r.SettingValue === true)
+    );
 
     let emailThreadingGapCount = 0;
     try {
@@ -941,6 +956,8 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       entitlementTemplateCount: (entitlementTemplates.records[0] || {}).expr0 || 0,
       emailRoutingAddresses: emailRoutingAddresses.records || [],
       emailServicesAddresses: emailServicesAddresses.records || [],
+      emailToCaseEnabled,
+      emailToCaseThreadingEnabled,
       emailThreadingGapCount,
       liveChatButtons: liveChatButtons.records || [],
       liveChatDeployments: liveChatDeployments.records || [],
@@ -1452,7 +1469,16 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
       ? (customObjectLimitEntry.Max || 0) - (customObjectLimitEntry.Remaining !== undefined ? customObjectLimitEntry.Remaining : customObjectLimitEntry.Max || 0)
       : 0;
 
-    res.json({ limits, apexClassCount, customObjectCount });
+    const [scheduledApexRes, customFieldsPerObjectRes, platformCacheRes] = await Promise.all([
+      safeQuery(conn, "SELECT COUNT(Id) FROM CronTrigger WHERE CronJobDetail.JobType = '7'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT EntityDefinitionId, EntityDefinition.QualifiedApiName, COUNT(Id) fieldCount FROM FieldDefinition WHERE IsCustom = true AND NamespacePrefix = null GROUP BY EntityDefinitionId, EntityDefinition.QualifiedApiName ORDER BY COUNT(Id) DESC LIMIT 50").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, MasterLabel, IsDefaultPartition, OrganizationCacheAllocation, SessionCacheAllocation FROM PlatformCachePartition LIMIT 10").catch(() => ({ records: [] }))
+    ]);
+    const scheduledApexCount = (scheduledApexRes.records[0] || {}).expr0 || 0;
+    const customFieldsPerObject = customFieldsPerObjectRes.records || [];
+    const platformCachePartitions = platformCacheRes.records || [];
+
+    res.json({ limits, apexClassCount, customObjectCount, scheduledApexCount, customFieldsPerObject, platformCachePartitions });
   } catch (err) {
     console.error('Org limits assessment error:', err);
     res.status(500).json({ error: err.message });
@@ -2310,7 +2336,11 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       largeFlowElementsResult,
       oldApiVersionFlowsRes,
       abandonedFlowsRes,
-      staleFlowsRes
+      staleFlowsRes,
+      flowVersionCountsRes,
+      pausedFlowInterviewsRes,
+      scheduledFlowsInactiveOwnerRes,
+      highVolumeFlowsRes
     ] = await Promise.all([
       safeQuery(conn, "SELECT Id, MasterLabel, DeveloperName, ProcessType, RunInMode, Description FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null ORDER BY MasterLabel ASC LIMIT 500").catch(() => ({ records: [] })),
       // FlowElement is Tooling API only — must use safeToolingQuery here.
@@ -2341,10 +2371,20 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       // Flow definitions with no active version (abandoned drafts)
       safeToolingQuery(conn, "SELECT Id, DeveloperName, MasterLabel FROM FlowDefinition WHERE ActiveVersionId = null AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
       // Active flows not modified in 2+ years
-      safeToolingQuery(conn, `SELECT Id, MasterLabel, DeveloperName, ProcessType, LastModifiedDate FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND LastModifiedDate < ${twoYearsAgo} LIMIT 200`).catch(() => ({ records: [] }))
+      safeToolingQuery(conn, `SELECT Id, MasterLabel, DeveloperName, ProcessType, LastModifiedDate FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND LastModifiedDate < ${twoYearsAgo} LIMIT 200`).catch(() => ({ records: [] })),
+      // Flow version counts per definition — flag flows approaching 50-version limit
+      safeToolingQuery(conn, "SELECT Definition.DeveloperName, Definition.MasterLabel, COUNT(Id) versionCount FROM Flow WHERE Definition.ActiveVersionId != null GROUP BY Definition.DeveloperName, Definition.MasterLabel ORDER BY COUNT(Id) DESC LIMIT 50").catch(() => ({ records: [] })),
+      // Paused flow interviews older than 30 days
+      safeQuery(conn, "SELECT COUNT(Id) FROM FlowInterview WHERE IsPaused = true AND CreatedDate < LAST_N_DAYS:30").catch(() => ({ records: [{ expr0: 0 }] })),
+      // Paused flow interviews owned by deactivated users
+      safeQuery(conn, "SELECT Id, Name, InterviewOwner.Name, InterviewOwner.IsActive, CreatedDate FROM FlowInterview WHERE IsPaused = true AND InterviewOwner.IsActive = false LIMIT 50").catch(() => ({ records: [] })),
+      // Record-triggered flows on high-volume objects
+      safeToolingQuery(conn, "SELECT Id, MasterLabel, DeveloperName, TriggerObjectOrEventLabel, ProcessType FROM FlowDefinition WHERE ActiveVersionId != null AND ProcessType = 'AutoLaunchedFlow' AND TriggerObjectOrEventLabel IN ('Task', 'Event', 'ActivityHistory', 'EmailMessage', 'FeedItem', 'ContentDocument') LIMIT 50").catch(() => ({ records: [] }))
     ]);
 
     const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;
+    const pausedFlowInterviewCount = (pausedFlowInterviewsRes.records[0] || {}).expr0 || 0;
+    const flowsNearVersionLimit = (flowVersionCountsRes.records || []).filter(f => (f.versionCount || f.expr0 || 0) >= 25);
 
     // Cross-reference large-flow element counts with active flow metadata for display names
     const activeFlowMap = new Map((allFlows.records || []).map(f => [f.Id, f]));
@@ -2365,7 +2405,11 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       largeFlows,
       oldApiVersionFlows: oldApiVersionFlowsRes.records || [],
       abandonedFlows: abandonedFlowsRes.records || [],
-      staleFlows: staleFlowsRes.records || []
+      staleFlows: staleFlowsRes.records || [],
+      flowsNearVersionLimit,
+      pausedFlowInterviewCount,
+      scheduledFlowsInactiveOwner: scheduledFlowsInactiveOwnerRes.records || [],
+      highVolumeObjectFlows: highVolumeFlowsRes.records || []
     });
   } catch (err) {
     console.error('Flow Quality assessment error:', err);

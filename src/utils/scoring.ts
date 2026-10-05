@@ -1218,6 +1218,69 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
+  // ── Failed / stuck async Apex jobs ───────────────────────────────────────────
+  const failedAsyncJobs: any[] = (apex as any).failedAsyncJobs || [];
+  const stuckAsyncJobs: any[] = (apex as any).stuckAsyncJobs || [];
+  if (failedAsyncJobs.length >= 20) {
+    items.push(createDebtItem('code', 'high',
+      `${failedAsyncJobs.length} Failed Async Apex Jobs in the Last 7 Days`,
+      'Failed batch, future, queueable, or scheduled Apex jobs indicate recurring runtime errors. Data processing, integrations, or scheduled automation is silently failing.',
+      'Review failed jobs in Setup → Apex Jobs. Check ApexJob error messages for root causes. Add error notification via Database.BatchableContext.getJobId() or implement an Apex error notification framework.',
+      { count: failedAsyncJobs.length, records: failedAsyncJobs.slice(0, 20).map((j: any) => ({ name: j.ApexClass?.Name || 'Unknown', detail: `Failed · ${new Date(j.CreatedDate).toLocaleDateString()}` })) }));
+  } else if (failedAsyncJobs.length >= 6) {
+    items.push(createDebtItem('code', 'medium',
+      `${failedAsyncJobs.length} Failed Async Apex Jobs in the Last 7 Days`,
+      'Failed batch, future, queueable, or scheduled Apex jobs indicate recurring runtime errors. Data processing, integrations, or scheduled automation is silently failing.',
+      'Review failed jobs in Setup → Apex Jobs. Check ApexJob error messages for root causes. Add error notification via Database.BatchableContext.getJobId() or implement an Apex error notification framework.',
+      { count: failedAsyncJobs.length, records: failedAsyncJobs.slice(0, 20).map((j: any) => ({ name: j.ApexClass?.Name || 'Unknown', detail: `Failed · ${new Date(j.CreatedDate).toLocaleDateString()}` })) }));
+  } else if (failedAsyncJobs.length >= 1) {
+    items.push(createDebtItem('code', 'low',
+      `${failedAsyncJobs.length} Failed Async Apex Job${failedAsyncJobs.length !== 1 ? 's' : ''} in the Last 7 Days`,
+      'Failed batch, future, queueable, or scheduled Apex jobs indicate runtime errors. Data processing, integrations, or scheduled automation may not be completing successfully.',
+      'Review failed jobs in Setup → Apex Jobs. Check ApexJob error messages for root causes. Add error notification via Database.BatchableContext.getJobId() or implement an Apex error notification framework.',
+      { count: failedAsyncJobs.length, records: failedAsyncJobs.slice(0, 20).map((j: any) => ({ name: j.ApexClass?.Name || 'Unknown', detail: `Failed · ${new Date(j.CreatedDate).toLocaleDateString()}` })) }));
+  }
+
+  if (stuckAsyncJobs.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${stuckAsyncJobs.length} Async Apex Job${stuckAsyncJobs.length !== 1 ? 's' : ''} Stuck in Queue for Over 24 Hours`,
+      'Jobs in Holding or Queued state for more than 24 hours indicate a blocked Apex queue. Dependent automation is not running.',
+      'Abort stuck jobs via Setup → Apex Jobs or System.abortJob(). Investigate whether a prior job is holding the queue. Check for governor limit exhaustion blocking new job enqueue.',
+      { count: stuckAsyncJobs.length, records: stuckAsyncJobs.slice(0, 20).map((j: any) => ({ name: j.ApexClass?.Name || 'Unknown', detail: `${j.Status} since ${new Date(j.CreatedDate).toLocaleDateString()}` })) }));
+  }
+
+  // ── Active Trace Flags on production users ────────────────────────────────────
+  const activeTraceFlags: any[] = (apex as any).activeTraceFlags || [];
+  if (activeTraceFlags.length > 0) {
+    items.push(createDebtItem('code', 'medium',
+      `${activeTraceFlags.length} Active Debug Trace Flag${activeTraceFlags.length !== 1 ? 's' : ''} on Production Users`,
+      'Active trace flags generate debug logs for every transaction the user executes, consuming log storage and degrading transaction performance. Trace flags left on after debugging are a common oversight that accumulates silently.',
+      'Remove active trace flags in Setup → Debug Logs. Only enable trace flags during active debugging sessions, and always set a short expiration (< 1 hour). Use Apex exception emails or a logging framework instead of persistent debug logs.',
+      { count: activeTraceFlags.length, records: activeTraceFlags.map((f: any) => ({ name: (f.TracedEntity && f.TracedEntity.Name) || f.TracedEntityId, detail: `Expires: ${new Date(f.ExpirationDate).toLocaleDateString()}` })) }));
+  }
+
+  // ── Apex classes over 1,000 lines ─────────────────────────────────────────────
+  const largeApexClasses: any[] = (apex as any).largeApexClasses || [];
+  if (largeApexClasses.length >= 16) {
+    items.push(createDebtItem('code', 'high',
+      `${largeApexClasses.length} Apex Classes Over 1,000 Lines`,
+      'Classes over 1,000 lines without comments typically combine multiple responsibilities, making them difficult to test, maintain, and extend. Very large classes (2,000+ lines) are a strong indicator of missing service/handler decomposition.',
+      'Refactor large classes by extracting discrete responsibilities into separate service classes. Target single-responsibility classes under 300 lines. Prioritize the largest classes first — they carry the highest change risk.',
+      { count: largeApexClasses.length, records: largeApexClasses.slice(0, 20).map((c: any) => ({ name: c.Name, detail: `${(c.LengthWithoutComments || 0).toLocaleString()} lines` })) }));
+  } else if (largeApexClasses.length >= 6) {
+    items.push(createDebtItem('code', 'medium',
+      `${largeApexClasses.length} Apex Classes Over 1,000 Lines`,
+      'Classes over 1,000 lines without comments typically combine multiple responsibilities, making them difficult to test, maintain, and extend.',
+      'Refactor large classes by extracting discrete responsibilities into separate service classes. Target single-responsibility classes under 300 lines.',
+      { count: largeApexClasses.length, records: largeApexClasses.slice(0, 20).map((c: any) => ({ name: c.Name, detail: `${(c.LengthWithoutComments || 0).toLocaleString()} lines` })) }));
+  } else if (largeApexClasses.length >= 1) {
+    items.push(createDebtItem('code', 'low',
+      `${largeApexClasses.length} Apex Class${largeApexClasses.length !== 1 ? 'es' : ''} Over 1,000 Lines`,
+      'Classes over 1,000 lines without comments typically combine multiple responsibilities, making them harder to maintain.',
+      'Refactor large classes by extracting discrete responsibilities into separate service classes.',
+      { count: largeApexClasses.length, records: largeApexClasses.slice(0, 20).map((c: any) => ({ name: c.Name, detail: `${(c.LengthWithoutComments || 0).toLocaleString()} lines` })) }));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);
@@ -1624,6 +1687,17 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   }
 
   // ── Email-to-Case ────────────────────────────────────────────────────────────
+
+  // ETC-0: Threading not enabled at feature level — only fires when Email-to-Case is confirmed
+  // enabled but threading is explicitly disabled. If neither setting is returned by the API,
+  // skip the check to avoid false positives.
+  if ((data as any).emailToCaseEnabled === true && (data as any).emailToCaseThreadingEnabled === false) {
+    items.push(createDebtItem('serviceCloud', 'high',
+      'Email-to-Case Threading Not Enabled',
+      'Email-to-Case threading is disabled at the org level. Without threading, every customer reply creates a new case rather than appending to the existing one, inflating case volume and fragmenting conversation history across multiple cases.',
+      'Enable Email-to-Case threading in Setup → Email-to-Case → Settings. Ensure all outbound case email templates include the {!Case.Thread_Id} merge field so reply emails carry the threading token.',
+      {}));
+  }
 
   // ETC-1: Email routing addresses without TLS
   const noTlsAddresses = (data.emailRoutingAddresses || []).filter((a: any) => !a.TlsMode || a.TlsMode === 'Disabled');
@@ -3067,9 +3141,31 @@ const LIMIT_LABELS: Record<string, string> = {
 export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
   const items: DebtItem[] = [];
 
-  const critical = data.limits.filter(l => l.usedPct >= 90);
-  const high = data.limits.filter(l => l.usedPct >= 75 && l.usedPct < 90);
-  const medium = data.limits.filter(l => l.usedPct >= 50 && l.usedPct < 75);
+  // Storage limits use a lower threshold (25/50/75/90%) — storage grows monotonically
+  // and remediation takes time, so earlier warnings are valuable.
+  const STORAGE_LIMITS = new Set(['DataStorageMB', 'FileStorageMB']);
+  const storageLimits = data.limits.filter(l => STORAGE_LIMITS.has(l.name));
+  const nonStorageLimits = data.limits.filter(l => !STORAGE_LIMITS.has(l.name));
+
+  storageLimits.forEach(l => {
+    const label = LIMIT_LABELS[l.name] || l.name;
+    const severity = l.usedPct >= 90 ? 'critical' : l.usedPct >= 75 ? 'high' : l.usedPct >= 50 ? 'medium' : l.usedPct >= 25 ? 'low' : null;
+    if (!severity) return;
+    items.push(createDebtItem(
+      'orgLimits',
+      severity,
+      `${label}: ${l.usedPct}% Used (${l.used.toLocaleString()} MB / ${l.max.toLocaleString()} MB)`,
+      severity === 'low'
+        ? `Storage is at ${l.usedPct}% — early monitoring is recommended. Storage grows monotonically and remediation (archiving, deletion, external storage) takes time to plan and execute.`
+        : `Storage is at ${l.usedPct}% used. At 100% Salesforce will stop allowing new records or file uploads depending on the storage type.`,
+      `Archive or delete old records and files. Consider routing large file volumes to external storage (SharePoint, Box) via Files Connect. Review and purge legacy Attachments and old ContentDocument records. Contact Salesforce to purchase additional storage if needed.`,
+      { name: l.name, used: l.used, max: l.max, remaining: l.remaining, usedPct: l.usedPct }
+    ));
+  });
+
+  const critical = nonStorageLimits.filter(l => l.usedPct >= 90);
+  const high = nonStorageLimits.filter(l => l.usedPct >= 75 && l.usedPct < 90);
+  const medium = nonStorageLimits.filter(l => l.usedPct >= 50 && l.usedPct < 75);
 
   critical.forEach(l => {
     const label = LIMIT_LABELS[l.name] || l.name;
@@ -3126,6 +3222,69 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
   }
 
   // Custom object count — handled by the generic limits loop above using edition-accurate values from the limits API.
+
+  // ── Scheduled Apex count approaching 100-job limit ────────────────────────────
+  const scheduledApexCount = (data as any).scheduledApexCount || 0;
+  if (scheduledApexCount > 0) {
+    const scheduledApexPct = Math.round((scheduledApexCount / 100) * 100);
+    if (scheduledApexPct >= 90) {
+      items.push(createDebtItem('orgLimits', 'critical',
+        `${scheduledApexCount} Scheduled Apex Jobs — Critically Close to 100-Job Limit`,
+        `Salesforce limits each org to 100 scheduled Apex jobs. At ${scheduledApexCount} jobs, new scheduled jobs will fail to register immediately. Any automation or integration that attempts to schedule a new job will throw a runtime exception.`,
+        'Review CronTrigger records in Setup → Scheduled Jobs. Delete or consolidate jobs that can share a single schedulable class. Combine multiple schedulable classes into one with conditional branching.',
+        { count: scheduledApexCount }));
+    } else if (scheduledApexPct >= 75) {
+      items.push(createDebtItem('orgLimits', 'high',
+        `${scheduledApexCount} Scheduled Apex Jobs — Approaching 100-Job Limit`,
+        `Salesforce limits each org to 100 scheduled Apex jobs. At ${scheduledApexCount} jobs, the org is approaching the ceiling. Adding new scheduled jobs without removing old ones will exhaust the limit.`,
+        'Review CronTrigger records in Setup → Scheduled Jobs. Delete or consolidate jobs that can share a single schedulable class. Combine multiple schedulable classes into one with conditional branching.',
+        { count: scheduledApexCount }));
+    } else if (scheduledApexPct >= 50) {
+      items.push(createDebtItem('orgLimits', 'medium',
+        `${scheduledApexCount} Scheduled Apex Jobs — Monitor 100-Job Limit`,
+        `Salesforce limits each org to 100 scheduled Apex jobs. At ${scheduledApexCount} jobs (${scheduledApexPct}% of the limit), growth should be monitored to avoid hitting the ceiling.`,
+        'Review CronTrigger records in Setup → Scheduled Jobs. Audit whether all scheduled jobs are still needed. Consolidate jobs that can share a single schedulable class.',
+        { count: scheduledApexCount }));
+    }
+  }
+
+  // ── Custom fields per object approaching per-object limit ─────────────────────
+  const CUSTOM_FIELD_LIMIT = 500;
+  const customFieldsPerObject: any[] = (data as any).customFieldsPerObject || [];
+  customFieldsPerObject.forEach((obj: any) => {
+    const fieldCount = obj.fieldCount || obj.expr0 || 0;
+    const objName = (obj.EntityDefinition && obj.EntityDefinition.QualifiedApiName) || obj.EntityDefinitionId || 'Unknown Object';
+    const pct = Math.round((fieldCount / CUSTOM_FIELD_LIMIT) * 100);
+    if (pct >= 90) {
+      items.push(createDebtItem('orgLimits', 'critical',
+        `${objName}: ${fieldCount} Custom Fields (${pct}% of ${CUSTOM_FIELD_LIMIT}-Field Limit)`,
+        `Objects approaching the custom field limit cause deployment failures when new fields are added. Developers receive a cryptic error with no warning that the limit was near.`,
+        'Audit custom fields on this object. Delete unused fields, consolidate related fields into a single structured field (e.g., a JSON-in-text-area), or move fields to a related custom object.',
+        { object: objName, count: fieldCount }));
+    } else if (pct >= 75) {
+      items.push(createDebtItem('orgLimits', 'high',
+        `${objName}: ${fieldCount} Custom Fields (${pct}% of ${CUSTOM_FIELD_LIMIT}-Field Limit)`,
+        `This object is at high custom field utilization. Future field additions risk hitting the per-object limit and causing deployment failures.`,
+        'Audit custom fields on this object. Delete unused fields, consolidate related fields into a single structured field, or move fields to a related custom object.',
+        { object: objName, count: fieldCount }));
+    } else if (pct >= 50) {
+      items.push(createDebtItem('orgLimits', 'medium',
+        `${objName}: ${fieldCount} Custom Fields (${pct}% of ${CUSTOM_FIELD_LIMIT}-Field Limit)`,
+        `This object has accumulated a significant number of custom fields. Continued growth without field hygiene will eventually cause deployment failures.`,
+        'Audit and remove unused custom fields. Review fields added by managed packages that are no longer in use.',
+        { object: objName, count: fieldCount }));
+    }
+  });
+
+  // ── Platform Cache — no partitions configured ─────────────────────────────────
+  const platformCachePartitions: any[] = (data as any).platformCachePartitions || [];
+  if (platformCachePartitions.length === 0) {
+    items.push(createDebtItem('orgLimits', 'low',
+      'No Platform Cache Partitions Configured',
+      'Platform Cache lets Apex store frequently accessed data in org-level or session-level cache, reducing SOQL queries and governor limit pressure. With no partitions configured, every request that could benefit from caching hits the database instead.',
+      'Create at least one Platform Cache partition in Setup → Platform Cache. Assign org cache allocation for frequently queried reference data (settings, picklist values, feature flags). Implement Cache.Org.put/get in high-frequency Apex code paths.',
+      {}));
+  }
 
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
@@ -5483,6 +5642,76 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
       'Review stale flows with process owners. Confirm each flow is still valid and update it to current standards. Deactivate or delete flows that are no longer relevant to current business processes.',
       { records: staleFlows.slice(0, 30).map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `Last modified: ${f.LastModifiedDate ? new Date(f.LastModifiedDate).toLocaleDateString() : 'unknown'} · ${f.ProcessType || 'Flow'}` })) }
     ));
+  }
+
+  // ── Flows approaching 50-version limit ───────────────────────────────────────
+  const flowsNearVersionLimit: any[] = (data as any).flowsNearVersionLimit || [];
+  const flowsAtCritical = flowsNearVersionLimit.filter((f: any) => (f.versionCount || f.expr0 || 0) >= 45);
+  const flowsAtHigh = flowsNearVersionLimit.filter((f: any) => { const v = f.versionCount || f.expr0 || 0; return v >= 37 && v < 45; });
+  const flowsAtMedium = flowsNearVersionLimit.filter((f: any) => { const v = f.versionCount || f.expr0 || 0; return v >= 25 && v < 37; });
+
+  if (flowsAtCritical.length > 0) {
+    items.push(createDebtItem('flowQuality', 'critical',
+      `${flowsAtCritical.length} Flow${flowsAtCritical.length !== 1 ? 's' : ''} at 45+ Versions — Deployment Will Fail at 50`,
+      'Salesforce enforces a hard limit of 50 versions per flow. Flows at 45+ versions will fail to deploy on the next save. This blocks all future changes to these flows until old versions are deleted.',
+      'Immediately delete obsolete versions of these flows in Flow Builder → View All Versions. Keep only the active version and 1–2 prior versions for rollback.',
+      { records: flowsAtCritical.map((f: any) => ({ name: (f.Definition && f.Definition.MasterLabel) || (f.Definition && f.Definition.DeveloperName) || 'Unknown', detail: `${f.versionCount || f.expr0 || 0} of 50 versions` })) }));
+  }
+  if (flowsAtHigh.length > 0) {
+    items.push(createDebtItem('flowQuality', 'high',
+      `${flowsAtHigh.length} Flow${flowsAtHigh.length !== 1 ? 's' : ''} at 37–44 Versions — Approaching 50-Version Limit`,
+      'Salesforce enforces a hard limit of 50 versions per flow. Flows at 37+ versions are approaching the ceiling and will fail to deploy when the limit is reached.',
+      'Delete obsolete versions of these flows in Flow Builder → View All Versions. Keep only the active version and 1–2 prior versions for rollback.',
+      { records: flowsAtHigh.map((f: any) => ({ name: (f.Definition && f.Definition.MasterLabel) || (f.Definition && f.Definition.DeveloperName) || 'Unknown', detail: `${f.versionCount || f.expr0 || 0} of 50 versions` })) }));
+  }
+  if (flowsAtMedium.length > 0) {
+    items.push(createDebtItem('flowQuality', 'medium',
+      `${flowsAtMedium.length} Flow${flowsAtMedium.length !== 1 ? 's' : ''} at 25–36 Versions — Monitor 50-Version Limit`,
+      'Salesforce enforces a hard limit of 50 versions per flow. Flows at 25+ versions should be monitored for version accumulation to avoid unexpected deployment failures.',
+      'Establish a habit of deleting obsolete flow versions after each release cycle. Keep only the active version and 1–2 prior versions.',
+      { records: flowsAtMedium.map((f: any) => ({ name: (f.Definition && f.Definition.MasterLabel) || (f.Definition && f.Definition.DeveloperName) || 'Unknown', detail: `${f.versionCount || f.expr0 || 0} of 50 versions` })) }));
+  }
+
+  // ── Paused flow interviews accumulating beyond 30 days ────────────────────────
+  const pausedFlowInterviewCount: number = (data as any).pausedFlowInterviewCount || 0;
+  if (pausedFlowInterviewCount >= 50) {
+    items.push(createDebtItem('flowQuality', 'high',
+      `${pausedFlowInterviewCount} Flow Interviews Paused for Over 30 Days`,
+      'Paused flow interviews represent in-progress screen flow or waiting flow sessions that have not been resumed. Long-paused interviews consume org storage, may reference stale data, and indicate users abandoning flows mid-process.',
+      'Review paused interviews via the Paused and Waiting Interviews list view or SOQL on FlowInterview. Resume or delete stale interviews. Add time-based auto-deletion logic to flows that support it using scheduled paths.',
+      { count: pausedFlowInterviewCount }));
+  } else if (pausedFlowInterviewCount >= 11) {
+    items.push(createDebtItem('flowQuality', 'medium',
+      `${pausedFlowInterviewCount} Flow Interviews Paused for Over 30 Days`,
+      'Paused flow interviews that sit for over 30 days likely represent abandoned sessions. They consume org storage and may reference stale data.',
+      'Review paused interviews via the Paused and Waiting Interviews list view or SOQL on FlowInterview. Resume or delete stale interviews.',
+      { count: pausedFlowInterviewCount }));
+  } else if (pausedFlowInterviewCount >= 1) {
+    items.push(createDebtItem('flowQuality', 'low',
+      `${pausedFlowInterviewCount} Flow Interview${pausedFlowInterviewCount !== 1 ? 's' : ''} Paused for Over 30 Days`,
+      'Paused flow interviews that sit for over 30 days may represent abandoned sessions that are consuming org storage.',
+      'Review paused interviews via the Paused and Waiting Interviews list view or SOQL on FlowInterview.',
+      { count: pausedFlowInterviewCount }));
+  }
+
+  // ── Paused flow interviews owned by deactivated users ────────────────────────
+  const scheduledFlowsInactiveOwner: any[] = (data as any).scheduledFlowsInactiveOwner || [];
+  if (scheduledFlowsInactiveOwner.length > 0) {
+    items.push(createDebtItem('flowQuality', 'medium',
+      `${scheduledFlowsInactiveOwner.length} Paused Flow Interview${scheduledFlowsInactiveOwner.length !== 1 ? 's' : ''} Owned by Deactivated Users`,
+      'Flow interviews owned by deactivated users cannot be resumed by those users. Depending on the flow\'s sharing model, these interviews may be stuck permanently and reference data that is no longer valid.',
+      'Reassign or delete paused flow interviews owned by deactivated users. Update the flows to assign ownership to a queue or active user rather than the running user where possible.',
+      { records: scheduledFlowsInactiveOwner.map((f: any) => ({ name: f.Name || 'Unnamed Interview', detail: `Owner: ${(f.InterviewOwner && f.InterviewOwner.Name) || 'Unknown'} — deactivated` })) }));
+  }
+
+  // ── Record-triggered flows on high-volume objects ─────────────────────────────
+  const highVolumeObjectFlows: any[] = (data as any).highVolumeObjectFlows || [];
+  if (highVolumeObjectFlows.length > 0) {
+    items.push(createDebtItem('flowQuality', 'low',
+      `${highVolumeObjectFlows.length} Record-Triggered Flow${highVolumeObjectFlows.length !== 1 ? 's' : ''} on High-Volume Objects`,
+      'Record-triggered flows on objects like Task, Event, EmailMessage, and FeedItem can execute thousands of times per day in active orgs. Each execution consumes governor limits and can cause performance degradation or daily async execution limit exhaustion.',
+      'Review each flow on high-volume objects. Add entry criteria to limit execution to relevant records only. Consider whether the automation can be moved to a less-frequent trigger object. Monitor Daily Async Apex Executions in Org Limits.',
+      { records: highVolumeObjectFlows.map((f: any) => ({ name: f.MasterLabel || f.DeveloperName, detail: `Triggered on: ${f.TriggerObjectOrEventLabel}` })) }));
   }
 
   const maxScore = 100;
