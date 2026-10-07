@@ -211,52 +211,6 @@ describe('Regression: DML-in-loop (cross-method false positive)', () => {
   });
 });
 
-// ─── Regression: CRUD check — Schema.sObjectType false positive ─────────────
-
-describe('Regression: CRUD check — Schema.sObjectType false positive', () => {
-  test('does NOT satisfy CRUD check by using Schema.sObjectType for introspection only', () => {
-    const body = `
-      public class MyClass {
-        public void describeOnly() {
-          Schema.SObjectType t = Schema.sObjectType.Account;
-          insert new Account(Name = 'Test');
-        }
-      }
-    `;
-    const result = assessCodeQuality(makeApex({ classes: [makeClass('MyClass', body)] }));
-    const item = findItem(result.items, 'CRUD Permission Violations');
-    expect(item).toBeDefined();
-  });
-
-  test('DOES satisfy CRUD check with isCreateable()', () => {
-    const body = `
-      public class MyClass {
-        public void safeInsert() {
-          if (Account.sObjectType.getDescribe().isCreateable()) {
-            insert new Account(Name = 'Test');
-          }
-        }
-      }
-    `;
-    const result = assessCodeQuality(makeApex({ classes: [makeClass('MyClass', body)] }));
-    const item = findItem(result.items, 'CRUD Permission Violations');
-    expect(item).toBeUndefined();
-  });
-
-  test('DOES satisfy CRUD check with WITH USER_MODE', () => {
-    const body = `
-      public class MyClass {
-        public void query() {
-          List<Account> accs = [SELECT Id FROM Account WITH USER_MODE];
-        }
-      }
-    `;
-    const result = assessCodeQuality(makeApex({ classes: [makeClass('MyClass', body)] }));
-    const item = findItem(result.items, 'CRUD Permission Violations');
-    expect(item).toBeUndefined();
-  });
-});
-
 // ─── Regression: for-loop pattern — C-style loop with method call ────────────
 
 describe('Regression: SOQL-in-loop — C-style for loop with method call', () => {

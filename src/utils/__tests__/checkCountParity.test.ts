@@ -2,7 +2,7 @@
  * Layer 1 — Check count parity
  *
  * Counts createDebtItem calls per scoring function and asserts they match
- * the checks: values declared in LoginPage's CATEGORIES array.
+ * the entry counts in LoginPage's CATEGORY_CHECKS string arrays.
  *
  * This test fails automatically whenever a check is added or removed from
  * scoring.ts but the UI count is not updated (or vice versa).
@@ -33,15 +33,24 @@ function countDebtItemsPerFunction(src: string): Record<string, number> {
   return counts;
 }
 
-// Parse the checks: values from the CATEGORIES array in LoginPage.tsx
+// Parse entry counts from CATEGORY_CHECKS in LoginPage.tsx
 function parseCategoryCounts(src: string): Record<string, number> {
-  const rows: Record<string, number> = {};
-  const re = /name:\s*'([^']+)'[\s\S]*?checks:\s*(\d+)/g;
+  const result: Record<string, number> = {};
+  const catPattern = /'([^']+)':\s*\[/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(src)) !== null) {
-    rows[m[1]] = parseInt(m[2], 10);
+  while ((m = catPattern.exec(src)) !== null) {
+    const name = m[1];
+    const arrStart = m.index + m[0].length;
+    let depth = 1, i = arrStart;
+    while (depth > 0 && i < src.length) {
+      if (src[i] === '[') depth++;
+      else if (src[i] === ']') depth--;
+      i++;
+    }
+    const arr = src.slice(arrStart, i - 1);
+    result[name] = (arr.match(/\{\s*title:/g) || []).length;
   }
-  return rows;
+  return result;
 }
 
 // Map scoring function name → LoginPage category name

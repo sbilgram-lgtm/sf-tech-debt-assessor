@@ -74,7 +74,7 @@ const emptyIntegrations = {
   dedicatedIntegrationUserCount: 1,
 };
 const emptyTestCoverage = { apexClasses: [], apexTriggers: [], coverage: [], testClasses: [] };
-const emptyOrgLimits = { limits: [], apexClassCount: 0, customObjectCount: 0 };
+const emptyOrgLimits = { limits: [], apexClassCount: 0, customObjectCount: 0, platformCachePartitions: [{}] };
 // Duplicate rules: supply one active rule with a description to avoid absence-of-config findings
 const emptyDuplicateRules = {
   duplicateRules: [{ IsActive: true, DeveloperName: 'Std_Account', Description: 'Standard account dedup' }],
