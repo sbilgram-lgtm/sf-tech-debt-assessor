@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: September 27, 2026*
+*Last updated: October 7, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **390 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **402 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,35 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — October 7, 2026
+
+**12 new limit and health checks across 4 categories** — total checks: 390 → 402
+
+New checks surface Apex queue health, storage headroom, Flow version limits, and Email-to-Case threading gaps that previously required manual investigation in Setup.
+
+**Org Limits (3 new):**
+- **Scheduled Apex Count** (Medium/High/Critical) — flags orgs approaching the 100-job CronTrigger limit before deployments start failing
+- **Custom Fields Per Object Approaching Limit** (Medium/High/Critical) — detects objects near the 500-field ceiling where new field deployments will fail
+- **No Platform Cache Configured** (Low) — advisory when no PlatformCachePartition exists; reduces SOQL pressure in high-volume orgs
+- **Storage thresholds lowered** — DataStorageMB and FileStorageMB now trigger at 25/50/75/90% (was 50/75/90%) for earlier lead time
+
+**Code Quality (4 new):**
+- **Failed Async Apex Jobs** (Low/Medium/High) — failed batch, future, queueable, or scheduled jobs in the last 7 days
+- **Stuck Async Apex Jobs** (Medium) — jobs in Holding or Queued state for over 24 hours
+- **Active Debug Trace Flags on Production Users** (Medium) — trace flags left on after debugging degrade transaction performance
+- **Apex Classes Over 1,000 Lines** (Low/Medium/High) — large classes indicating missing service decomposition
+
+**Flow Quality (4 new):**
+- **Flows Approaching 50-Version Limit** (Medium/High/Critical) — hard limit causes deployment failure; no warning from Salesforce
+- **Paused Flow Interviews Over 30 Days** (Low/Medium/High) — stale paused interviews consume storage and reference outdated data
+- **Flow Interviews Owned by Deactivated Users** (Medium) — cannot be resumed; stuck permanently
+- **Record-Triggered Flows on High-Volume Objects** (Low) — flows on Task, Event, EmailMessage can exhaust daily async execution limits
+
+**Service Cloud (1 new):**
+- **Email-to-Case Threading Not Enabled** (High) — proactive feature-level check; fires before unthreaded emails arrive
 
 ---
 
