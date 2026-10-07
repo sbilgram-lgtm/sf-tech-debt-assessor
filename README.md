@@ -2,7 +2,7 @@
 *By Steven Bilgram, Success Architect*
 *Last updated: October 7, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **402 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **396 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
