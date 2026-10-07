@@ -398,8 +398,8 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // stop prematurely at the first closing paren inside list.size().
   const soqlInLoops = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    const forLoopPattern = /for\s*\([\s\S]{0,300}?\)\s*\{[\s\S]{0,500}?\[SELECT/gi;
-    const whileLoopPattern = /while\s*\([\s\S]{0,200}?\)\s*\{[\s\S]{0,500}?\[SELECT/gi;
+    const forLoopPattern = /for\s*\([\s\S]{0,300}?\)\s*\{[\s\S]{0,300}?\[SELECT/gi;
+    const whileLoopPattern = /while\s*\([\s\S]{0,200}?\)\s*\{[\s\S]{0,300}?\[SELECT/gi;
     return forLoopPattern.test(body) || whileLoopPattern.test(body);
   });
   if (soqlInLoops.length > 0) {
@@ -457,8 +457,8 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // opening brace, meaning it's likely inside the loop body. This avoids the common
   // false positive where DML appears after the loop closes in the same method.
   function hasDmlInLoopPerMethod(body: string): boolean {
-    const dmlInForPattern = /\bfor\s*\([\s\S]{0,400}?\)\s*\{[\s\S]{0,600}?\b(insert|update|delete|upsert|merge)\b/gi;
-    const dmlInWhilePattern = /\bwhile\s*\([\s\S]{0,200}?\)\s*\{[\s\S]{0,600}?\b(insert|update|delete|upsert|merge)\b/gi;
+    const dmlInForPattern = /\bfor\s*\([\s\S]{0,400}?\)\s*\{[\s\S]{0,300}?\b(insert|update|delete|upsert|merge)\b/gi;
+    const dmlInWhilePattern = /\bwhile\s*\([\s\S]{0,200}?\)\s*\{[\s\S]{0,300}?\b(insert|update|delete|upsert|merge)\b/gi;
     return dmlInForPattern.test(body) || dmlInWhilePattern.test(body);
   }
   const dmlInLoops = apex.classes.filter((c: any) => {
@@ -546,26 +546,6 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // SOQL without WITH SECURITY_ENFORCED or WITH USER_MODE — FLS enforcement gap
-  const soqlNoFls = apex.classes.filter((c: any) => {
-    const body = c.Body || '';
-    if (/@isTest\b/i.test(body)) return false;
-    // Find SOQL queries (simplified: [...]) that lack security enforcement keywords
-    const soqlBlocks = body.match(/\[SELECT[\s\S]*?\]/gi) || [];
-    return soqlBlocks.some((q: string) =>
-      !/WITH\s+SECURITY_ENFORCED/i.test(q) &&
-      !/WITH\s+USER_MODE/i.test(q)
-    );
-  });
-  if (soqlNoFls.length > 0) {
-    items.push(createDebtItem(
-      'code', 'medium',
-      `${soqlNoFls.length} Classes Have SOQL Queries Without FLS Enforcement`,
-      'SOQL queries without WITH SECURITY_ENFORCED or WITH USER_MODE bypass Field-Level Security checks, potentially exposing fields the running user should not see. This is a CRUD/FLS violation.',
-      'Add WITH USER_MODE to SOQL queries in classes that run in user context. Use WITH SECURITY_ENFORCED as an alternative. Supplement with stripInaccessible() for DML operations.',
-      { records: soqlNoFls.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'SOQL without WITH SECURITY_ENFORCED or WITH USER_MODE — FLS bypass' })) }
-    ));
-  }
 
   // SOAP login() usage — retired Spring '26 default, hard retirement Summer '27
   const soapLoginClasses = (apex.soapLoginApex || []);
@@ -841,22 +821,6 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-31: ApexCRUDViolation — DML without CRUD permission checks (SOQL-only cases already covered by CQ-14)
-  const crudViolations = apex.classes.filter((c: any) => {
-    const body = c.Body || '';
-    if (/@isTest\b/i.test(body)) return false;
-    const hasDmlOrSoql = /\b(insert|update|delete|upsert)\s+\w/gi.test(body) || /\[SELECT\b/gi.test(body);
-    const hasCrudCheck = /\.isAccessible\(\)|\.isCreateable\(\)|\.isUpdateable\(\)|\.isDeletable\(\)|WITH\s+USER_MODE|WITH\s+SECURITY_ENFORCED/gi.test(body);
-    return hasDmlOrSoql && !hasCrudCheck;
-  });
-  if (crudViolations.length > 0) {
-    items.push(createDebtItem('code', 'critical',
-      `${crudViolations.length} Classes May Have CRUD Permission Violations`,
-      'Apex classes that perform DML or SOQL without checking object-level CRUD permissions bypass the running user\'s access controls. This is flagged by PMD (ApexCRUDViolation) and Salesforce AppExchange security review.',
-      'Add CRUD checks before DML operations using SObjectType.isCreateable(), isUpdateable(), isDeletable(). Use WITH USER_MODE or WITH SECURITY_ENFORCED on SOQL. Use Schema.stripInaccessible() before DML.',
-      { records: crudViolations.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'DML/SOQL without CRUD permission checks — ApexCRUDViolation' })) }
-    ));
-  }
 
   // CQ-32: ApexDangerousMethods
   const dangerousMethods = apex.classes.filter((c: any) => {
@@ -924,24 +888,6 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
-  // CQ-36: CyclomaticComplexity — high decision-point complexity (class-level proxy)
-  // PMD measures per-method; without method boundary parsing we count per class.
-  // Threshold of 100 class-wide decision points approximates "several methods with high complexity"
-  // and avoids false positives on large-but-simple utility classes.
-  const complexClasses = apex.classes.filter((c: any) => {
-    const body = c.Body || '';
-    if (/@isTest\b/i.test(body)) return false;
-    const decisions = (body.match(/\b(if|else if|for|while|case|catch|&&|\|\|)\b/gi) || []).length;
-    return decisions > 100;
-  });
-  if (complexClasses.length > 0) {
-    items.push(createDebtItem('code', 'high',
-      `${complexClasses.length} Apex Classes Have High Cyclomatic Complexity`,
-      'Classes with many conditional branches, loops, and exception handlers are difficult to understand, test, and maintain. High complexity directly correlates with bug rate and maintenance cost. This is flagged by PMD (CyclomaticComplexity).',
-      'Refactor complex methods by extracting branches into private helper methods. Aim for cyclomatic complexity below 10 per method. Use early returns and guard clauses to reduce nesting depth.',
-      { records: complexClasses.slice(0, 50).map((c: any) => ({ name: c.Name, detail: 'High cyclomatic complexity — many decision branches' })) }
-    ));
-  }
 
   // CQ-37: ExcessiveParameterList
   const excessiveParams = apex.classes.filter((c: any) => {
@@ -1037,7 +983,15 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       const varMatch = q.match(/^(\w+)\s*=/);
       if (!varMatch) return false;
       const varName = varMatch[1];
-      const nullCheck = new RegExp(`if\\s*\\(\\s*${varName}\\s*!=\\s*null|if\\s*\\(\\s*null\\s*!=\\s*${varName}`, 'gi');
+      // Accept != null, == null (early return guard), String.isBlank/isEmpty, Objects.isNull
+      const nullCheck = new RegExp(
+        `if\\s*\\(\\s*${varName}\\s*!=\\s*null` +
+        `|if\\s*\\(\\s*null\\s*!=\\s*${varName}` +
+        `|if\\s*\\(\\s*${varName}\\s*==\\s*null` +
+        `|if\\s*\\(\\s*null\\s*==\\s*${varName}` +
+        `|String\\.isBlank\\s*\\(\\s*${varName}` +
+        `|String\\.isEmpty\\s*\\(\\s*${varName}` +
+        `|Objects\\.isNull\\s*\\(\\s*${varName}`, 'gi');
       return !nullCheck.test(body);
     });
   });
@@ -1059,7 +1013,15 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       const bindVars = (q.match(/:\s*(\w+)/g) || []);
       return bindVars.some((v: string) => {
         const varName = v.replace(/^:\s*/, '').trim();
-        const nullCheck = new RegExp(`if\\s*\\(\\s*${varName}\\s*!=\\s*null|if\\s*\\(\\s*null\\s*!=\\s*${varName}`, 'gi');
+        // Accept != null, == null (early return), String.isBlank/isEmpty, Objects.isNull
+        const nullCheck = new RegExp(
+          `if\\s*\\(\\s*${varName}\\s*!=\\s*null` +
+          `|if\\s*\\(\\s*null\\s*!=\\s*${varName}` +
+          `|if\\s*\\(\\s*${varName}\\s*==\\s*null` +
+          `|if\\s*\\(\\s*null\\s*==\\s*${varName}` +
+          `|String\\.isBlank\\s*\\(\\s*${varName}` +
+          `|String\\.isEmpty\\s*\\(\\s*${varName}` +
+          `|Objects\\.isNull\\s*\\(\\s*${varName}`, 'gi');
         return !nullCheck.test(body);
       });
     });
@@ -1141,12 +1103,16 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   }
 
   // Schedulable classes with no try/catch in execute() — silent job failures
+  // Scan only the execute() method body (next 2000 chars after signature) to avoid
+  // false negatives where try/catch exists only in helper methods, not execute() itself.
   const schedulableNoCatch = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
     if (!/implements\s+[\w,\s]*\bSchedulable\b/i.test(body)) return false;
-    if (!/\bexecute\s*\(\s*SchedulableContext/i.test(body)) return false;
-    return !/\btry\s*\{/i.test(body);
+    const execMatch = body.match(/\bexecute\s*\(\s*SchedulableContext/i);
+    if (!execMatch) return false;
+    const executeWindow = body.slice(execMatch.index!, execMatch.index! + 2000);
+    return !/\btry\s*\{/i.test(executeWindow);
   });
   if (schedulableNoCatch.length > 0) {
     items.push(createDebtItem(
@@ -4384,15 +4350,17 @@ export function assessLwc(data: LwcData): CategoryScore {
     ));
   }
 
-  // 14. @lwc/lwc/no-leaky-event-listeners — addEventListener without removeEventListener
-  const addListenerHits = sourceScan(/addEventListener\s*\(/, /removeEventListener\s*\(/);
+  // 14. @lwc/lwc/no-leaky-event-listeners — document/window addEventListener without removeEventListener
+  // this.template.addEventListener is excluded: template-scoped listeners are automatically cleaned up
+  // when the component is disconnected, so they don't cause memory leaks.
+  const addListenerHits = sourceScan(/(?:document|window)\.addEventListener\s*\(/, /(?:document|window)\.removeEventListener\s*\(/);
   if (addListenerHits.length > 0) {
     items.push(createDebtItem(
       'lwc', 'medium',
-      `${addListenerHits.length} LWC Component${addListenerHits.length !== 1 ? 's' : ''} Add Event Listeners Without Removing Them`,
-      'Event listeners added without a corresponding removeEventListener cause memory leaks — the component is retained in memory after it is removed from the DOM. This violates @lwc/lwc/no-leaky-event-listeners.',
-      'Remove event listeners in the disconnectedCallback lifecycle hook. Use this.template.addEventListener for component-scoped events where possible.',
-      { records: addListenerHits.slice(0, 50).map(h => ({ name: h.name, detail: 'addEventListener without removeEventListener — memory leak risk' })) }
+      `${addListenerHits.length} LWC Component${addListenerHits.length !== 1 ? 's' : ''} Add document/window Event Listeners Without Removing Them`,
+      'Event listeners added to document or window without a corresponding removeEventListener cause memory leaks — these listeners persist after the component is removed from the DOM. This violates @lwc/lwc/no-leaky-event-listeners.',
+      'Remove document and window event listeners in the disconnectedCallback lifecycle hook. Use this.template.addEventListener for component-scoped events instead — those are cleaned up automatically.',
+      { records: addListenerHits.slice(0, 50).map(h => ({ name: h.name, detail: 'document/window addEventListener without removeEventListener — memory leak risk' })) }
     ));
   }
 
@@ -4408,17 +4376,6 @@ export function assessLwc(data: LwcData): CategoryScore {
     ));
   }
 
-  // 16. @lwc/lwc/no-async-await — async/await usage
-  const asyncAwaitHits = sourceScan(/\basync\s+(function|\(|[a-zA-Z_$])/);
-  if (asyncAwaitHits.length > 0) {
-    items.push(createDebtItem(
-      'lwc', 'medium',
-      `${asyncAwaitHits.length} LWC Component${asyncAwaitHits.length !== 1 ? 's' : ''} Use async/await`,
-      'async/await is not supported in all LWC execution contexts, particularly in getter functions and some lifecycle hooks. It also does not work correctly in LWC SSR. This violates @lwc/lwc/no-async-await in strict mode.',
-      'Replace async/await with Promise chains (.then/.catch) or use wire adapters for data fetching. If async/await is intentional, verify it is only used in event handlers.',
-      { records: asyncAwaitHits.slice(0, 50).map(h => ({ name: h.name, detail: 'async/await usage — no-async-await violation' })) }
-    ));
-  }
 
   // 17. @lwc/lwc/no-restricted-browser-globals-during-ssr — window/navigator/location
   const ssrGlobalHits = sourceScan(/\b(window\.|navigator\.|location\.(?!href\s*=))/);
@@ -4432,29 +4389,6 @@ export function assessLwc(data: LwcData): CategoryScore {
     ));
   }
 
-  // 18. @lwc/lwc/no-for-of — for...of loops
-  const forOfHits = sourceScan(/for\s*\(\s*(const|let|var)\s+\w+\s+of\s+/);
-  if (forOfHits.length > 0) {
-    items.push(createDebtItem(
-      'lwc', 'low',
-      `${forOfHits.length} LWC Component${forOfHits.length !== 1 ? 's' : ''} Use for...of Loops`,
-      'for...of loops require an iterator polyfill in older browsers and some LWC runtime environments. This violates @lwc/lwc/no-for-of in projects targeting broad browser compatibility.',
-      'Replace for...of with Array.forEach(), Array.map(), or a standard indexed for loop for maximum compatibility.',
-      { records: forOfHits.slice(0, 50).map(h => ({ name: h.name, detail: 'for...of loop — no-for-of violation' })) }
-    ));
-  }
-
-  // 19. @lwc/lwc/no-rest-parameter — rest parameters (...args)
-  const restParamHits = sourceScan(/function\s*\w*\s*\([^)]*\.\.\.[a-zA-Z_$]/);
-  if (restParamHits.length > 0) {
-    items.push(createDebtItem(
-      'lwc', 'low',
-      `${restParamHits.length} LWC Component${restParamHits.length !== 1 ? 's' : ''} Use Rest Parameters`,
-      'Rest parameters (...args) require spread/rest polyfills and may cause issues in some LWC compilation targets. This violates @lwc/lwc/no-rest-parameter in strict compatibility mode.',
-      'Replace rest parameters with explicit parameter lists or use the arguments object for variadic functions.',
-      { records: restParamHits.slice(0, 50).map(h => ({ name: h.name, detail: 'rest parameter (...args) — no-rest-parameter violation' })) }
-    ));
-  }
 
   // 20. @lwc/lwc/no-node-env-in-ssr — process.env.NODE_ENV
   const nodeEnvHits = sourceScan(/process\.env\.NODE_ENV/);

@@ -326,7 +326,7 @@ app.get('/api/assess/automation', requireAuth, async (req, res) => {
 
     const [approvalProcesses, einsteinFlowActions, webToCaseSettingsRes, caseAutoResponseRulesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, IsActive FROM ProcessDefinition WHERE Type = 'Approval' AND IsActive = true LIMIT 200"),
-      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (DeveloperName LIKE '%Einstein%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName FROM Flow WHERE Status = 'Active' AND NamespacePrefix = null AND (DeveloperName LIKE '%EinsteinNextBestAction%' OR DeveloperName LIKE '%Einstein_Next_Best_Action%' OR DeveloperName LIKE '%EinsteinForFlow%' OR DeveloperName LIKE '%Einstein_For_Flow%' OR DeveloperName LIKE '%GptAction%') LIMIT 20"),
       safeQuery(conn, "SELECT EnableWebToCase, CaseCaptchaEnabledFlag FROM WebToCaseSettings LIMIT 1").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, Name, Active FROM AutoResponseRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] }))
     ]);
@@ -424,7 +424,7 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     // soapLoginApex: classes with SOAP login() patterns (excluding classes that only contain login URLs)
     const soapLoginApex = (classes.records || []).filter(c => {
       const body = c.Body || '';
-      return /\.login\s*\(|ConnectorConfig/i.test(body);
+      return /ConnectorConfig/i.test(body);
     });
     const soapLoginApexIds = new Set(soapLoginApex.map(c => c.Id));
     // hardcodedLoginUrls: classes referencing login.salesforce.com / test.salesforce.com — deduplicated from soapLoginApex
