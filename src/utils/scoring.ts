@@ -778,7 +778,6 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     if (/@isTest\b/i.test(body)) return false;
     return /\bSystem\.debug\s*\(/gi.test(body);
   });
-  const debugClassIds = new Set(debugClasses.map((c: any) => c.Id));
   if (debugClasses.length > 0) {
     items.push(createDebtItem('code', 'medium',
       `${debugClasses.length} Apex Classes Contain System.debug Statements`,
@@ -893,7 +892,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   const excessiveParams = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /\w+\s*\(\s*(\w[\w<>,\[\] ]+\s+\w+\s*,\s*){5,}/gi.test(body);
+    return /\w+\s*\(\s*(\w[\w<>,[\] ]+\s+\w+\s*,\s*){5,}/gi.test(body);
   });
   if (excessiveParams.length > 0) {
     items.push(createDebtItem('code', 'medium',
