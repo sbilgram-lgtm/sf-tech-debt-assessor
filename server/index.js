@@ -1470,23 +1470,23 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
       : 0;
 
     const [scheduledApexRes, customFieldsPerObjectRes, platformCacheRes, activeFlowsRes, relationshipsPerObjectRes, customProfilesRes, sharingRulesPerObjectRes] = await Promise.all([
-      safeQuery(conn, "SELECT COUNT(Id) FROM CronTrigger WHERE CronJobDetail.JobType = '7'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT Id, CronJobDetail.Name, State, NextFireTime FROM CronTrigger WHERE CronJobDetail.JobType = '7' LIMIT 100").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT EntityDefinitionId, EntityDefinition.QualifiedApiName, COUNT(Id) fieldCount FROM FieldDefinition WHERE IsCustom = true AND NamespacePrefix = null GROUP BY EntityDefinitionId, EntityDefinition.QualifiedApiName ORDER BY COUNT(Id) DESC LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, MasterLabel, IsDefaultPartition, OrganizationCacheAllocation, SessionCacheAllocation FROM PlatformCachePartition LIMIT 10").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT COUNT(Id) activeCount FROM FlowDefinition WHERE ActiveVersionId != null").catch(() => ({ records: [{ activeCount: 0 }] })),
       safeQuery(conn, "SELECT EntityDefinitionId, EntityDefinition.QualifiedApiName, COUNT(Id) relCount FROM FieldDefinition WHERE IsCustom = true AND NamespacePrefix = null AND DataType IN ('Lookup', 'Master-Detail', 'Hierarchy') GROUP BY EntityDefinitionId, EntityDefinition.QualifiedApiName ORDER BY COUNT(Id) DESC LIMIT 30").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT COUNT(Id) FROM Profile WHERE UserType = 'Standard' AND Name != 'System Administrator'").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT Id, Name FROM Profile WHERE UserType = 'Standard' AND Name != 'System Administrator' ORDER BY Name ASC LIMIT 200").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT SobjectType, COUNT(Id) ruleCount FROM SharingRules GROUP BY SobjectType ORDER BY COUNT(Id) DESC LIMIT 30").catch(() => ({ records: [] }))
     ]);
-    const scheduledApexCount = (scheduledApexRes.records[0] || {}).expr0 || 0;
+    const scheduledApexJobs = scheduledApexRes.records || [];
     const customFieldsPerObject = customFieldsPerObjectRes.records || [];
     const platformCachePartitions = platformCacheRes.records || [];
     const activeFlowCount = (activeFlowsRes.records[0] || {}).activeCount || 0;
     const relationshipsPerObject = relationshipsPerObjectRes.records || [];
-    const customProfileCount = (customProfilesRes.records[0] || {}).expr0 || 0;
+    const customProfiles = customProfilesRes.records || [];
     const sharingRulesPerObject = sharingRulesPerObjectRes.records || [];
 
-    res.json({ limits, apexClassCount, customObjectCount, scheduledApexCount, customFieldsPerObject, platformCachePartitions, activeFlowCount, relationshipsPerObject, customProfileCount, sharingRulesPerObject });
+    res.json({ limits, apexClassCount, customObjectCount, scheduledApexJobs, customFieldsPerObject, platformCachePartitions, activeFlowCount, relationshipsPerObject, customProfiles, sharingRulesPerObject });
   } catch (err) {
     console.error('Org limits assessment error:', err);
     res.status(500).json({ error: err.message });
@@ -2383,7 +2383,7 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       // Flow version counts per definition — flag flows approaching 50-version limit
       safeToolingQuery(conn, "SELECT Definition.DeveloperName, Definition.MasterLabel, COUNT(Id) versionCount FROM Flow WHERE Definition.ActiveVersionId != null GROUP BY Definition.DeveloperName, Definition.MasterLabel ORDER BY COUNT(Id) DESC LIMIT 50").catch(() => ({ records: [] })),
       // Paused flow interviews older than 30 days
-      safeQuery(conn, "SELECT COUNT(Id) FROM FlowInterview WHERE IsPaused = true AND CreatedDate < LAST_N_DAYS:30").catch(() => ({ records: [{ expr0: 0 }] })),
+      safeQuery(conn, "SELECT Id, Name, InterviewOwner.Name, CreatedDate FROM FlowInterview WHERE IsPaused = true AND CreatedDate < LAST_N_DAYS:30 LIMIT 100").catch(() => ({ records: [] })),
       // Paused flow interviews owned by deactivated users
       safeQuery(conn, "SELECT Id, Name, InterviewOwner.Name, InterviewOwner.IsActive, CreatedDate FROM FlowInterview WHERE IsPaused = true AND InterviewOwner.IsActive = false LIMIT 50").catch(() => ({ records: [] })),
       // Record-triggered flows on high-volume objects
@@ -2391,7 +2391,8 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
     ]);
 
     const obsoleteFlowCount = (obsoleteFlowCountResult.records[0] || {}).expr0 || 0;
-    const pausedFlowInterviewCount = (pausedFlowInterviewsRes.records[0] || {}).expr0 || 0;
+    const pausedFlowInterviews = pausedFlowInterviewsRes.records || [];
+    const pausedFlowInterviewCount = pausedFlowInterviews.length;
     const flowsNearVersionLimit = (flowVersionCountsRes.records || []).filter(f => (f.versionCount || f.expr0 || 0) >= 25);
 
     // Cross-reference large-flow element counts with active flow metadata for display names
@@ -2416,6 +2417,7 @@ app.get('/api/assess/flow-quality', requireAuth, async (req, res) => {
       staleFlows: staleFlowsRes.records || [],
       flowsNearVersionLimit,
       pausedFlowInterviewCount,
+      pausedFlowInterviews,
       scheduledFlowsInactiveOwner: scheduledFlowsInactiveOwnerRes.records || [],
       highVolumeObjectFlows: highVolumeFlowsRes.records || []
     });

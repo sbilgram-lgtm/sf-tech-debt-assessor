@@ -2969,7 +2969,11 @@ export function assessTestCoverage(data: TestCoverageData): CategoryScore {
       `${lowCoverage.length} Classes/Triggers Below 75% Test Coverage`,
       `${below50.length} components are below 50%. These are high-risk for deployment failures and regressions.`,
       'Prioritize test coverage for triggers, batch classes, and service classes first.',
-      { total: lowCoverage.length, below50: below50.length }
+      { records: lowCoverage.map((c: any) => {
+        const total = c.NumLinesCovered + c.NumLinesUncovered;
+        const pct = Math.round((c.NumLinesCovered / total) * 100);
+        return { name: (c.ApexClassOrTrigger && c.ApexClassOrTrigger.Name) || c.ApexClassOrTriggerId || 'Unknown', detail: `${pct}% coverage` };
+      }) }
     ));
   }
 
@@ -3194,27 +3198,32 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
   // Custom object count — handled by the generic limits loop above using edition-accurate values from the limits API.
 
   // ── Scheduled Apex count approaching 100-job limit ────────────────────────────
-  const scheduledApexCount = (data as any).scheduledApexCount || 0;
+  const scheduledApexJobs: any[] = (data as any).scheduledApexJobs || [];
+  const scheduledApexCount = scheduledApexJobs.length;
   if (scheduledApexCount > 0) {
-    const scheduledApexPct = Math.round((scheduledApexCount / 100) * 100);
+    const scheduledApexPct = scheduledApexCount;
+    const scheduledApexRecords = scheduledApexJobs.map((j: any) => ({
+      name: (j.CronJobDetail && j.CronJobDetail.Name) || j.Id || 'Unknown',
+      detail: j.NextFireTime ? `Next: ${new Date(j.NextFireTime).toLocaleDateString()}` : j.State || ''
+    }));
     if (scheduledApexPct >= 90) {
       items.push(createDebtItem('orgLimits', 'critical',
         `${scheduledApexCount} Scheduled Apex Jobs — Critically Close to 100-Job Limit`,
         `Salesforce limits each org to 100 scheduled Apex jobs. At ${scheduledApexCount} jobs, new scheduled jobs will fail to register immediately. Any automation or integration that attempts to schedule a new job will throw a runtime exception.`,
         'Review CronTrigger records in Setup → Scheduled Jobs. Delete or consolidate jobs that can share a single schedulable class. Combine multiple schedulable classes into one with conditional branching.',
-        { count: scheduledApexCount }));
+        { records: scheduledApexRecords }));
     } else if (scheduledApexPct >= 75) {
       items.push(createDebtItem('orgLimits', 'high',
         `${scheduledApexCount} Scheduled Apex Jobs — Approaching 100-Job Limit`,
         `Salesforce limits each org to 100 scheduled Apex jobs. At ${scheduledApexCount} jobs, the org is approaching the ceiling. Adding new scheduled jobs without removing old ones will exhaust the limit.`,
         'Review CronTrigger records in Setup → Scheduled Jobs. Delete or consolidate jobs that can share a single schedulable class. Combine multiple schedulable classes into one with conditional branching.',
-        { count: scheduledApexCount }));
+        { records: scheduledApexRecords }));
     } else if (scheduledApexPct >= 50) {
       items.push(createDebtItem('orgLimits', 'medium',
         `${scheduledApexCount} Scheduled Apex Jobs — Monitor 100-Job Limit`,
         `Salesforce limits each org to 100 scheduled Apex jobs. At ${scheduledApexCount} jobs (${scheduledApexPct}% of the limit), growth should be monitored to avoid hitting the ceiling.`,
         'Review CronTrigger records in Setup → Scheduled Jobs. Audit whether all scheduled jobs are still needed. Consolidate jobs that can share a single schedulable class.',
-        { count: scheduledApexCount }));
+        { records: scheduledApexRecords }));
     }
   }
 
@@ -3311,28 +3320,30 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
   });
 
   // ── Custom profiles approaching edition limit ─────────────────────────────────
-  const customProfileCount = (data as any).customProfileCount || 0;
+  const customProfiles: any[] = (data as any).customProfiles || [];
+  const customProfileCount = customProfiles.length;
   if (customProfileCount > 0) {
     const PROFILE_LIMIT = 1500;
     const profilePct = Math.round((customProfileCount / PROFILE_LIMIT) * 100);
+    const profileRecords = customProfiles.map((p: any) => ({ name: p.Name || p.Id || 'Unknown' }));
     if (profilePct >= 90) {
       items.push(createDebtItem('orgLimits', 'critical',
         `${customProfileCount} Custom Profiles — ${profilePct}% of ~1,500 Limit`,
         'Enterprise Edition orgs have a soft limit of approximately 1,500 custom profiles. At this level, creating new profiles may fail and permission evaluation performance degrades significantly.',
         'Consolidate profiles with identical permissions into a single base profile with permission sets for variations. Adopt a permission set-centric model to reduce profile sprawl.',
-        { count: customProfileCount }));
+        { records: profileRecords }));
     } else if (profilePct >= 75) {
       items.push(createDebtItem('orgLimits', 'high',
         `${customProfileCount} Custom Profiles — ${profilePct}% of ~1,500 Limit`,
         'Enterprise Edition orgs have a soft limit of approximately 1,500 custom profiles. Orgs with very high profile counts also face significant maintenance overhead and longer permission evaluation times.',
         'Consolidate profiles with identical permissions into a single base profile with permission sets for variations. Adopt a permission set-centric model to reduce profile sprawl.',
-        { count: customProfileCount }));
+        { records: profileRecords }));
     } else if (profilePct >= 50) {
       items.push(createDebtItem('orgLimits', 'medium',
         `${customProfileCount} Custom Profiles — ${profilePct}% of ~1,500 Limit`,
         'Profile count should be monitored. High profile counts increase maintenance overhead and permission evaluation time.',
         'Consolidate profiles with identical permissions into a single base profile with permission sets for variations. Adopt a permission set-centric model to reduce profile sprawl.',
-        { count: customProfileCount }));
+        { records: profileRecords }));
     }
   }
 
@@ -5719,25 +5730,26 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
   }
 
   // ── Paused flow interviews accumulating beyond 30 days ────────────────────────
-  const pausedFlowInterviewCount: number = (data as any).pausedFlowInterviewCount || 0;
+  const pausedFlowInterviews: any[] = (data as any).pausedFlowInterviews || [];
+  const pausedFlowInterviewCount: number = (data as any).pausedFlowInterviewCount || pausedFlowInterviews.length;
   if (pausedFlowInterviewCount >= 50) {
     items.push(createDebtItem('flowQuality', 'high',
       `${pausedFlowInterviewCount} Flow Interviews Paused for Over 30 Days`,
       'Paused flow interviews represent in-progress screen flow or waiting flow sessions that have not been resumed. Long-paused interviews consume org storage, may reference stale data, and indicate users abandoning flows mid-process.',
       'Review paused interviews via the Paused and Waiting Interviews list view or SOQL on FlowInterview. Resume or delete stale interviews. Add time-based auto-deletion logic to flows that support it using scheduled paths.',
-      { count: pausedFlowInterviewCount }));
+      { records: pausedFlowInterviews.map((i: any) => ({ name: i.Name || i.Id || 'Unknown', detail: i.InterviewOwner && i.InterviewOwner.Name ? `Owner: ${i.InterviewOwner.Name}` : '' })) }));
   } else if (pausedFlowInterviewCount >= 11) {
     items.push(createDebtItem('flowQuality', 'medium',
       `${pausedFlowInterviewCount} Flow Interviews Paused for Over 30 Days`,
       'Paused flow interviews that sit for over 30 days likely represent abandoned sessions. They consume org storage and may reference stale data.',
       'Review paused interviews via the Paused and Waiting Interviews list view or SOQL on FlowInterview. Resume or delete stale interviews.',
-      { count: pausedFlowInterviewCount }));
+      { records: pausedFlowInterviews.map((i: any) => ({ name: i.Name || i.Id || 'Unknown', detail: i.InterviewOwner && i.InterviewOwner.Name ? `Owner: ${i.InterviewOwner.Name}` : '' })) }));
   } else if (pausedFlowInterviewCount >= 1) {
     items.push(createDebtItem('flowQuality', 'low',
       `${pausedFlowInterviewCount} Flow Interview${pausedFlowInterviewCount !== 1 ? 's' : ''} Paused for Over 30 Days`,
       'Paused flow interviews that sit for over 30 days may represent abandoned sessions that are consuming org storage.',
       'Review paused interviews via the Paused and Waiting Interviews list view or SOQL on FlowInterview.',
-      { count: pausedFlowInterviewCount }));
+      { records: pausedFlowInterviews.map((i: any) => ({ name: i.Name || i.Id || 'Unknown', detail: i.InterviewOwner && i.InterviewOwner.Name ? `Owner: ${i.InterviewOwner.Name}` : '' })) }));
   }
 
   // ── Paused flow interviews owned by deactivated users ────────────────────────
