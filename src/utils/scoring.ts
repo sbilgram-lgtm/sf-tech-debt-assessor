@@ -3078,6 +3078,11 @@ const LIMIT_LABELS: Record<string, string> = {
   DailyScratchOrgs: 'Daily Scratch Orgs',
   DailyStreamingApiEvents: 'Daily Streaming API Events',
   DailyWorkflowEmails: 'Daily Workflow Emails',
+  DailyScheduledFlowInterviews: 'Daily Scheduled Flow Interviews',
+  DailyScheduledPathInterviews: 'Daily Scheduled Path Executions',
+  FlexQueueJobs: 'Apex Flex Queue Jobs',
+  ConcurrentApexBatches: 'Concurrent Batch Apex Jobs',
+  PermissionSetGroups: 'Permission Set Groups',
   DataStorageMB: 'Data Storage (MB)',
   FileStorageMB: 'File Storage (MB)',
   HourlyAsyncReportRuns: 'Hourly Async Report Runs',
@@ -3250,6 +3255,114 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
       'Create at least one Platform Cache partition in Setup → Platform Cache. Assign org cache allocation for frequently queried reference data (settings, picklist values, feature flags). Implement Cache.Org.put/get in high-frequency Apex code paths.',
       {}));
   }
+
+  // ── Active Flows approaching 2,000-flow limit ─────────────────────────────────
+  const activeFlowCount = (data as any).activeFlowCount || 0;
+  if (activeFlowCount > 0) {
+    const ACTIVE_FLOW_LIMIT = 2000;
+    const activeFlowPct = Math.round((activeFlowCount / ACTIVE_FLOW_LIMIT) * 100);
+    if (activeFlowPct >= 90) {
+      items.push(createDebtItem('orgLimits', 'critical',
+        `${activeFlowCount.toLocaleString()} Active Flows — ${activeFlowPct}% of 2,000-Flow Limit`,
+        'Salesforce enforces a hard limit of 2,000 active flows per org. At this level, attempting to activate new flows will fail immediately.',
+        'Deactivate or delete flows that are no longer in use. Consolidate duplicate automation into single flows. Review abandoned flow definitions in Flow Builder.',
+        { count: activeFlowCount }));
+    } else if (activeFlowPct >= 75) {
+      items.push(createDebtItem('orgLimits', 'high',
+        `${activeFlowCount.toLocaleString()} Active Flows — ${activeFlowPct}% of 2,000-Flow Limit`,
+        'Salesforce enforces a hard limit of 2,000 active flows per org. Orgs approaching this ceiling will fail when attempting to activate new flows.',
+        'Deactivate or delete flows that are no longer in use. Consolidate duplicate automation into single flows. Review abandoned flow definitions in Flow Builder.',
+        { count: activeFlowCount }));
+    } else if (activeFlowPct >= 50) {
+      items.push(createDebtItem('orgLimits', 'medium',
+        `${activeFlowCount.toLocaleString()} Active Flows — ${activeFlowPct}% of 2,000-Flow Limit`,
+        'Salesforce enforces a hard limit of 2,000 active flows per org. Growth should be monitored to avoid hitting the ceiling.',
+        'Deactivate or delete flows that are no longer in use. Consolidate duplicate automation into single flows. Review abandoned flow definitions in Flow Builder.',
+        { count: activeFlowCount }));
+    }
+  }
+
+  // ── Relationships per object approaching 40-relationship limit ────────────────
+  const REL_LIMIT = 40;
+  const relationshipsPerObject: any[] = (data as any).relationshipsPerObject || [];
+  relationshipsPerObject.forEach((obj: any) => {
+    const count = obj.relCount || obj.expr0 || 0;
+    const objName = (obj.EntityDefinition && obj.EntityDefinition.QualifiedApiName) || obj.EntityDefinitionId || 'Unknown Object';
+    const pct = Math.round((count / REL_LIMIT) * 100);
+    if (pct >= 90) {
+      items.push(createDebtItem('orgLimits', 'critical',
+        `${objName}: ${count} Relationship Fields (${pct}% of 40-Relationship Limit)`,
+        'Each object supports a maximum of 40 relationship fields (lookups, master-details, and hierarchies combined). Objects at this level will fail when new relationship fields are added.',
+        'Review relationship fields on this object. Remove unused lookups. Consider consolidating relationships via junction objects or restructuring the data model.',
+        { object: objName, count }));
+    } else if (pct >= 75) {
+      items.push(createDebtItem('orgLimits', 'high',
+        `${objName}: ${count} Relationship Fields (${pct}% of 40-Relationship Limit)`,
+        'Each object supports a maximum of 40 relationship fields. Objects approaching this limit will fail when new relationship fields are added.',
+        'Review relationship fields on this object. Remove unused lookups. Consider consolidating relationships via junction objects or restructuring the data model.',
+        { object: objName, count }));
+    } else if (pct >= 50) {
+      items.push(createDebtItem('orgLimits', 'medium',
+        `${objName}: ${count} Relationship Fields (${pct}% of 40-Relationship Limit)`,
+        'Each object supports a maximum of 40 relationship fields. Continued growth without review will eventually cause deployment failures.',
+        'Audit relationship fields on this object. Remove unused lookups and review whether all relationships are still actively used.',
+        { object: objName, count }));
+    }
+  });
+
+  // ── Custom profiles approaching edition limit ─────────────────────────────────
+  const customProfileCount = (data as any).customProfileCount || 0;
+  if (customProfileCount > 0) {
+    const PROFILE_LIMIT = 1500;
+    const profilePct = Math.round((customProfileCount / PROFILE_LIMIT) * 100);
+    if (profilePct >= 90) {
+      items.push(createDebtItem('orgLimits', 'critical',
+        `${customProfileCount} Custom Profiles — ${profilePct}% of ~1,500 Limit`,
+        'Enterprise Edition orgs have a soft limit of approximately 1,500 custom profiles. At this level, creating new profiles may fail and permission evaluation performance degrades significantly.',
+        'Consolidate profiles with identical permissions into a single base profile with permission sets for variations. Adopt a permission set-centric model to reduce profile sprawl.',
+        { count: customProfileCount }));
+    } else if (profilePct >= 75) {
+      items.push(createDebtItem('orgLimits', 'high',
+        `${customProfileCount} Custom Profiles — ${profilePct}% of ~1,500 Limit`,
+        'Enterprise Edition orgs have a soft limit of approximately 1,500 custom profiles. Orgs with very high profile counts also face significant maintenance overhead and longer permission evaluation times.',
+        'Consolidate profiles with identical permissions into a single base profile with permission sets for variations. Adopt a permission set-centric model to reduce profile sprawl.',
+        { count: customProfileCount }));
+    } else if (profilePct >= 50) {
+      items.push(createDebtItem('orgLimits', 'medium',
+        `${customProfileCount} Custom Profiles — ${profilePct}% of ~1,500 Limit`,
+        'Profile count should be monitored. High profile counts increase maintenance overhead and permission evaluation time.',
+        'Consolidate profiles with identical permissions into a single base profile with permission sets for variations. Adopt a permission set-centric model to reduce profile sprawl.',
+        { count: customProfileCount }));
+    }
+  }
+
+  // ── Sharing rules per object approaching 300-rule limit ───────────────────────
+  const SHARING_RULE_LIMIT = 300;
+  const sharingRulesPerObject: any[] = (data as any).sharingRulesPerObject || [];
+  sharingRulesPerObject.forEach((obj: any) => {
+    const count = obj.ruleCount || obj.expr0 || 0;
+    const objName = obj.SobjectType || 'Unknown Object';
+    const pct = Math.round((count / SHARING_RULE_LIMIT) * 100);
+    if (pct >= 90) {
+      items.push(createDebtItem('orgLimits', 'critical',
+        `${objName}: ${count} Sharing Rules (${pct}% of 300-Rule Limit)`,
+        'Salesforce enforces a limit of 300 sharing rules per object. Exceeding this limit prevents new sharing rules from being created on the object.',
+        'Review and consolidate sharing rules for this object. Combine criteria-based rules with overlapping conditions. Evaluate whether some sharing can be handled via role hierarchy or manual sharing instead.',
+        { object: objName, count }));
+    } else if (pct >= 75) {
+      items.push(createDebtItem('orgLimits', 'high',
+        `${objName}: ${count} Sharing Rules (${pct}% of 300-Rule Limit)`,
+        'This object is approaching the 300-sharing-rule limit. Exceeding it will prevent new sharing rules from being created.',
+        'Review and consolidate sharing rules. Combine criteria-based rules with overlapping conditions. Evaluate role hierarchy and manual sharing as alternatives.',
+        { object: objName, count }));
+    } else if (pct >= 50) {
+      items.push(createDebtItem('orgLimits', 'medium',
+        `${objName}: ${count} Sharing Rules (${pct}% of 300-Rule Limit)`,
+        'Sharing rule count on this object is trending toward the 300-rule limit and should be monitored.',
+        'Audit sharing rules for this object. Consolidate overlapping rules and remove rules that are no longer needed.',
+        { object: objName, count }));
+    }
+  });
 
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);

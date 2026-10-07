@@ -239,6 +239,10 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Scheduled Apex Jobs Approaching 100-Job Limit', severity: 'medium' },
     { title: 'Custom Fields Per Object Approaching 500-Field Limit', severity: 'medium' },
     { title: 'No Platform Cache Partitions Configured', severity: 'low' },
+    { title: 'Active Flows Approaching 2,000-Flow Limit', severity: 'medium' },
+    { title: 'Relationship Fields Per Object Approaching 40-Relationship Limit', severity: 'medium' },
+    { title: 'Custom Profiles Approaching ~1,500 Limit', severity: 'medium' },
+    { title: 'Sharing Rules Per Object Approaching 300-Rule Limit', severity: 'medium' },
   ],
   'Duplicate Rules': [
     { title: 'No Duplicate Rules Configured', severity: 'high' },
