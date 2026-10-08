@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: October 7, 2026*
+*Last updated: October 8, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **399 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **402 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,18 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — October 8, 2026
+
+**3 new role hierarchy checks + depth threshold tightened** — total checks: 399 → 402
+
+New Sharing & Security checks apply Salesforce best practices to role hierarchy governance:
+- **Total role count threshold**: flags orgs at 500+ (medium) and 1,000+ (high) roles — large hierarchies slow sharing recalculation and user saves
+- **Top-level roles with too many users**: flags top-level roles (no parent) with more than 5 active users — executive/admin-only access is the recommended posture
+- **Role hierarchy breadth**: flags any single level with 50+ (medium) or 100+ (high) roles — wide levels multiply sharing recalculation traversal cost
+- **Depth threshold tightened**: now fires at >7 levels (medium) and >10 levels (high), down from the previous >10-only threshold
 
 ---
 
