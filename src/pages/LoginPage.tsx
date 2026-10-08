@@ -1227,6 +1227,10 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.75rem', color: '#c4c9d4' }}>
+        Independent tool — not affiliated with or endorsed by Salesforce, Inc.
+      </div>
     </div>
   );
 };
