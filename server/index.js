@@ -1255,6 +1255,14 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       ).catch(() => ({ records: [] }))
     ]);
 
+    const totalRoleCountRes = await safeQuery(conn,
+      "SELECT COUNT(Id) FROM UserRole WHERE NamespacePrefix = null"
+    ).catch(() => ({ records: [{ expr0: 0 }] }));
+
+    const topLevelRoleUsersRes = await safeQuery(conn,
+      "SELECT UserRoleId, COUNT(Id) userCount FROM User WHERE IsActive = true AND UserType = 'Standard' AND UserRoleId IN (SELECT Id FROM UserRole WHERE ParentRoleId = null AND NamespacePrefix = null) GROUP BY UserRoleId LIMIT 50"
+    ).catch(() => ({ records: [] }));
+
     const publicGroupsWithAllUsersRes = await safeQuery(conn,
       "SELECT GroupId, Group.Name FROM GroupMember WHERE UserOrGroup.Name = 'All Internal Users' AND Group.Type = 'Regular' LIMIT 100"
     ).catch(() => ({ records: [] }));
@@ -1296,6 +1304,8 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       permSetsWithNoAssignees: (permSets.records || []).filter(ps => !assignedPermSetIds.has(ps.Id)),
       rolesWithNoUsers: emptyRolesRes.records || [],
       allRoles: allRolesRes.records || [],
+      totalRoleCount: (totalRoleCountRes.records[0] || {}).expr0 || 0,
+      topLevelRoleUsers: topLevelRoleUsersRes.records || [],
       usersWithNoRole: usersWithNoRoleRes.records || [],
       profilesWithViewAllData: profilesWithVADRes.records || [],
       profilesWithModifyAllData: profilesWithMADRes.records || [],

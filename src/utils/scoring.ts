@@ -2591,7 +2591,7 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
-  // Role hierarchy depth — >10 levels is a performance and governance risk
+  // Role hierarchy depth — Salesforce recommends 7 levels max
   const allRoles = data.allRoles || [];
   if (allRoles.length > 0) {
     const parentMap = new Map(allRoles.map((r: any) => [r.Id, r.ParentRoleId]));
@@ -2608,11 +2608,93 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     }
     if (maxDepth > 10) {
       items.push(createDebtItem(
-        'sharingSecurity', 'medium',
-        `Role Hierarchy is ${maxDepth} Levels Deep`,
-        `The role hierarchy has ${maxDepth} levels. Deeply nested hierarchies significantly slow sharing recalculation when users are added or role memberships change. Salesforce recommends keeping hierarchies as flat as possible.`,
-        'Flatten the role hierarchy where possible. Consolidate intermediate roles that exist only for structural reasons. Target a maximum of 10 levels.',
+        'sharingSecurity', 'high',
+        `Role Hierarchy is ${maxDepth} Levels Deep — Exceeds Recommended Maximum`,
+        `Salesforce recommends a maximum of 7 levels. At ${maxDepth} levels, sharing recalculation when users are added or roles change causes significant performance impact on the org.`,
+        'Flatten the role hierarchy where possible. Consolidate intermediate roles that exist only for structural reasons. Target a maximum of 7 levels.',
         { depth: maxDepth }
+      ));
+    } else if (maxDepth > 7) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'medium',
+        `Role Hierarchy is ${maxDepth} Levels Deep — Approaching Recommended Maximum`,
+        `Salesforce recommends keeping the role hierarchy to 7 or fewer levels. At ${maxDepth} levels, the hierarchy is approaching the threshold where sharing recalculation starts to impact performance.`,
+        'Review intermediate roles that exist only for structural reasons. Consolidate where possible to flatten the hierarchy toward 7 or fewer levels.',
+        { depth: maxDepth }
+      ));
+    }
+
+    // Role count check
+    const totalRoleCount = (data as any).totalRoleCount || 0;
+    if (totalRoleCount >= 1000) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'high',
+        `${totalRoleCount} Total Roles — Large Role Hierarchy`,
+        `Orgs with 1,000+ roles experience significantly slower sharing recalculation, slower user record saves, and increased risk of async sharing timeouts. Salesforce recommends keeping total role counts well below 500 for most orgs.`,
+        'Audit the role hierarchy. Remove roles with no active users. Flatten intermediate roles that add no business value. Consider whether all role-based sharing can be replaced with criteria-based sharing rules or permission sets.',
+        { count: totalRoleCount }
+      ));
+    } else if (totalRoleCount >= 500) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'medium',
+        `${totalRoleCount} Total Roles — Monitor Role Hierarchy Size`,
+        `Orgs with 500+ roles start to see performance impacts on sharing recalculation and user saves. Salesforce recommends a lean role hierarchy.`,
+        'Audit the role hierarchy. Remove roles with no active users. Flatten intermediate roles that add no business value. Consider whether all role-based sharing can be replaced with criteria-based sharing rules or permission sets.',
+        { count: totalRoleCount }
+      ));
+    }
+
+    // Top-level roles with too many users
+    const topLevelRoleUsers: any[] = (data as any).topLevelRoleUsers || [];
+    const topLevelWithManyUsers = topLevelRoleUsers.filter((r: any) => (r.userCount || r.expr0 || 0) > 5);
+    if (topLevelWithManyUsers.length > 0) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'medium',
+        `${topLevelWithManyUsers.length} Top-Level Role${topLevelWithManyUsers.length !== 1 ? 's' : ''} Have More Than 5 Users`,
+        `Users in top-level roles (roles with no parent) can see all records in the org that are below them in the hierarchy. Top-level roles should contain only executive or admin users — widespread use inflates record visibility and undermines least-privilege access.`,
+        'Review which users are assigned to top-level roles. Move non-executive users to appropriate roles lower in the hierarchy. If broad visibility is required, use sharing rules or permission sets scoped to specific objects.',
+        { records: topLevelWithManyUsers.map((r: any) => ({ name: r.UserRoleId, detail: `${r.userCount || r.expr0} active users in top-level role` })) }
+      ));
+    }
+
+    // Hierarchy breadth — flag any single level with >50 roles
+    const parentMap2 = new Map(allRoles.map((r: any) => [r.Id, r.ParentRoleId]));
+    const depthByRole = new Map<string, number>();
+    for (const role of allRoles) {
+      let depth = 0;
+      let current = role.Id;
+      const visited = new Set<string>();
+      while (parentMap2.get(current) && !visited.has(current)) {
+        visited.add(current);
+        current = parentMap2.get(current);
+        depth++;
+      }
+      depthByRole.set(role.Id, depth);
+    }
+    const countByLevel = new Map<number, number>();
+    Array.from(depthByRole.values()).forEach((depth) => {
+      countByLevel.set(depth, (countByLevel.get(depth) || 0) + 1);
+    });
+    let maxBreadth = 0;
+    let maxBreadthLevel = 0;
+    Array.from(countByLevel.entries()).forEach(([level, count]) => {
+      if (count > maxBreadth) { maxBreadth = count; maxBreadthLevel = level; }
+    });
+    if (maxBreadth > 100) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'high',
+        `Role Hierarchy Level ${maxBreadthLevel} Has ${maxBreadth} Roles — Excessively Wide`,
+        `A single level of the role hierarchy containing 100+ roles creates governance complexity and slows sharing recalculation. Each role at this level creates a separate branch that Salesforce must traverse during every sharing recalculation event.`,
+        'Consolidate roles at this level. Introduce intermediate grouping roles to reduce breadth. Review whether roles at this level represent real business distinctions or were created arbitrarily.',
+        { count: maxBreadth, level: maxBreadthLevel }
+      ));
+    } else if (maxBreadth > 50) {
+      items.push(createDebtItem(
+        'sharingSecurity', 'medium',
+        `Role Hierarchy Level ${maxBreadthLevel} Has ${maxBreadth} Roles — Wide Hierarchy`,
+        `A single level of the role hierarchy containing 50+ roles creates governance complexity and slows sharing recalculation. Each role at this level creates a separate branch that Salesforce must traverse during every sharing recalculation event.`,
+        'Consolidate roles at this level. Introduce intermediate grouping roles to reduce breadth. Review whether roles at this level represent real business distinctions or were created arbitrarily.',
+        { count: maxBreadth, level: maxBreadthLevel }
       ));
     }
   }
