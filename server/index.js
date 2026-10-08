@@ -148,7 +148,9 @@ function getCallbackUrl(req) {
 }
 
 app.get('/auth/login', (req, res) => {
-  const loginUrl = (req.query.loginUrl || process.env.SF_LOGIN_URL || 'https://login.salesforce.com').replace(/\/$/, '');
+  let rawLoginUrl = req.query.loginUrl || process.env.SF_LOGIN_URL || 'https://login.salesforce.com';
+  if (rawLoginUrl && !/^https?:\/\//i.test(rawLoginUrl)) rawLoginUrl = 'https://' + rawLoginUrl;
+  const loginUrl = rawLoginUrl.replace(/\/$/, '');
   const clientId = req.query.clientId || process.env.SF_CLIENT_ID;
   const clientSecret = req.query.clientSecret || process.env.SF_CLIENT_SECRET;
 
