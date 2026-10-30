@@ -507,12 +507,12 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
       "SELECT Id, DeveloperName, Description, NamespacePrefix, LastModifiedDate " +
       "FROM CustomObject WHERE NamespacePrefix = null AND CustomSettingsType = null " +
       "AND (NOT QualifiedApiName LIKE '%__mdt') AND (NOT QualifiedApiName LIKE '%__e') " +
-      "AND (NOT QualifiedApiName LIKE '%__x') AND (NOT QualifiedApiName LIKE '%__b')"
+      "AND (NOT QualifiedApiName LIKE '%__x') AND (NOT QualifiedApiName LIKE '%__b') LIMIT 500"
     );
     const fields = await safeToolingQuery(conn,
       "SELECT Id, DeveloperName, TableEnumOrId, Description, NamespacePrefix, " +
       "LastModifiedDate " +
-      "FROM CustomField WHERE NamespacePrefix = null"
+      "FROM CustomField WHERE NamespacePrefix = null LIMIT 2000"
     );
 
     // Aggregate field counts per object — avoids 2000-record truncation for the 80% limit check
