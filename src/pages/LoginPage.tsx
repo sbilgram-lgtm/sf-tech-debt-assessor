@@ -245,6 +245,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Relationship Fields Per Object Approaching 40-Relationship Limit', severity: 'medium' },
     { title: 'Custom Profiles Approaching ~1,500 Limit', severity: 'medium' },
     { title: 'Sharing Rules Per Object Approaching 300-Rule Limit', severity: 'medium' },
+    { title: 'Total Apex Code Approaching 3M Character Limit', severity: 'medium' },
   ],
   'Duplicate Rules': [
     { title: 'No Duplicate Rules Configured', severity: 'high' },

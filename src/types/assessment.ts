@@ -240,6 +240,7 @@ export interface OrgLimitsData {
   limits: OrgLimitEntry[];
   apexClassCount: number;
   customObjectCount: number;
+  totalApexCharacters: number;
 }
 
 export interface DuplicateRulesData {

@@ -1481,14 +1481,16 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
       ? (customObjectLimitEntry.Max || 0) - (customObjectLimitEntry.Remaining !== undefined ? customObjectLimitEntry.Remaining : customObjectLimitEntry.Max || 0)
       : 0;
 
-    const [scheduledApexRes, customFieldsPerObjectRes, platformCacheRes, activeFlowsRes, relationshipsPerObjectRes, customProfilesRes, sharingRulesPerObjectRes] = await Promise.all([
+    const [scheduledApexRes, customFieldsPerObjectRes, platformCacheRes, activeFlowsRes, relationshipsPerObjectRes, customProfilesRes, sharingRulesPerObjectRes, totalApexCharactersRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, CronJobDetail.Name, State, NextFireTime FROM CronTrigger WHERE CronJobDetail.JobType = '7' LIMIT 100").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT EntityDefinitionId, EntityDefinition.QualifiedApiName, COUNT(Id) fieldCount FROM FieldDefinition WHERE IsCustom = true AND NamespacePrefix = null GROUP BY EntityDefinitionId, EntityDefinition.QualifiedApiName ORDER BY COUNT(Id) DESC LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, MasterLabel, IsDefaultPartition, OrganizationCacheAllocation, SessionCacheAllocation FROM PlatformCachePartition LIMIT 10").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT COUNT(Id) activeCount FROM FlowDefinition WHERE ActiveVersionId != null").catch(() => ({ records: [{ activeCount: 0 }] })),
       safeQuery(conn, "SELECT EntityDefinitionId, EntityDefinition.QualifiedApiName, COUNT(Id) relCount FROM FieldDefinition WHERE IsCustom = true AND NamespacePrefix = null AND DataType IN ('Lookup', 'Master-Detail', 'Hierarchy') GROUP BY EntityDefinitionId, EntityDefinition.QualifiedApiName ORDER BY COUNT(Id) DESC LIMIT 30").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, Name FROM Profile WHERE UserType = 'Standard' AND Name != 'System Administrator' ORDER BY Name ASC LIMIT 200").catch(() => ({ records: [] })),
-      safeToolingQuery(conn, "SELECT SobjectType, COUNT(Id) ruleCount FROM SharingRules GROUP BY SobjectType ORDER BY COUNT(Id) DESC LIMIT 30").catch(() => ({ records: [] }))
+      safeToolingQuery(conn, "SELECT SobjectType, COUNT(Id) ruleCount FROM SharingRules GROUP BY SobjectType ORDER BY COUNT(Id) DESC LIMIT 30").catch(() => ({ records: [] })),
+      // Sum LengthWithoutComments across ALL classes (including managed packages) — characters, not lines
+      safeQuery(conn, "SELECT SUM(LengthWithoutComments) totalChars FROM ApexClass WHERE Status = 'Active'").catch(() => ({ records: [{ expr0: 0 }] }))
     ]);
     const scheduledApexJobs = scheduledApexRes.records || [];
     const customFieldsPerObject = customFieldsPerObjectRes.records || [];
@@ -1497,8 +1499,9 @@ app.get('/api/assess/org-limits', requireAuth, async (req, res) => {
     const relationshipsPerObject = relationshipsPerObjectRes.records || [];
     const customProfiles = customProfilesRes.records || [];
     const sharingRulesPerObject = sharingRulesPerObjectRes.records || [];
+    const totalApexCharacters = (totalApexCharactersRes.records[0] || {}).expr0 || 0;
 
-    res.json({ limits, apexClassCount, customObjectCount, scheduledApexJobs, customFieldsPerObject, platformCachePartitions, activeFlowCount, relationshipsPerObject, customProfiles, sharingRulesPerObject });
+    res.json({ limits, apexClassCount, customObjectCount, scheduledApexJobs, customFieldsPerObject, platformCachePartitions, activeFlowCount, relationshipsPerObject, customProfiles, sharingRulesPerObject, totalApexCharacters });
   } catch (err) {
     console.error('Org limits assessment error:', err);
     res.status(500).json({ error: err.message });

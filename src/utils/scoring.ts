@@ -3253,6 +3253,28 @@ export function assessOrgLimits(data: OrgLimitsData): CategoryScore {
     ));
   }
 
+  // ── Total Apex character count approaching 3M org limit ──────────────────────
+  // LengthWithoutComments is character count (Salesforce Tooling API field).
+  // The query includes managed package classes because they count toward the same ceiling.
+  // The default org limit is 3M characters; Salesforce can raise it via a support case
+  // but does not expose the current limit via any API, so we always compare against 3M.
+  const APEX_CHAR_LIMIT = 3_000_000;
+  const totalApexCharacters = data.totalApexCharacters || 0;
+  if (totalApexCharacters > 0) {
+    const apexCharPct = Math.round((totalApexCharacters / APEX_CHAR_LIMIT) * 100);
+    if (apexCharPct >= 50) {
+      const apexCharSeverity = apexCharPct >= 90 ? 'critical' : apexCharPct >= 75 ? 'high' : 'medium';
+      const apexCharTitle = `Total Apex Code: ${totalApexCharacters.toLocaleString()} Characters (${apexCharPct}% of 3M Limit)`;
+      const apexCharDesc = apexCharPct >= 90
+        ? `The org is critically close to Salesforce's 3-million character Apex code limit. At 100% the org will be unable to deploy new Apex code until the limit is raised via a Salesforce support case.`
+        : `The org has consumed ${apexCharPct}% of its 3-million character Apex code limit (including managed package code). Continued growth without pruning will eventually require a support case to raise the limit.`;
+      items.push(createDebtItem('orgLimits', apexCharSeverity, apexCharTitle, apexCharDesc,
+        'Audit Apex classes for dead code, unused utility classes, and over-fragmented helpers. Delete or deprecate unused classes. If the limit is genuinely reached, open a Salesforce support case to request a character limit increase. Note: this count includes managed package code which cannot be reduced without uninstalling packages.',
+        { totalChars: totalApexCharacters, limitChars: APEX_CHAR_LIMIT, pct: apexCharPct }
+      ));
+    }
+  }
+
   // Custom object count — handled by the generic limits loop above using edition-accurate values from the limits API.
 
   // ── Scheduled Apex count approaching 100-job limit ────────────────────────────
