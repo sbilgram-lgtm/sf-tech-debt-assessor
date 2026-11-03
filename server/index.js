@@ -1045,7 +1045,7 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
 
     // Permission Sets
     const permSets = await safeQuery(conn,
-      "SELECT Id, Name, Label, Description, IsCustom FROM PermissionSet WHERE IsCustom = true LIMIT 500"
+      "SELECT Id, Name, Label, Description, IsCustom, NamespacePrefix, LastModifiedById, LastModifiedBy.Name, LastModifiedBy.IsActive FROM PermissionSet WHERE IsCustom = true LIMIT 500"
     );
 
     // Sharing rules via Metadata API describe
@@ -1198,6 +1198,26 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
     // PSG count — how many Permission Set Groups exist
     const psgCountRes = await safeQuery(conn, "SELECT COUNT(Id) FROM PermissionSetGroup").catch(() => ({ records: [{ expr0: 0 }] }));
 
+    // PSG records for governance checks
+    const psgRecordsRes = await safeQuery(conn,
+      "SELECT Id, MasterLabel, DeveloperName, NamespacePrefix, CreatedDate FROM PermissionSetGroup LIMIT 500"
+    ).catch(() => ({ records: [] }));
+
+    // PSG assignments — which PSGs have at least one user assigned
+    const psgAssignmentsRes = await safeQuery(conn,
+      "SELECT PermissionSetGroupId, COUNT(Id) cnt FROM PermissionSetAssignment WHERE PermissionSetGroupId != null GROUP BY PermissionSetGroupId LIMIT 500"
+    ).catch(() => ({ records: [] }));
+
+    // PSG membership — count of PSs per PSG (to detect single-member PSGs)
+    const psgMemberCountRes = await safeQuery(conn,
+      "SELECT PermissionSetGroupId, COUNT(Id) cnt FROM PermissionSetGroupComponent GROUP BY PermissionSetGroupId LIMIT 500"
+    ).catch(() => ({ records: [] }));
+
+    // Active user count for PS governance ratio check
+    const activeUserCountRes = await safeQuery(conn,
+      "SELECT COUNT(Id) cnt FROM User WHERE IsActive = true AND UserType = 'Standard'"
+    ).catch(() => ({ records: [{ cnt: 0 }] }));
+
     // Users with >10 permission sets assigned
     const usersWithExcessivePSRes = await safeQuery(conn,
       "SELECT AssigneeId, COUNT(Id) FROM PermissionSetAssignment WHERE PermissionSet.IsCustom = true GROUP BY AssigneeId HAVING COUNT(Id) > 10 LIMIT 50"
@@ -1313,7 +1333,32 @@ app.get('/api/assess/sharing-security', requireAuth, async (req, res) => {
       profilesWithModifyAllData: profilesWithMADRes.records || [],
       permSetsWithObjectVADMAD: objPermsVADMADRes.records || [],
       publicGroupsWithAllUsers: publicGroupsWithAllUsersRes.records || [],
-      usersPasswordStale: usersPasswordStaleRes.records || []
+      usersPasswordStale: usersPasswordStaleRes.records || [],
+      psgsWithNoUsers: (() => {
+        const assignedPsgIds = new Set((psgAssignmentsRes.records || []).map(r => r.PermissionSetGroupId));
+        const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+        return (psgRecordsRes.records || []).filter(psg =>
+          !psg.NamespacePrefix &&
+          !assignedPsgIds.has(psg.Id) &&
+          new Date(psg.CreatedDate) < sixtyDaysAgo
+        );
+      })(),
+      permSetsModifiedByInactive: (permSets.records || []).filter(ps =>
+        !ps.NamespacePrefix &&
+        ps.LastModifiedBy &&
+        ps.LastModifiedBy.IsActive === false
+      ),
+      totalCustomPSCount: (permSets.records || []).filter(ps => !ps.NamespacePrefix).length,
+      totalActiveUserCount: (activeUserCountRes.records[0] || {}).cnt || 0,
+      psgsWithSingleMember: (() => {
+        const memberCounts = new Map((psgMemberCountRes.records || []).map(r => [r.PermissionSetGroupId, r.cnt]));
+        return (psgRecordsRes.records || []).filter(psg =>
+          !psg.NamespacePrefix &&
+          (memberCounts.get(psg.Id) || 0) === 1 &&
+          new Date(psg.CreatedDate) < new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+        );
+      })(),
+      totalPSGCount: (psgRecordsRes.records || []).filter(psg => !psg.NamespacePrefix).length
     });
   } catch (err) {
     console.error('Sharing/Security assessment error:', err);

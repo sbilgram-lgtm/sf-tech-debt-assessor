@@ -2672,6 +2672,70 @@ export function assessSharingSecurity(data: SharingSecurityData): CategoryScore 
     ));
   }
 
+  // PSGs with no users assigned (60+ days old)
+  const psgsWithNoUsers = data.psgsWithNoUsers || [];
+  if (psgsWithNoUsers.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'low',
+      `${psgsWithNoUsers.length} Permission Set Group${psgsWithNoUsers.length !== 1 ? 's' : ''} Not Assigned to Any User`,
+      `${psgsWithNoUsers.length} custom Permission Set Group${psgsWithNoUsers.length !== 1 ? 's' : ''} over 60 days old have no active user assignments. Unassigned PSGs add noise to access reviews and may represent abandoned role definitions.`,
+      'Review each unassigned Permission Set Group. Delete those no longer needed. Document retained PSGs with a description explaining their intended role.',
+      { records: psgsWithNoUsers.slice(0, 50).map((psg: any) => ({ name: psg.MasterLabel || psg.DeveloperName, detail: `Created: ${new Date(psg.CreatedDate).toLocaleDateString()} — no users assigned` })) }
+    ));
+  }
+
+  // Permission sets modified by inactive/departed users
+  const permSetsModifiedByInactive = data.permSetsModifiedByInactive || [];
+  if (permSetsModifiedByInactive.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'medium',
+      `${permSetsModifiedByInactive.length} Custom Permission Set${permSetsModifiedByInactive.length !== 1 ? 's' : ''} Last Modified by an Inactive User`,
+      'Permission sets last modified by users who are no longer active represent unreviewed access configurations. If the user left under adverse circumstances or their permissions were revoked for policy reasons, the PSs they configured should be audited for inappropriate grants.',
+      'Review each permission set flagged. Verify the permissions granted are still appropriate and align with current business requirements. Assign an active owner to each permission set.',
+      { records: permSetsModifiedByInactive.slice(0, 50).map((ps: any) => ({ name: ps.Label || ps.Name, detail: `Last modified by: ${ps.LastModifiedBy?.Name || 'Unknown'} (inactive)` })) }
+    ));
+  }
+
+  // Total custom PS count governance
+  const totalCustomPSCount = data.totalCustomPSCount || 0;
+  const totalActiveUserCount = data.totalActiveUserCount || 1;
+  if (totalCustomPSCount >= 100) {
+    const psPerUser = (totalCustomPSCount / totalActiveUserCount).toFixed(1);
+    const psSeverity = totalCustomPSCount >= 200 ? 'high' : 'medium';
+    items.push(createDebtItem(
+      'sharingSecurity', psSeverity,
+      `${totalCustomPSCount} Custom Permission Sets — Governance Review Recommended`,
+      `The org has ${totalCustomPSCount} custom permission sets (${psPerUser} per active user). Large PS inventories make access reviews error-prone, slow permission set assignment evaluation at login, and increase the surface area for privilege creep. This count excludes managed package permission sets.`,
+      'Audit permission sets for overlap and consolidation opportunities. Use Permission Set Groups to group related PSs by role. Establish a governance process with named owners and quarterly access reviews.',
+      { count: totalCustomPSCount, perUser: psPerUser }
+    ));
+  }
+
+  // Total PSG count governance
+  const totalPSGCount = data.totalPSGCount || 0;
+  if (totalPSGCount >= 50) {
+    const psgSeverity = totalPSGCount >= 100 ? 'high' : 'medium';
+    items.push(createDebtItem(
+      'sharingSecurity', psgSeverity,
+      `${totalPSGCount} Custom Permission Set Groups — Governance Review Recommended`,
+      `${totalPSGCount} custom Permission Set Groups exist in this org. While PSGs improve access management over individual PS assignment, a high PSG count without a clear role taxonomy becomes equally difficult to govern and audit.`,
+      'Map each PSG to a named business role. Delete PSGs that duplicate functionality. Establish a naming convention and ownership model to keep the PSG inventory manageable.',
+      { count: totalPSGCount }
+    ));
+  }
+
+  // PSGs containing only one permission set (60+ days old, not muting PSGs)
+  const psgsWithSingleMember = data.psgsWithSingleMember || [];
+  if (psgsWithSingleMember.length > 0) {
+    items.push(createDebtItem(
+      'sharingSecurity', 'low',
+      `${psgsWithSingleMember.length} Permission Set Group${psgsWithSingleMember.length !== 1 ? 's' : ''} Contain Only One Permission Set`,
+      'Permission Set Groups with a single member provide no grouping benefit over assigning the permission set directly. They add an unnecessary layer of indirection to access management and suggest PSGs were created without a clear grouping strategy.',
+      'Either add more permission sets to these PSGs to form meaningful role-based groupings, or dissolve them and assign the contained permission set directly. Retain single-member PSGs only if they use muting permission sets intentionally.',
+      { records: psgsWithSingleMember.slice(0, 50).map((psg: any) => ({ name: psg.MasterLabel || psg.DeveloperName, detail: 'Contains only 1 permission set — no grouping benefit' })) }
+    ));
+  }
+
   // Roles with no active users
   const rolesWithNoUsers = data.rolesWithNoUsers || [];
   if (rolesWithNoUsers.length > 0) {

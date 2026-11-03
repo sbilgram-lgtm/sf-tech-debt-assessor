@@ -207,6 +207,12 @@ export interface SharingSecurityData {
   permSetsWithObjectVADMAD: any[];
   publicGroupsWithAllUsers: any[];
   usersPasswordStale: any[];
+  psgsWithNoUsers: any[];
+  permSetsModifiedByInactive: any[];
+  totalCustomPSCount: number;
+  totalActiveUserCount: number;
+  psgsWithSingleMember: any[];
+  totalPSGCount: number;
 }
 
 export interface IntegrationData {
