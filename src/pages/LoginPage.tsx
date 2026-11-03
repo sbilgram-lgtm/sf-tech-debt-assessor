@@ -86,6 +86,9 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Failed Async Apex Jobs in Last 7 Days', severity: 'low' },
     { title: 'Async Apex Jobs Stuck in Queue for Over 24 Hours', severity: 'medium' },
     { title: 'Active Debug Trace Flags on Production Users', severity: 'medium' },
+    { title: 'Apex Classes Use Oversized Batch Scope (> 200)', severity: 'medium' },
+    { title: 'Apex Classes Concatenate Strings Inside Loops', severity: 'medium' },
+    { title: 'Apex Classes Have Static Collections That Accumulate Across Invocations', severity: 'high' },
     { title: 'Apex Classes Over 1,000 Lines', severity: 'low' },
   ],
   'Data Model': [

@@ -1212,6 +1212,99 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       { count: activeTraceFlags.length, records: activeTraceFlags.map((f: any) => ({ name: (f.TracedEntity && f.TracedEntity.Name) || f.TracedEntityId, detail: `Expires: ${new Date(f.ExpirationDate).toLocaleDateString()}` })) }));
   }
 
+  // CQ-47: Oversized batch scope — Database.executeBatch with scope > 200
+  const batchScopeClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    // Inline literal: Database.executeBatch(new Foo(), 500)
+    const literalMatch = body.match(/Database\.executeBatch\s*\([^,]+,\s*(\d+)\s*\)/gi);
+    if (literalMatch) {
+      const over = literalMatch.some((m: string) => {
+        const num = parseInt((m.match(/,\s*(\d+)\s*\)$/) || [])[1] || '0', 10);
+        return num > 200;
+      });
+      if (over) return true;
+    }
+    // Constant declaration in same class: static final Integer BATCH_SIZE = 500
+    const constMatch = body.match(/(?:static\s+final\s+Integer|Integer)\s+\w+\s*=\s*(\d+)\s*;/gi);
+    if (constMatch) {
+      const over = constMatch.some((m: string) => {
+        const num = parseInt((m.match(/=\s*(\d+)\s*;$/) || [])[1] || '0', 10);
+        return num > 200;
+      });
+      if (over && /Database\.executeBatch\s*\(/i.test(body)) return true;
+    }
+    return false;
+  });
+  if (batchScopeClasses.length > 0) {
+    items.push(createDebtItem(
+      'code', 'medium',
+      `${batchScopeClasses.length} Apex Class${batchScopeClasses.length !== 1 ? 'es' : ''} Use Oversized Batch Scope (> 200)`,
+      'Salesforce recommends a batch scope of 200 or fewer records per execution. Larger scopes load more records into heap simultaneously, increasing the risk of heap limit failures (6 MB sync / 12 MB async) — especially in data-heavy batch classes that build collections or perform multiple SOQL calls per record.',
+      'Lower the scope argument in Database.executeBatch() to 200 or less. For very large data volumes, use a smaller scope and rely on the platform to manage the number of executions. Note: scope passed via Custom Metadata or Custom Settings will not be detected by this check.',
+      { records: batchScopeClasses.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'Batch scope > 200 detected — heap limit risk' })) }
+    ));
+  }
+
+  // CQ-48: String concatenation in loops — heap O(n²) anti-pattern
+  const stringConcatLoopClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    // Find String variable declarations (String varName = ...)
+    const strVarMatches = body.match(/\bString\s+(\w+)\s*=/gi) || [];
+    if (strVarMatches.length === 0) return false;
+    const strVarNames = strVarMatches.map((m: string) => {
+      const match = m.match(/\bString\s+(\w+)\s*=/i);
+      return match ? match[1] : null;
+    }).filter(Boolean);
+    // Check if any of those variable names appear with += inside a for/while loop body
+    const loopBodyMatch = body.match(/(?:for|while)\s*\([^)]*\)\s*\{([\s\S]*?)\}/g) || [];
+    return loopBodyMatch.some((loop: string) =>
+      strVarNames.some((v: string | null) => {
+        const concatPattern = new RegExp(`\\b${v}\\s*\\+=\\s*`);
+        return concatPattern.test(loop);
+      })
+    );
+  });
+  if (stringConcatLoopClasses.length > 0) {
+    items.push(createDebtItem(
+      'code', 'medium',
+      `${stringConcatLoopClasses.length} Apex Class${stringConcatLoopClasses.length !== 1 ? 'es' : ''} Concatenate Strings Inside Loops`,
+      'Using += to build a String inside a for or while loop creates O(n²) heap pressure — each concatenation allocates a new String object the length of all previous concatenations combined. On large collections this is a leading cause of heap limit failures.',
+      'Replace String += concatenation in loops with a List<String> that collects the parts, then call String.join(parts, \'\') once after the loop. This reduces heap allocation from O(n²) to O(n).',
+      { records: stringConcatLoopClasses.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'String += inside for/while loop — O(n²) heap pressure' })) }
+    ));
+  }
+
+  // CQ-49: Static collections accumulating across trigger invocations
+  const staticCollectionClasses = apex.classes.filter((c: any) => {
+    const body = c.Body || '';
+    if (/@isTest\b/i.test(body)) return false;
+    // Scope to trigger-context classes only
+    const isTriggerContext = /\b(Trigger|Handler|Service)\b/i.test(c.Name || '');
+    if (!isTriggerContext) return false;
+    // Must declare a private static collection field
+    if (!/private\s+static\s+(?:List|Map|Set)\s*</i.test(body)) return false;
+    // Collection must be populated inside a loop (add/put inside for/while)
+    const loopBodies = body.match(/(?:for|while)\s*\([^)]*\)\s*\{([\s\S]*?)\}/g) || [];
+    const populatedInLoop = loopBodies.some((loop: string) =>
+      /\.(add|put)\s*\(/.test(loop)
+    );
+    if (!populatedInLoop) return false;
+    // Exclude classes that call clear() — intentional cache pattern
+    if (/\.(clear)\s*\(\s*\)/.test(body)) return false;
+    return true;
+  });
+  if (staticCollectionClasses.length > 0) {
+    items.push(createDebtItem(
+      'code', 'high',
+      `${staticCollectionClasses.length} Apex Class${staticCollectionClasses.length !== 1 ? 'es' : ''} Have Static Collections That Accumulate Across Invocations`,
+      'Static List, Map, or Set fields persist for the lifetime of the Apex transaction. In trigger-context classes, if these collections are populated inside a loop with no corresponding clear() call, they grow with every record in the batch — a primary cause of heap limit failures at scale.',
+      'Reset static collections at the start of each trigger invocation, or use instance variables instead of static fields for per-execution state. If the collection is intentionally used as a query cache, add a clear() call at the transaction boundary to make the intent explicit.',
+      { records: staticCollectionClasses.slice(0, 30).map((c: any) => ({ name: c.Name, detail: 'private static List/Map/Set populated in loop without clear() — heap accumulation risk' })) }
+    ));
+  }
+
   // ── Apex classes over 1,000 lines ─────────────────────────────────────────────
   const largeApexClasses: any[] = (apex as any).largeApexClasses || [];
   if (largeApexClasses.length >= 1) {
