@@ -368,6 +368,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'LWC Components Use Inline style= Attributes in Templates', severity: 'low' },
     { title: 'LWC Components Fire Events with bubbles:true AND composed:true', severity: 'high' },
     { title: 'LWC Components Override SLDS Classes with Hardcoded Colors', severity: 'medium' },
+    { title: 'LWC Components Subscribe to LMS or EmpApi Without Unsubscribing', severity: 'medium' },
+    { title: 'LWC Components Call Wire-Adaptable Functions Imperatively in connectedCallback', severity: 'medium' },
     { title: 'Lightning Pages Not Modified in 2+ Years', severity: 'low' },
     { title: 'Lightning Pages — Governance Review Recommended (>50)', severity: 'low' },
     { title: 'Objects with 4+ Lightning Record Pages', severity: 'low' },

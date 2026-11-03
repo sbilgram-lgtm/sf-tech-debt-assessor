@@ -4769,6 +4769,80 @@ export function assessLwc(data: LwcData): CategoryScore {
     ));
   }
 
+  // 35. LMS / EmpApi subscriptions not unsubscribed in disconnectedCallback
+  const leakySubscriptionHits: { bundleId: string; name: string }[] = [];
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    const LMS_IMPORT = /from\s+['"]lightning\/messageService['"]/;
+    const EMPAPI_IMPORT = /from\s+['"]lightning\/empApi['"]/;
+    const SUBSCRIBE_IN_CONNECTED = /connectedCallback\s*\(\s*\)[^}]*subscribe\s*\(/s;
+    const UNSUBSCRIBE_IN_DISCONNECTED = /disconnectedCallback\s*\(\s*\)[^}]*unsubscribe\s*\(/s;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!(LMS_IMPORT.test(src) || EMPAPI_IMPORT.test(src))) continue;
+      if (!SUBSCRIBE_IN_CONNECTED.test(src)) continue;
+      if (UNSUBSCRIBE_IN_DISCONNECTED.test(src)) continue;
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!leakySubscriptionHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        leakySubscriptionHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (leakySubscriptionHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${leakySubscriptionHits.length} LWC Component${leakySubscriptionHits.length !== 1 ? 's' : ''} Subscribe to LMS or EmpApi Without Unsubscribing`,
+      'Components that call subscribe() from lightning/messageService or lightning/empApi without a matching unsubscribe() in disconnectedCallback hold live subscriptions after the component is removed from the DOM. This causes memory leaks and can trigger handler callbacks on a destroyed component, leading to errors.',
+      'Store the subscription reference (e.g. this.subscription = subscribe(...)) and call unsubscribe(this.subscription) inside disconnectedCallback to clean up when the component is removed.',
+      { records: leakySubscriptionHits.slice(0, 50).map(h => ({ name: h.name, detail: 'subscribe() without unsubscribe() in disconnectedCallback — memory leak' })) }
+    ));
+  }
+
+  // 36. Imperative wire-adaptable calls in connectedCallback (repeated per-component setup)
+  const imperativeWireHits: { bundleId: string; name: string; detail: string }[] = [];
+  {
+    const WIRE_ADAPTABLE = [
+      { fn: 'getPicklistValues', wire: '@wire(getPicklistValues' },
+      { fn: 'getObjectInfo',     wire: '@wire(getObjectInfo' },
+      { fn: 'getObjectInfos',    wire: '@wire(getObjectInfos' },
+      { fn: 'getRecord',         wire: '@wire(getRecord' },
+      { fn: 'getListUi',         wire: '@wire(getListUi' },
+      { fn: 'getRelatedListInfo',wire: '@wire(getRelatedListInfo' },
+    ];
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    // Extract connectedCallback body: text between connectedCallback() { ... }
+    const CONNECTED_BODY = /connectedCallback\s*\(\s*\)\s*\{([\s\S]*?)\n\s*\}/;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      const cbMatch = src.match(CONNECTED_BODY);
+      if (!cbMatch) continue;
+      const cbBody = cbMatch[1];
+      const flagged: string[] = [];
+      for (const { fn, wire } of WIRE_ADAPTABLE) {
+        // Imperative call present in connectedCallback with a static (non-variable) first argument
+        const imperativePattern = new RegExp(`\\b${fn}\\s*\\(\\s*[{'\`"]`);
+        if (!imperativePattern.test(cbBody)) continue;
+        // Skip if @wire is already used for the same function in this file
+        if (src.includes(wire)) continue;
+        flagged.push(fn);
+      }
+      if (flagged.length === 0) continue;
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!imperativeWireHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        imperativeWireHits.push({ bundleId: r.LightningComponentBundleId, name, detail: flagged.join(', ') });
+      }
+    }
+  }
+  if (imperativeWireHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${imperativeWireHits.length} LWC Component${imperativeWireHits.length !== 1 ? 's' : ''} Call Wire-Adaptable Functions Imperatively in connectedCallback`,
+      'Calling getPicklistValues, getObjectInfo, getRecord, and similar Salesforce wire-adaptable functions imperatively in connectedCallback runs a fresh server request on every component instantiation. The @wire decorator caches results and re-renders reactively, making it more efficient and idiomatic.',
+      'Replace imperative calls in connectedCallback with @wire declarations. Use the imperative style only when the parameters are genuinely dynamic and cannot be expressed as reactive wire properties.',
+      { records: imperativeWireHits.slice(0, 50).map(h => ({ name: h.name, detail: `Imperative call(s): ${h.detail} — consider @wire` })) }
+    ));
+  }
+
   // 31. Stale FlexiPages not modified in 2+ years
   const stalePages = flexiPages.filter((p: any) => p.LastModifiedDate && new Date(p.LastModifiedDate) < twoYearsAgo);
   if (stalePages.length > 0) {
