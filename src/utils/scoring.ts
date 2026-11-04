@@ -5105,6 +5105,126 @@ export function assessLwc(data: LwcData): CategoryScore {
     ));
   }
 
+  // 41. loadScript usage — third-party scripts run inside LWS sandbox
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    const LOAD_SCRIPT_IMPORT = /from\s+['"]lightning\/platformResourceLoader['"]/;
+    const LOAD_SCRIPT_CALL = /\bloadScript\s*\(/;
+    const ANALYTICS_NAMES = /quantum|analytics|metric|tracking|gtm|datadog|newrelic|heap|fullstory|pendo|segment|mixpanel/i;
+    const BASE_COMPONENT = /^(base|mixin|util|utils|common|shared)/i;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!LOAD_SCRIPT_IMPORT.test(src) || !LOAD_SCRIPT_CALL.test(src)) continue;
+      const bundleName: string = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      const isBase = BASE_COMPONENT.test(bundleName);
+      const hasAnalyticsName = ANALYTICS_NAMES.test(src);
+      const severity: 'high' | 'medium' = (isBase || hasAnalyticsName) ? 'high' : 'medium';
+      const detail = isBase
+        ? 'loadScript in a base/shared component — LWS overhead inherited by all extending components'
+        : hasAnalyticsName
+          ? 'loadScript loading analytics/tracking script — heavy DOM access proxied by LWS'
+          : 'loadScript — third-party script runs inside LWS sandbox, all DOM/global access proxied';
+      items.push(createDebtItem(
+        'lwc', severity,
+        `LWC Component "${bundleName}" Uses loadScript — LWS Sandbox Overhead`,
+        'Scripts loaded via loadScript from lightning/platformResourceLoader execute inside the Lightning Web Security (LWS) sandbox. Every DOM operation and cross-namespace object access the script performs is intercepted and proxied by LWS, adding computation and memory overhead that compounds under concurrent sessions. This was the root cause pattern in high-profile LWS performance incidents.',
+        'For DOM-heavy third-party scripts (analytics, session recording, A/B testing), use the "elevated" loadScript pattern to load the script outside the LWS sandbox. For lightweight utility scripts, consider inlining them or bundling into the LWC. Review whether each loadScript is necessary in production.',
+        { name: bundleName, detail }
+      ));
+    }
+  }
+
+  // 42. Global namespace writes — window.x = ... accumulates under LWS
+  const globalWriteHits: { bundleId: string; name: string }[] = [];
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    const STANDARD_PROPS = /window\.(location|document|history|screen|performance|console|navigator|onload|onerror|onbeforeunload|addEventListener|removeEventListener|dispatchEvent)\b/;
+    // Object/array writes and bracket-notation dynamic writes — the accumulation patterns
+    const GLOBAL_OBJECT_WRITE = /window\.\w+\s*=\s*[\[{]|window\.\w+\s*=\s*(?!null\b|false\b|undefined\b|true\b)\w|window\s*\[\s*\w/;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!GLOBAL_OBJECT_WRITE.test(src)) continue;
+      // Skip if only standard property assignments
+      const strippedStandard = src.replace(new RegExp(STANDARD_PROPS.source, 'g'), '');
+      if (!GLOBAL_OBJECT_WRITE.test(strippedStandard)) continue;
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!globalWriteHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        globalWriteHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (globalWriteHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${globalWriteHits.length} LWC Component${globalWriteHits.length !== 1 ? 's' : ''} Write to the Global window Namespace`,
+      'Writing objects or arrays to window (e.g. window.reduxStores[id] = state) pollutes the global namespace. Under Lightning Web Security (LWS), every subsequent cross-component access to these global properties is intercepted by the LWS proxy membrane, adding CPU and memory overhead that compounds with each entry added to the namespace.',
+      'Move shared state into a dedicated LWC service component or use Lightning Message Service instead of global window properties. If global state is unavoidable, remove entries explicitly in disconnectedCallback to prevent accumulation.',
+      { records: globalWriteHits.slice(0, 50).map(h => ({ name: h.name, detail: 'window.x = object/array or window[key] — global namespace write, LWS proxy overhead' })) }
+    ));
+  }
+
+  // 43. Excessive @api properties per component (10+ logical properties)
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      const allApiMatches = src.match(/@api\b/g) || [];
+      if (allApiMatches.length < 10) continue;
+      // Deduplicate getter/setter pairs: count @api get and @api set separately, then halve pairs
+      const getterCount = (src.match(/@api\s+get\s+\w+/g) || []).length;
+      const setterCount = (src.match(/@api\s+set\s+\w+/g) || []).length;
+      const pairedCount = Math.min(getterCount, setterCount);
+      const logicalCount = allApiMatches.length - pairedCount; // subtract one occurrence per pair
+      if (logicalCount < 10) continue;
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      const severity: 'high' | 'medium' = logicalCount >= 20 ? 'high' : 'medium';
+      items.push(createDebtItem(
+        'lwc', severity,
+        `LWC Component "${name}" Has ${logicalCount} Public @api Properties`,
+        `Under Lightning Web Security (LWS), every @api property access crossing a component boundary is wrapped in a proxy. Components with ${logicalCount} public properties create a large proxy surface — in deeply nested component trees this overhead compounds on every render cycle and property change.`,
+        'Reduce @api surface by grouping related properties into a single configuration object (@api config = {}). Move rarely-changing properties to Custom Metadata or wire adapters. Target fewer than 10 logical @api properties per component.',
+        { name, detail: `${logicalCount} logical @api properties — large LWS proxy surface` }
+      ));
+    }
+  }
+
+  // 44. postMessage without origin validation — security and LWS cross-namespace risk
+  const postMessageHits: { bundleId: string; name: string }[] = [];
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    // Only window-level message listeners (not this.template — those are component-scoped)
+    const WINDOW_MSG_LISTENER = /window\s*\.\s*addEventListener\s*\(\s*['"]message['"]/;
+    // Origin validation patterns: event.origin, e.origin, trustedOrigins, ALLOWED_ORIGINS
+    const ORIGIN_CHECK = /(?:event|e|msg|ev)\s*\.\s*origin\b|trustedOrigins|ALLOWED_ORIGINS|allowedOrigins/;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!WINDOW_MSG_LISTENER.test(src)) continue;
+      // Extract named handler — find handler name from addEventListener call
+      const handlerMatch = src.match(/window\s*\.\s*addEventListener\s*\(\s*['"]message['"]\s*,\s*(?:this\.)?(\w+)/);
+      let checkSrc = src;
+      if (handlerMatch) {
+        // Find the handler function body
+        const handlerName = handlerMatch[1];
+        const handlerBodyMatch = src.match(new RegExp(`${handlerName}\\s*\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n\\s*\\}`, 'm'));
+        if (handlerBodyMatch) checkSrc = handlerBodyMatch[1];
+      }
+      if (ORIGIN_CHECK.test(checkSrc)) continue;
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!postMessageHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        postMessageHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (postMessageHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${postMessageHits.length} LWC Component${postMessageHits.length !== 1 ? 's' : ''} Listen to window postMessage Without Origin Validation`,
+      'window.addEventListener("message") handlers without event.origin validation accept messages from any origin. Under LWS, cross-namespace postMessage is intercepted by the security membrane — unvalidated handlers are both a security vulnerability (cross-origin script injection) and a performance concern as LWS proxies every message object crossing namespace boundaries.',
+      'Add an origin check at the top of every message handler: if (event.origin !== window.location.origin) return. For known third-party integrations, validate against an explicit allowlist of trusted origins.',
+      { records: postMessageHits.slice(0, 50).map(h => ({ name: h.name, detail: 'window message listener without event.origin check — cross-origin vulnerability + LWS overhead' })) }
+    ));
+  }
+
   // 31. Stale FlexiPages not modified in 2+ years
   const stalePages = flexiPages.filter((p: any) => p.LastModifiedDate && new Date(p.LastModifiedDate) < twoYearsAgo);
   if (stalePages.length > 0) {
