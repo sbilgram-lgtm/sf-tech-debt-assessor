@@ -5000,6 +5000,111 @@ export function assessLwc(data: LwcData): CategoryScore {
     ));
   }
 
+  // 37. Redux store.subscribe() without cleanup in disconnectedCallback
+  const reduxSubscribeHits: { bundleId: string; name: string }[] = [];
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    // store.subscribe( is the specific Redux pattern (not LMS/EmpApi already covered by check 35)
+    const STORE_SUBSCRIBE = /\bstore\s*\.\s*subscribe\s*\(/;
+    // Result stored as class property: this.xyz = store.subscribe(...)
+    const RESULT_STORED = /\bthis\.\w+\s*=\s*\bstore\s*\.\s*subscribe\s*\(/;
+    // Cleanup: disconnectedCallback contains a stored-property invocation this.xyz()
+    const CLEANUP_IN_DISCONNECTED = /disconnectedCallback\s*\(\s*\)\s*\{[^}]*this\.\w+\s*\(\s*\)/s;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!STORE_SUBSCRIBE.test(src)) continue;
+      // Flag if result is not stored (can never be cleaned up)
+      // OR result is stored but disconnectedCallback doesn't call it
+      const resultStored = RESULT_STORED.test(src);
+      if (!resultStored) {
+        // Result not stored — definitely leaky
+      } else if (CLEANUP_IN_DISCONNECTED.test(src)) {
+        continue; // cleanup exists, skip
+      }
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!reduxSubscribeHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        reduxSubscribeHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (reduxSubscribeHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${reduxSubscribeHits.length} LWC Component${reduxSubscribeHits.length !== 1 ? 's' : ''} Subscribe to a Redux Store Without Unsubscribing`,
+      'store.subscribe() returns an unsubscribe function that must be called in disconnectedCallback. Components that omit this keep closed tabs\' state and cart data in memory for the duration of the browser session, causing a compounding memory leak on every interaction.',
+      'Store the return value of store.subscribe() in a class property (e.g. this.unsubscribeStore = store.subscribe(...)). Call this.unsubscribeStore() inside disconnectedCallback. Also remove any entries from global store maps (e.g. window.reduxStores) on disconnect.',
+      { records: reduxSubscribeHits.slice(0, 50).map(h => ({ name: h.name, detail: 'store.subscribe() without disconnectedCallback cleanup — memory leak' })) }
+    ));
+  }
+
+  // 38. Production logging flags left enabled (ENABLE_LOGGING, useLogger, debugMode etc.)
+  const prodLoggingHits: { bundleId: string; name: string }[] = [];
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    const LOGGING_FLAG = /\b(ENABLE_LOGGING|useLogger|enableLogging|debugMode|logEnabled|ENABLE_DEBUG|withDiff)\s*[=:]\s*true\b/i;
+    const HAS_CONSOLE = /\bconsole\.(log|warn|info|error|debug)\s*\(/;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!LOGGING_FLAG.test(src)) continue;
+      if (!HAS_CONSOLE.test(src)) continue; // require co-occurrence
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!prodLoggingHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        prodLoggingHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (prodLoggingHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'high',
+      `${prodLoggingHits.length} LWC Component${prodLoggingHits.length !== 1 ? 's' : ''} Have Production Logging Flags Enabled`,
+      'Debug logging flags (ENABLE_LOGGING, useLogger, debugMode, withDiff, etc.) are set to true alongside active console statements. In production these cause deep state copies, diff computations, and large object logging on every action — the browser retains those console objects in memory, with cost growing with cart/state size.',
+      'Set all debug logging flags to false before deploying to production. Gate them behind a permission check or environment variable rather than hardcoding true. Consider removing console statements entirely or replacing with a structured logging service.',
+      { records: prodLoggingHits.slice(0, 50).map(h => ({ name: h.name, detail: 'Debug logging flag enabled in production — memory and performance cost on every action' })) }
+    ));
+  }
+
+  // 39. sessionStorage accumulation — dynamic keys with no cleanup
+  const sessionStorageHits: { bundleId: string; name: string }[] = [];
+  {
+    const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    // Dynamic key: sessionStorage.setItem( where key is not a plain string literal
+    const DYNAMIC_SETITEM = /sessionStorage\.setItem\s*\(\s*(?!['"]\w+['"])[^)]+\)/;
+    const HAS_CLEANUP = /sessionStorage\.(removeItem|clear)\s*\(/;
+    // Loop context or repeated-call pattern
+    const LOOP_OR_HANDLER = /(?:for|while)\s*\([^)]*\)[^{]*\{[\s\S]*?sessionStorage\.setItem|(?:handle|process|load|fetch)\w*\s*\([^)]*\)\s*\{[\s\S]*?sessionStorage\.setItem/;
+    for (const r of jsResources) {
+      const src: string = r.Source || '';
+      if (!DYNAMIC_SETITEM.test(src)) continue;
+      if (HAS_CLEANUP.test(src)) continue;
+      if (!LOOP_OR_HANDLER.test(src)) continue;
+      const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
+      if (!sessionStorageHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
+        sessionStorageHits.push({ bundleId: r.LightningComponentBundleId, name });
+      }
+    }
+  }
+  if (sessionStorageHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${sessionStorageHits.length} LWC Component${sessionStorageHits.length !== 1 ? 's' : ''} Write to sessionStorage With Dynamic Keys and No Cleanup`,
+      'Components writing to sessionStorage with dynamic keys (record IDs, customer IDs) without removeItem or clear create unbounded storage growth — every customer or record visited adds entries that persist for the shift. Full API responses stored this way can exhaust the 5–10 MB sessionStorage limit and block the main thread on read/write.',
+      'Evict sessionStorage entries when an interaction closes (in disconnectedCallback or a session-end event). Use a fixed-size cache with LRU eviction for repeated lookups. Avoid storing full API responses — store only the fields needed.',
+      { records: sessionStorageHits.slice(0, 50).map(h => ({ name: h.name, detail: 'sessionStorage.setItem with dynamic key, no removeItem/clear — unbounded accumulation' })) }
+    ));
+  }
+
+  // 40. Double JSON.stringify — nested serialization anti-pattern
+  const doubleStringifyHits = sourceScan(/JSON\.stringify\s*\(\s*[\s\S]{0,200}JSON\.stringify\s*\(/);
+  if (doubleStringifyHits.length > 0) {
+    items.push(createDebtItem(
+      'lwc', 'medium',
+      `${doubleStringifyHits.length} LWC Component${doubleStringifyHits.length !== 1 ? 's' : ''} Use Nested JSON.stringify (Double Serialization)`,
+      'Calling JSON.stringify() inside another JSON.stringify() serializes data twice — the inner call produces a JSON string, which the outer call then escapes as a string-within-a-string. This inflates payload size by ~30–50%, wastes CPU on redundant serialization, and produces malformed data structures that require double-parsing on the receiving end.',
+      'Remove the inner JSON.stringify() call. Pass the raw object to the outer serializer. If storing in sessionStorage or sending as a request body, serialize once at the boundary.',
+      { records: doubleStringifyHits.slice(0, 50).map(h => ({ name: h.name, detail: 'Nested JSON.stringify() — double serialization, inflated payload size' })) }
+    ));
+  }
+
   // 31. Stale FlexiPages not modified in 2+ years
   const stalePages = flexiPages.filter((p: any) => p.LastModifiedDate && new Date(p.LastModifiedDate) < twoYearsAgo);
   if (stalePages.length > 0) {
