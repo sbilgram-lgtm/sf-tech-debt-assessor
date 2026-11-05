@@ -417,7 +417,7 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   // Check for empty catch blocks (swallowed exceptions)
   const emptyCatch = apex.classes.filter((c: any) => {
     const body = c.Body || '';
-    return /catch\s*\([^)]*\)\s*\{\s*\}/g.test(body);
+    return /catch\s*\([^)]*\)\s*\{\s*(?:\/\/[^\n]*)?\s*\}/g.test(body);
   });
   if (emptyCatch.length > 0) {
     items.push(createDebtItem(
@@ -1257,14 +1257,12 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
       const match = m.match(/\bString\s+(\w+)\s*=/i);
       return match ? match[1] : null;
     }).filter(Boolean);
-    // Check if any of those variable names appear with += inside a for/while loop body
-    const loopBodyMatch = body.match(/(?:for|while)\s*\([^)]*\)\s*\{([\s\S]*?)\}/g) || [];
-    return loopBodyMatch.some((loop: string) =>
-      strVarNames.some((v: string | null) => {
-        const concatPattern = new RegExp(`\\b${v}\\s*\\+=\\s*`);
-        return concatPattern.test(loop);
-      })
-    );
+    // Check if any of those variable names appear with += within 800 chars after a loop keyword.
+    // Proximity check avoids the nested-paren problem with [^)]* loop header extraction.
+    return strVarNames.some((v: string | null) => {
+      const loopThenConcat = new RegExp(`\\b(?:for|while)\\b[\\s\\S]{1,800}\\b${v}\\s*\\+=`);
+      return loopThenConcat.test(body);
+    });
   });
   if (stringConcatLoopClasses.length > 0) {
     items.push(createDebtItem(
@@ -1285,11 +1283,9 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     if (!isTriggerContext) return false;
     // Must declare a private static collection field
     if (!/private\s+static\s+(?:List|Map|Set)\s*</i.test(body)) return false;
-    // Collection must be populated inside a loop (add/put inside for/while)
-    const loopBodies = body.match(/(?:for|while)\s*\([^)]*\)\s*\{([\s\S]*?)\}/g) || [];
-    const populatedInLoop = loopBodies.some((loop: string) =>
-      /\.(add|put)\s*\(/.test(loop)
-    );
+    // Collection must be populated inside a loop (add/put within 800 chars after loop keyword).
+    // Proximity check avoids the nested-paren problem with [^)]* loop header extraction.
+    const populatedInLoop = /\b(?:for|while)\b[\s\S]{1,800}\.(add|put)\s*\(/.test(body);
     if (!populatedInLoop) return false;
     // Exclude classes that call clear() — intentional cache pattern
     if (/\.(clear)\s*\(\s*\)/.test(body)) return false;
@@ -4464,6 +4460,20 @@ export function assessLwc(data: LwcData): CategoryScore {
   const htmlResources: any[] = data.htmlResources || [];
   const cssResources: any[] = data.cssResources || [];
 
+  // Brace-counting body extractor — handles no-arg lifecycle methods (connectedCallback, disconnectedCallback)
+  const extractMethodBody = (src: string, method: string): string | null => {
+    const methodRe = new RegExp(method + '\\s*\\(\\s*\\)\\s*\\{');
+    const m = methodRe.exec(src);
+    if (!m) return null;
+    const start = m.index + m[0].length - 1;
+    let depth = 0;
+    for (let i = start; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start + 1, i); }
+    }
+    return null;
+  };
+
   // 1. LWC bundles missing descriptions
   const lwcNoDesc = lwcBundles.filter((b: any) => !b.Description || b.Description.trim() === '');
   if (lwcNoDesc.length > 0) {
@@ -4932,19 +4942,6 @@ export function assessLwc(data: LwcData): CategoryScore {
     const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
     const LMS_IMPORT = /from\s+['"]lightning\/messageService['"]/;
     const EMPAPI_IMPORT = /from\s+['"]lightning\/empApi['"]/;
-    // Brace-counting extraction — handles subscribe/unsubscribe after nested if/else blocks
-    const extractMethodBody = (src: string, method: string): string | null => {
-      const methodRe = new RegExp(method + '\\s*\\(\\s*\\)\\s*\\{');
-      const m = methodRe.exec(src);
-      if (!m) return null;
-      const start = m.index + m[0].length - 1;
-      let depth = 0;
-      for (let i = start; i < src.length; i++) {
-        if (src[i] === '{') depth++;
-        else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start + 1, i); }
-      }
-      return null;
-    };
     for (const r of jsResources) {
       const src: string = r.Source || '';
       if (!(LMS_IMPORT.test(src) || EMPAPI_IMPORT.test(src))) continue;
@@ -5021,18 +5018,19 @@ export function assessLwc(data: LwcData): CategoryScore {
     const STORE_SUBSCRIBE = /\bstore\s*\.\s*subscribe\s*\(/;
     // Result stored as class property: this.xyz = store.subscribe(...)
     const RESULT_STORED = /\bthis\.\w+\s*=\s*\bstore\s*\.\s*subscribe\s*\(/;
-    // Cleanup: disconnectedCallback contains a stored-property invocation this.xyz()
-    const CLEANUP_IN_DISCONNECTED = /disconnectedCallback\s*\(\s*\)\s*\{[^}]*this\.\w+\s*\(\s*\)/s;
     for (const r of jsResources) {
       const src: string = r.Source || '';
       if (!STORE_SUBSCRIBE.test(src)) continue;
       // Flag if result is not stored (can never be cleaned up)
-      // OR result is stored but disconnectedCallback doesn't call it
+      // OR result is stored but disconnectedCallback doesn't call it.
+      // Use extractMethodBody (brace-counting) so nested if/try blocks inside
+      // disconnectedCallback don't cause false positives.
       const resultStored = RESULT_STORED.test(src);
       if (!resultStored) {
         // Result not stored — definitely leaky
-      } else if (CLEANUP_IN_DISCONNECTED.test(src)) {
-        continue; // cleanup exists, skip
+      } else {
+        const disconnBody = extractMethodBody(src, 'disconnectedCallback');
+        if (disconnBody && /this\.\w+\s*\(\s*\)/.test(disconnBody)) continue;
       }
       const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
       if (!reduxSubscribeHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
@@ -5222,10 +5220,19 @@ export function assessLwc(data: LwcData): CategoryScore {
       const handlerMatch = src.match(/window\s*\.\s*addEventListener\s*\(\s*['"]message['"]\s*,\s*(?:this\.)?(\w+)/);
       let checkSrc = src;
       if (handlerMatch) {
-        // Find the handler function body
+        // Use brace-counting extraction so origin checks inside nested if/try blocks are found
         const handlerName = handlerMatch[1];
-        const handlerBodyMatch = src.match(new RegExp(`${handlerName}\\s*\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n\\s*\\}`, 'm'));
-        if (handlerBodyMatch) checkSrc = handlerBodyMatch[1];
+        const handlerStartRe = new RegExp(handlerName + '\\s*\\([^)]*\\)\\s*\\{');
+        const hm = handlerStartRe.exec(src);
+        if (hm) {
+          const hstart = hm.index + hm[0].length - 1;
+          let hdepth = 0, hbody = '';
+          for (let hi = hstart; hi < src.length; hi++) {
+            if (src[hi] === '{') hdepth++;
+            else if (src[hi] === '}') { hdepth--; if (hdepth === 0) { hbody = src.slice(hstart + 1, hi); break; } }
+          }
+          if (hbody) checkSrc = hbody;
+        }
       }
       if (ORIGIN_CHECK.test(checkSrc)) continue;
       const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
