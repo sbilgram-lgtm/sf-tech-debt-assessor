@@ -4932,13 +4932,26 @@ export function assessLwc(data: LwcData): CategoryScore {
     const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
     const LMS_IMPORT = /from\s+['"]lightning\/messageService['"]/;
     const EMPAPI_IMPORT = /from\s+['"]lightning\/empApi['"]/;
-    const SUBSCRIBE_IN_CONNECTED = /connectedCallback\s*\(\s*\)[^}]*subscribe\s*\(/s;
-    const UNSUBSCRIBE_IN_DISCONNECTED = /disconnectedCallback\s*\(\s*\)[^}]*unsubscribe\s*\(/s;
+    // Brace-counting extraction — handles subscribe/unsubscribe after nested if/else blocks
+    const extractMethodBody = (src: string, method: string): string | null => {
+      const methodRe = new RegExp(method + '\\s*\\(\\s*\\)\\s*\\{');
+      const m = methodRe.exec(src);
+      if (!m) return null;
+      const start = m.index + m[0].length - 1;
+      let depth = 0;
+      for (let i = start; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start + 1, i); }
+      }
+      return null;
+    };
     for (const r of jsResources) {
       const src: string = r.Source || '';
       if (!(LMS_IMPORT.test(src) || EMPAPI_IMPORT.test(src))) continue;
-      if (!SUBSCRIBE_IN_CONNECTED.test(src)) continue;
-      if (UNSUBSCRIBE_IN_DISCONNECTED.test(src)) continue;
+      const connBody = extractMethodBody(src, 'connectedCallback');
+      if (!connBody || !/subscribe\s*\(/.test(connBody)) continue;
+      const disconnBody = extractMethodBody(src, 'disconnectedCallback');
+      if (disconnBody && /unsubscribe\s*\(/.test(disconnBody)) continue;
       const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
       if (!leakySubscriptionHits.find(h => h.bundleId === r.LightningComponentBundleId)) {
         leakySubscriptionHits.push({ bundleId: r.LightningComponentBundleId, name });
@@ -5112,9 +5125,12 @@ export function assessLwc(data: LwcData): CategoryScore {
     const LOAD_SCRIPT_CALL = /\bloadScript\s*\(/;
     const ANALYTICS_NAMES = /quantum|analytics|metric|tracking|gtm|datadog|newrelic|heap|fullstory|pendo|segment|mixpanel/i;
     const BASE_COMPONENT = /^(base|mixin|util|utils|common|shared)/i;
+    const seenBundles41 = new Set<string>();
     for (const r of jsResources) {
       const src: string = r.Source || '';
       if (!LOAD_SCRIPT_IMPORT.test(src) || !LOAD_SCRIPT_CALL.test(src)) continue;
+      if (seenBundles41.has(r.LightningComponentBundleId)) continue;
+      seenBundles41.add(r.LightningComponentBundleId);
       const bundleName: string = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
       const isBase = BASE_COMPONENT.test(bundleName);
       const hasAnalyticsName = ANALYTICS_NAMES.test(src);
@@ -5140,7 +5156,7 @@ export function assessLwc(data: LwcData): CategoryScore {
     const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
     const STANDARD_PROPS = /window\.(location|document|history|screen|performance|console|navigator|onload|onerror|onbeforeunload|addEventListener|removeEventListener|dispatchEvent)\b/;
     // Object/array writes and bracket-notation dynamic writes — the accumulation patterns
-    const GLOBAL_OBJECT_WRITE = /window\.\w+\s*=\s*[\[{]|window\.\w+\s*=\s*(?!null\b|false\b|undefined\b|true\b)\w|window\s*\[\s*\w/;
+    const GLOBAL_OBJECT_WRITE = /window\.\w+\s*=\s*[\[{]|window\.\w+\s*=\s*(?!null\b|false\b|undefined\b|true\b)\w|window\s*\[\s*\w|window\.\w+\s*\[/;
     for (const r of jsResources) {
       const src: string = r.Source || '';
       if (!GLOBAL_OBJECT_WRITE.test(src)) continue;
@@ -5166,6 +5182,7 @@ export function assessLwc(data: LwcData): CategoryScore {
   // 43. Excessive @api properties per component (10+ logical properties)
   {
     const bMap = new Map(lwcBundles.map((b: any) => [b.Id, b.DeveloperName]));
+    const seenBundles43 = new Set<string>();
     for (const r of jsResources) {
       const src: string = r.Source || '';
       const allApiMatches = src.match(/@api\b/g) || [];
@@ -5176,6 +5193,8 @@ export function assessLwc(data: LwcData): CategoryScore {
       const pairedCount = Math.min(getterCount, setterCount);
       const logicalCount = allApiMatches.length - pairedCount; // subtract one occurrence per pair
       if (logicalCount < 10) continue;
+      if (seenBundles43.has(r.LightningComponentBundleId)) continue;
+      seenBundles43.add(r.LightningComponentBundleId);
       const name = bMap.get(r.LightningComponentBundleId) || r.LightningComponentBundleId;
       const severity: 'high' | 'medium' = logicalCount >= 20 ? 'high' : 'medium';
       items.push(createDebtItem(
