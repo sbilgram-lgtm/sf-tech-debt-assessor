@@ -25,7 +25,8 @@ import {
   OmniStudioData,
   PerformanceData,
   NotesAttachmentsData,
-  FlowQualityData
+  FlowQualityData,
+  AuraData
 } from '../types/assessment';
 
 const SEVERITY_WEIGHTS = {
@@ -6261,6 +6262,492 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
 
   return {
     category: 'Flow Quality',
+    score,
+    maxScore,
+    percentage: Math.round((score / maxScore) * 100),
+    items
+  };
+}
+
+export function assessAura(data: AuraData): CategoryScore {
+  const items: DebtItem[] = [];
+
+  const bname = (def: any): string =>
+    def?.AuraDefinitionBundle?.DeveloperName || def?.AuraDefinitionBundleId || 'unknown';
+
+  function stripLineComments(src: string): string {
+    return src.replace(/\/\/[^\n]*/g, '');
+  }
+
+  function extractAuraMethod(src: string, methodName: string): string {
+    const idx = src.search(new RegExp(methodName + '\\s*:\\s*function\\s*\\('));
+    if (idx === -1) return '';
+    const open = src.indexOf('{', idx);
+    if (open === -1) return '';
+    let depth = 1, i = open + 1;
+    while (i < src.length && depth > 0) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') depth--;
+      i++;
+    }
+    return src.slice(open + 1, i - 1);
+  }
+
+  function getDestroyHandlerName(markupSrc: string): string | null {
+    const m = markupSrc.match(/<aura:handler\s[^>]*name=['"]destroy['"][^>]*action="\{!c\.([a-zA-Z_$][a-zA-Z0-9_$]*)\}"/);
+    return m ? m[1] : null;
+  }
+
+  const allJs = [...data.controllers, ...data.helpers];
+  const markupByBundle: Record<string, any> = {};
+  for (const m of data.markups) markupByBundle[m.AuraDefinitionBundleId] = m;
+
+  // ── AU-1: console statements in controllers/helpers (91%) ─────────────────
+  const consolePat = /console\.(log|error|warn|debug|info)\s*\(/;
+  const consoleBundles = [...new Set(
+    allJs.filter(r => r.Source && consolePat.test(r.Source)).map(bname)
+  )];
+  if (consoleBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${consoleBundles.length} Aura Controller${consoleBundles.length !== 1 ? 's' : ''}/Helper${consoleBundles.length !== 1 ? 's' : ''} Contain console Statements`,
+      'console.log/error/warn calls in production Aura code consume CPU time and expose debugging information in browser consoles.',
+      'Remove all console statements from production controllers and helpers. Replace with a custom Logger class gated by a Custom Setting debug flag.',
+      { bundles: consoleBundles.slice(0, 50) }));
+  }
+
+  // ── AU-2: document.querySelector instead of component.find() (89%) ────────
+  const domQueryPat = /document\.(querySelector|querySelectorAll|getElementById|getElementsBy[A-Za-z]+)\s*\(/;
+  const domQueryBundles = [...new Set(
+    allJs.filter(r => r.Source && domQueryPat.test(r.Source)).map(bname)
+  )];
+  if (domQueryBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${domQueryBundles.length} Aura Component${domQueryBundles.length !== 1 ? 's' : ''} Use document.querySelector Instead of component.find()`,
+      'Direct document queries bypass Aura\'s component scoping and select the wrong element when multiple component instances exist on a page. This also breaks under Lightning Web Security.',
+      'Replace document.querySelector() and document.getElementById() with component.find("aura:id") to stay within the component\'s scoped DOM.',
+      { bundles: domQueryBundles.slice(0, 50) }));
+  }
+
+  // ── AU-3: eval() in controllers/helpers (90%) ─────────────────────────────
+  const evalBundles = [...new Set(
+    allJs.filter(r => r.Source && /\beval\s*\(/.test(stripLineComments(r.Source))).map(bname)
+  )];
+  if (evalBundles.length > 0) {
+    items.push(createDebtItem('aura', 'critical',
+      `${evalBundles.length} Aura Component${evalBundles.length !== 1 ? 's' : ''} Use eval()`,
+      'eval() executes arbitrary strings as code. This is a critical security vulnerability flagged by all static analysis tools and disallowed in strict Content Security Policy environments including Salesforce.',
+      'Remove all eval() usage. Replace dynamic code execution with data-driven logic, switch statements, or function maps.',
+      { bundles: evalBundles.slice(0, 50) }));
+  }
+
+  // ── AU-4: ui: namespace deprecated components (93%) ───────────────────────
+  const uiNsBundles = [...new Set(
+    data.markups.filter(r => r.Source && /<ui:/.test(r.Source)).map(bname)
+  )];
+  if (uiNsBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${uiNsBundles.length} Aura Component${uiNsBundles.length !== 1 ? 's' : ''} Use Deprecated ui: Namespace Components`,
+      'The ui: namespace (ui:inputText, ui:button, ui:outputText, etc.) was deprecated in Winter \'21 and removed from support. These components no longer receive security patches or updates.',
+      'Replace ui: components with their lightning: equivalents (e.g., ui:inputText → lightning:input, ui:button → lightning:button). Migrate high-traffic components first.',
+      { bundles: uiNsBundles.slice(0, 50) }));
+  }
+
+  // ── AU-5: Server actions called in render/afterRender/rerender lifecycle (88%) ─
+  const renderActionBundles: string[] = [];
+  for (const r of data.renderers) {
+    if (!r.Source) continue;
+    const afterBody = extractAuraMethod(r.Source, 'afterRender');
+    const rerenderBody = extractAuraMethod(r.Source, 'rerender');
+    if (/\$A\.enqueueAction\s*\(/.test(afterBody) || /\$A\.enqueueAction\s*\(/.test(rerenderBody)) {
+      renderActionBundles.push(bname(r));
+    }
+  }
+  if (renderActionBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${renderActionBundles.length} Aura Component${renderActionBundles.length !== 1 ? 's' : ''} Call Server Actions in the Render Lifecycle`,
+      'Calling $A.enqueueAction() in afterRender or rerender triggers re-renders, which call afterRender again — creating an infinite render loop that degrades page performance and can cause browser hangs.',
+      'Move all server action calls to init handlers or explicit user interaction handlers. Never call server actions from afterRender or rerender.',
+      { bundles: renderActionBundles.slice(0, 50) }));
+  }
+
+  // ── AU-6: Hardcoded org instance URLs (88%) ───────────────────────────────
+  const urlPat = /https?:\/\/[a-z0-9\-]+\.(my\.salesforce\.com|force\.com|lightning\.force\.com|visualforce\.com)/i;
+  const urlBundles = [...new Set([...allJs, ...data.markups].filter(r => {
+    if (!r.Source) return false;
+    return urlPat.test(stripLineComments(r.Source));
+  }).map(bname))];
+  if (urlBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${urlBundles.length} Aura Component${urlBundles.length !== 1 ? 's' : ''} Contain Hardcoded Salesforce Instance URLs`,
+      'Hardcoded instance URLs (e.g., yourorg.salesforce.com) break when deployed to sandboxes, scratch orgs, or after org migrations. They are also flagged by AppExchange security review.',
+      'Replace hardcoded URLs with $Label.c.BaseUrl, $Site.BaseUrl, or dynamic URL construction using window.location.origin.',
+      { bundles: urlBundles.slice(0, 50) }));
+  }
+
+  // ── AU-7: aura:unescapedHtml with dynamic binding (87%) ───────────────────
+  const unescapedBundles = [...new Set(
+    data.markups.filter(r => r.Source && /<aura:unescapedHtml[^>]+value="\{!/.test(r.Source)).map(bname)
+  )];
+  if (unescapedBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${unescapedBundles.length} Aura Component${unescapedBundles.length !== 1 ? 's' : ''} Use aura:unescapedHtml with Dynamic Binding (XSS Risk)`,
+      'aura:unescapedHtml renders raw HTML without escaping. When bound to a dynamic component attribute ({!v.someVar}), user-controlled or API-sourced content can inject malicious scripts. This is flagged by AppExchange security review.',
+      'Avoid aura:unescapedHtml with dynamic values. If HTML rendering is required, sanitize content server-side or use an allowlist HTML sanitizer before binding.',
+      { bundles: unescapedBundles.slice(0, 50) }));
+  }
+
+  // ── AU-8: Application events fired instead of Lightning Message Service (87%) ─
+  const appEventBundles = [...new Set(
+    allJs.filter(r => r.Source && /\$A\.get\s*\(\s*['"]e\./.test(r.Source)).map(bname)
+  )];
+  if (appEventBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${appEventBundles.length} Aura Component${appEventBundles.length !== 1 ? 's' : ''} Fire Application Events (Use Lightning Message Service Instead)`,
+      'Aura application events broadcast to all components in the page and create tight coupling. They do not work across the LWS security boundary during LWC migration. Lightning Message Service (LMS) is the supported cross-component communication mechanism.',
+      'Replace $A.get("e.namespace:EventName").fire() patterns with Lightning Message Service publish/subscribe using a MessageChannel.',
+      { bundles: appEventBundles.slice(0, 50) }));
+  }
+
+  // ── AU-9: component.isValid() missing before component.set() in async callback (84%) ─
+  const missingIsValidBundles: string[] = [];
+  for (const r of data.controllers) {
+    if (!r.Source) continue;
+    const src = r.Source;
+    const callbackPat = /action\.setCallback\s*\(\s*this\s*,\s*function\s*\([^)]*\)\s*\{/g;
+    let m: RegExpExecArray | null;
+    let found = false;
+    while ((m = callbackPat.exec(src)) !== null) {
+      const open = src.indexOf('{', m.index + m[0].length - 1);
+      if (open === -1) continue;
+      let depth = 1, i = open + 1;
+      while (i < src.length && depth > 0) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}') depth--;
+        i++;
+      }
+      const body = src.slice(open + 1, i - 1);
+      if (body.includes('SUCCESS') && /component\.set\s*\(/.test(body) && !body.includes('isValid')) {
+        found = true;
+        break;
+      }
+    }
+    if (found) missingIsValidBundles.push(bname(r));
+  }
+  if (missingIsValidBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${missingIsValidBundles.length} Aura Component${missingIsValidBundles.length !== 1 ? 's' : ''} Missing component.isValid() Before component.set() in Async Callbacks`,
+      'If a component is destroyed while an async server action is in-flight, calling component.set() on the destroyed component throws "Invalid component" runtime errors. This is the most common Aura runtime error in enterprise orgs.',
+      'Add if (!component.isValid()) return; as the first line of every action.setCallback() function before accessing component attributes.',
+      { bundles: missingIsValidBundles.slice(0, 50) }));
+  }
+
+  // ── AU-10: setTimeout/setInterval without clearTimeout/clearInterval (87%) ─
+  const timerLeakBundles: string[] = [];
+  for (const r of allJs) {
+    if (!r.Source) continue;
+    const src = r.Source;
+    if (!/(setTimeout|setInterval)\s*\(/.test(src)) continue;
+    const markup = markupByBundle[r.AuraDefinitionBundleId];
+    const destroyName = markup ? getDestroyHandlerName(markup.Source || '') : null;
+    const destroyBody = destroyName ? extractAuraMethod(src, destroyName) : '';
+    const hasCleanup = /(clearTimeout|clearInterval)\s*\(/.test(destroyBody || src);
+    if (!hasCleanup) timerLeakBundles.push(bname(r));
+  }
+  const timerLeakUniq = [...new Set(timerLeakBundles)];
+  if (timerLeakUniq.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${timerLeakUniq.length} Aura Component${timerLeakUniq.length !== 1 ? 's' : ''} Use setTimeout/setInterval Without Cleanup in destroy Handler`,
+      'Timers registered in Aura controllers or helpers that are not cleared in the destroy handler continue executing after the component is removed from the DOM, causing memory leaks and stale callbacks on destroyed components.',
+      'Store the timer ID in a component attribute (component.set("v._timerId", ...)) and call clearTimeout/clearInterval in the destroy event handler.',
+      { bundles: timerLeakUniq.slice(0, 50) }));
+  }
+
+  // ── AU-11: Missing ERROR callback on $A.enqueueAction (82%) ──────────────
+  const noErrorCbBundles = [...new Set(
+    allJs.filter(r => {
+      if (!r.Source || !/\$A\.enqueueAction\s*\(/.test(r.Source)) return false;
+      return !/'ERROR'/.test(r.Source) && !/"ERROR"/.test(r.Source);
+    }).map(bname)
+  )];
+  if (noErrorCbBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${noErrorCbBundles.length} Aura Component${noErrorCbBundles.length !== 1 ? 's' : ''} Make Server Calls Without an ERROR State Callback`,
+      'Server actions without an ERROR callback silently swallow server-side exceptions. Users see no feedback when operations fail, and errors are invisible to administrators and monitoring tools.',
+      'Add action.setCallback(this, function(response) { /* handle error */ }, "ERROR") after the SUCCESS callback for every $A.enqueueAction() call.',
+      { bundles: noErrorCbBundles.slice(0, 50) }));
+  }
+
+  // ── AU-12: force: namespace deprecated components (85%) ──────────────────
+  const forceNsBundles = [...new Set(
+    data.markups.filter(r => r.Source && /<force:/.test(r.Source)).map(bname)
+  )];
+  if (forceNsBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${forceNsBundles.length} Aura Component${forceNsBundles.length !== 1 ? 's' : ''} Use force: Namespace Components (Deprecated)`,
+      'The force: namespace components (force:recordView, force:outputField, force:hasRecordId, etc.) are being deprecated in stages. They receive no new feature development and several have known issues with LWS enforcement.',
+      'Replace force: components with their lightning: or @salesforce equivalents. Check Salesforce release notes for the current deprecation status of each component used.',
+      { bundles: forceNsBundles.slice(0, 50) }));
+  }
+
+  // ── AU-13: window property access — LWS migration blocker (83%) ──────────
+  const windowPat = /\bwindow\.(location|navigator|history|screen|performance|localStorage|sessionStorage|document|opener|frames|self|top|parent)\b/;
+  const windowBundles = [...new Set(
+    allJs.filter(r => {
+      if (!r.Source) return false;
+      const cleaned = stripLineComments(r.Source);
+      return windowPat.test(cleaned) && !/typeof\s+window/.test(cleaned.slice(0, 200));
+    }).map(bname)
+  )];
+  if (windowBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${windowBundles.length} Aura Component${windowBundles.length !== 1 ? 's' : ''} Access window Properties Directly (LWS Migration Blocker)`,
+      'Direct window property access (window.location, window.localStorage, etc.) bypasses Lightning Web Security\'s proxy membrane. These patterns will break when LWS enforcement is applied to Aura components during migration or platform updates.',
+      'Replace direct window access with LWS-compatible patterns: use $A.get("$Browser") for browser info, and access properties through the LWS-safe API surface.',
+      { bundles: windowBundles.slice(0, 50) }));
+  }
+
+  // ── AU-14: aura:waiting / aura:doneWaiting global events (82%) ───────────
+  const waitingBundles = [...new Set(
+    data.markups.filter(r => r.Source && /aura:(waiting|doneWaiting)/.test(r.Source)).map(bname)
+  )];
+  if (waitingBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${waitingBundles.length} Aura Component${waitingBundles.length !== 1 ? 's' : ''} Use aura:waiting/aura:doneWaiting for Loading State`,
+      'aura:waiting and aura:doneWaiting fire for every server action in the entire application, not just the component\'s own actions. This causes loading spinners to appear for unrelated operations and is a deprecated pattern.',
+      'Replace with component-level loading flags: set a boolean attribute (v.isLoading) to true before enqueueAction and false in the action callback. Use lightning:spinner bound to that attribute.',
+      { bundles: waitingBundles.slice(0, 50) }));
+  }
+
+  // ── AU-15: Nested aura:iteration (85%) ───────────────────────────────────
+  const nestedIterBundles = [...new Set(
+    data.markups.filter(r => r.Source && /<aura:iteration[^>]*>[\s\S]{0,3000}?<aura:iteration/.test(r.Source)).map(bname)
+  )];
+  if (nestedIterBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${nestedIterBundles.length} Aura Component${nestedIterBundles.length !== 1 ? 's' : ''} Have Nested aura:iteration (O(n²) Render Cost)`,
+      'Nested aura:iteration creates O(n²) component instances at render time. For a 10-row outer list with 10 inner items each, Aura creates 110 component instances. This is a leading cause of slow page load in data-heavy Aura pages.',
+      'Flatten nested data structures before rendering. Use a single aura:iteration with pre-computed row data. Consider pagination or virtual scrolling for large datasets.',
+      { bundles: nestedIterBundles.slice(0, 50) }));
+  }
+
+  // ── AU-16: $A.enqueueAction in loops — governor limit risk (83%) ─────────
+  const enqueueLoopBundles: string[] = [];
+  for (const r of allJs) {
+    if (!r.Source) continue;
+    const src = r.Source;
+    if (!/\$A\.enqueueAction\s*\(/.test(src)) continue;
+    if (/(clearTimeout|debounce|throttle)/.test(src)) continue;
+    const loopPat = /(for\s*\(|while\s*\(|\.forEach\s*\(|\.map\s*\()/g;
+    let m: RegExpExecArray | null;
+    while ((m = loopPat.exec(src)) !== null) {
+      const snippet = src.slice(m.index, Math.min(m.index + 600, src.length));
+      if (/\$A\.enqueueAction\s*\(/.test(snippet)) {
+        enqueueLoopBundles.push(bname(r));
+        break;
+      }
+    }
+  }
+  const enqueueLoopUniq = [...new Set(enqueueLoopBundles)];
+  if (enqueueLoopUniq.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${enqueueLoopUniq.length} Aura Component${enqueueLoopUniq.length !== 1 ? 's' : ''} Call $A.enqueueAction Inside Loops`,
+      'Each $A.enqueueAction() call is a server round-trip. Calling it inside a loop creates one server request per iteration, exhausting the 10-concurrent-request Aura limit and generating unnecessary network load.',
+      'Move server data fetching outside loops. Collect all needed IDs first, then make a single server call with a collection parameter. Use batch Apex or aggregate queries on the server side.',
+      { bundles: enqueueLoopUniq.slice(0, 50) }));
+  }
+
+  // ── AU-17: component.find() in loops (80%) ────────────────────────────────
+  const findLoopBundles: string[] = [];
+  for (const r of allJs) {
+    if (!r.Source || !/component\.find\s*\(/.test(r.Source)) continue;
+    const src = r.Source;
+    const loopPat = /(for\s*\(|while\s*\(|\.forEach\s*\()/g;
+    let m: RegExpExecArray | null;
+    while ((m = loopPat.exec(src)) !== null) {
+      const snippet = src.slice(m.index, Math.min(m.index + 400, src.length));
+      if (/component\.find\s*\(/.test(snippet)) {
+        findLoopBundles.push(bname(r));
+        break;
+      }
+    }
+  }
+  const findLoopUniq = [...new Set(findLoopBundles)];
+  if (findLoopUniq.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${findLoopUniq.length} Aura Component${findLoopUniq.length !== 1 ? 's' : ''} Call component.find() Inside Loops`,
+      'component.find() traverses the component tree on every call. Calling it inside a loop multiplies the traversal cost by the number of iterations and is a common cause of slow UI interactions in Aura components.',
+      'Cache the component.find() result in a local variable before the loop and reuse it within each iteration.',
+      { bundles: findLoopUniq.slice(0, 50) }));
+  }
+
+  // ── AU-18: RENDERER DOM manipulation without unrender cleanup (80%) ───────
+  const rendererLeakBundles: string[] = [];
+  for (const r of data.renderers) {
+    if (!r.Source) continue;
+    const src = r.Source;
+    const afterBody = extractAuraMethod(src, 'afterRender');
+    const rerenderBody = extractAuraMethod(src, 'rerender');
+    const hasDomMutation = /(appendChild|innerHTML|createElement|insertBefore)\s*\(/.test(afterBody + rerenderBody);
+    if (!hasDomMutation) continue;
+    const unrenderBody = extractAuraMethod(src, 'unrender');
+    const hasCleanup = /(removeChild|innerHTML\s*=\s*['"]|remove\s*\(\)|parentNode)/.test(unrenderBody);
+    if (!hasCleanup) rendererLeakBundles.push(bname(r));
+  }
+  if (rendererLeakBundles.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${rendererLeakBundles.length} Aura Component${rendererLeakBundles.length !== 1 ? 's' : ''} Have RENDERER DOM Mutations Without unrender Cleanup`,
+      'Custom RENDERER files that append or mutate DOM in afterRender/rerender without corresponding cleanup in unrender create DOM nodes that persist after the component is destroyed, causing memory accumulation over the session lifetime.',
+      'Add an unrender method to every RENDERER that does DOM mutation. Call component.superUnrender() and explicitly remove all appended DOM nodes using removeChild() or element.remove().',
+      { bundles: rendererLeakBundles.slice(0, 50) }));
+  }
+
+  // ── AU-19: postMessage without origin check (84%) ─────────────────────────
+  const postMsgBundles: string[] = [];
+  for (const r of allJs) {
+    if (!r.Source || !/addEventListener\s*\(\s*['"]message['"]/.test(r.Source)) continue;
+    const src = r.Source;
+    const msgIdx = src.search(/addEventListener\s*\(\s*['"]message['"]/);
+    const open = src.indexOf('{', msgIdx);
+    if (open === -1) { postMsgBundles.push(bname(r)); continue; }
+    let depth = 1, i = open + 1;
+    while (i < src.length && depth > 0) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') depth--;
+      i++;
+    }
+    const body = src.slice(open + 1, i - 1);
+    if (!/(event|e)\.(origin|source)/.test(body) && !/trustedOrigins|ALLOWED_ORIGINS|allowedOrigins/.test(body)) {
+      postMsgBundles.push(bname(r));
+    }
+  }
+  const postMsgUniq = [...new Set(postMsgBundles)];
+  if (postMsgUniq.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${postMsgUniq.length} Aura Component${postMsgUniq.length !== 1 ? 's' : ''} Listen to window postMessage Without Origin Validation`,
+      'message event handlers that do not verify event.origin accept messages from any domain, enabling cross-site scripting attacks from malicious iframes or windows.',
+      'Add if (event.origin !== window.location.origin) return; as the first line of every postMessage handler. Maintain an explicit allowlist of trusted origins.',
+      { bundles: postMsgUniq.slice(0, 50) }));
+  }
+
+  // ── AU-20: Application event handler registered without removal (81%) ─────
+  const handlerLeakBundles: string[] = [];
+  for (const r of data.controllers) {
+    if (!r.Source) continue;
+    const src = r.Source;
+    if (!/\$A\.eventService\.(addHandler|on)\s*\(/.test(src)) continue;
+    const markup = markupByBundle[r.AuraDefinitionBundleId];
+    const destroyName = markup ? getDestroyHandlerName(markup.Source || '') : null;
+    const destroyBody = destroyName ? extractAuraMethod(src, destroyName) : '';
+    if (!/(removeHandler|off)\s*\(/.test(destroyBody || '')) {
+      handlerLeakBundles.push(bname(r));
+    }
+  }
+  const handlerLeakUniq = [...new Set(handlerLeakBundles)];
+  if (handlerLeakUniq.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${handlerLeakUniq.length} Aura Component${handlerLeakUniq.length !== 1 ? 's' : ''} Register Application Event Handlers Without Removing Them in destroy`,
+      '$A.eventService.addHandler() registrations that are not removed in the destroy event handler accumulate across component re-renders, causing the same handler to fire multiple times and preventing garbage collection of the component.',
+      'Store the handler reference returned by addHandler() and call $A.eventService.removeHandler() with the same reference in the component\'s destroy event handler.',
+      { bundles: handlerLeakUniq.slice(0, 50) }));
+  }
+
+  // ── AU-21: $A.createComponent() dynamic creation (80%) ───────────────────
+  const createCompBundles = [...new Set(
+    allJs.filter(r => r.Source && /\$A\.createComponent\s*\(/.test(r.Source)).map(bname)
+  )];
+  if (createCompBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${createCompBundles.length} Aura Component${createCompBundles.length !== 1 ? 's' : ''} Use $A.createComponent() for Dynamic Component Creation`,
+      '$A.createComponent() is the most expensive Aura API call — it instantiates a full component descriptor, fetches component definitions from the server if not cached, and runs the entire component lifecycle. Repeated calls without pooling cause significant performance degradation.',
+      'Cache dynamically created components. Use component attribute bindings with aura:if for conditional rendering instead of imperative creation. For lists, use aura:iteration instead of programmatic creation.',
+      { bundles: createCompBundles.slice(0, 50) }));
+  }
+
+  // ── AU-22: Dead aura:registerEvent — defined but never fired (77%) ────────
+  const deadEventBundles: string[] = [];
+  const allJsSrc = allJs.map(r => r.Source || '').join('\n');
+  for (const m of data.markups) {
+    if (!m.Source) continue;
+    const regPat = /aura:registerEvent[^>]+name=["']([^"']+)["']/g;
+    let match: RegExpExecArray | null;
+    while ((match = regPat.exec(m.Source)) !== null) {
+      const evtName = match[1];
+      if (!new RegExp(`getEvent\\s*\\(\\s*['"]${evtName}['"]`).test(allJsSrc)) {
+        deadEventBundles.push(bname(m));
+        break;
+      }
+    }
+  }
+  if (deadEventBundles.length > 0) {
+    items.push(createDebtItem('aura', 'low',
+      `${deadEventBundles.length} Aura Component${deadEventBundles.length !== 1 ? 's' : ''} Have aura:registerEvent Definitions That Are Never Fired`,
+      'Components that declare aura:registerEvent but never call component.getEvent().fire() carry dead event declarations. These increase the component definition payload, mislead developers about component contracts, and add unnecessary maintenance overhead.',
+      'Remove unused aura:registerEvent declarations. If the event was intentional but not yet implemented, add a TODO comment to the markup referencing the planned implementation.',
+      { bundles: deadEventBundles.slice(0, 50) }));
+  }
+
+  // ── AU-23: XHR/fetch without abort in destroy (78%) ──────────────────────
+  const xhrLeakBundles: string[] = [];
+  for (const r of allJs) {
+    if (!r.Source) continue;
+    const src = r.Source;
+    const hasXhr = /new XMLHttpRequest\s*\(/.test(src);
+    const hasFetch = /\bfetch\s*\(/.test(src);
+    if (!hasXhr && !hasFetch) continue;
+    if (!/(\.abort\s*\(\)|AbortController|AbortSignal)/.test(src)) {
+      xhrLeakBundles.push(bname(r));
+    }
+  }
+  const xhrLeakUniq = [...new Set(xhrLeakBundles)];
+  if (xhrLeakUniq.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${xhrLeakUniq.length} Aura Component${xhrLeakUniq.length !== 1 ? 's' : ''} Use fetch/XHR Without Abort Cleanup`,
+      'In-flight XHR or fetch requests that are not aborted in the destroy handler continue executing after the component is removed, triggering callbacks on a destroyed component and causing memory leaks.',
+      'Use AbortController to cancel fetch requests in the destroy handler. For XHR, store the request reference and call .abort() in the destroy handler.',
+      { bundles: xhrLeakUniq.slice(0, 50) }));
+  }
+
+  // ── AU-24: force:refreshView fired from high-frequency event handlers (79%) ─
+  const refreshViewBundles: string[] = [];
+  const highFreqEvents = /on(Change|KeyPress|KeyUp|KeyDown|Input|MouseMove|Scroll)\s*=/i;
+  for (const m of data.markups) {
+    if (!m.Source || !highFreqEvents.test(m.Source)) continue;
+    const bundleCtrl = data.controllers.find(c => c.AuraDefinitionBundleId === m.AuraDefinitionBundleId);
+    const bundleHelper = data.helpers.find(h => h.AuraDefinitionBundleId === m.AuraDefinitionBundleId);
+    const jsSrc = (bundleCtrl?.Source || '') + (bundleHelper?.Source || '');
+    if (/force:refreshView/.test(jsSrc)) {
+      refreshViewBundles.push(bname(m));
+    }
+  }
+  if (refreshViewBundles.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${refreshViewBundles.length} Aura Component${refreshViewBundles.length !== 1 ? 's' : ''} Fire force:refreshView from High-Frequency Event Handlers`,
+      'force:refreshView triggers a full component tree re-render. Firing it from onChange, onKeyPress, onKeyUp, or onInput handlers can re-render the entire page on every keystroke or value change, causing severe UI performance degradation.',
+      'Debounce the event handler using a setTimeout pattern and only fire force:refreshView after the user stops interacting (e.g., 300ms after the last keystroke). Better: update only the specific component attributes that changed instead of refreshing the entire view.',
+      { bundles: refreshViewBundles.slice(0, 50) }));
+  }
+
+  // ── AU-25: $A.storageService without error handling (75%) ─────────────────
+  const storageBundles = [...new Set(
+    allJs.filter(r => {
+      if (!r.Source || !/\$A\.storageService/.test(r.Source)) return false;
+      return !/(\.catch\s*\(|\.then\s*\([^,)]+,)/.test(r.Source);
+    }).map(bname)
+  )];
+  if (storageBundles.length > 0) {
+    items.push(createDebtItem('aura', 'low',
+      `${storageBundles.length} Aura Component${storageBundles.length !== 1 ? 's' : ''} Use $A.storageService Without Error Handling`,
+      '$A.storageService operations (put, get, getAll) are asynchronous and can fail due to storage quota exceeded, browser restrictions, or private browsing mode. Unhandled storage failures are invisible to users and developers.',
+      'Chain .catch() handlers on all $A.storageService Promise calls. Log storage failures and implement graceful degradation (fall back to server fetch if cache read fails).',
+      { bundles: storageBundles.slice(0, 50) }));
+  }
+
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  const score = Math.max(0, maxScore - deductions);
+
+  return {
+    category: 'Aura Components',
     score,
     maxScore,
     percentage: Math.round((score / maxScore) * 100),

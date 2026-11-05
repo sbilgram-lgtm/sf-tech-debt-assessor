@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
-import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData, getPerformanceData, getNotesAttachmentsData, getFlowQualityData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, assessPerformance, assessNotesAttachments, assessFlowQuality, calculateOverallScore } from '../utils/scoring';
+import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData, getPerformanceData, getNotesAttachmentsData, getFlowQualityData, getAuraData } from '../services/api';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, assessPerformance, assessNotesAttachments, assessFlowQuality, assessAura, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 import { RemediationRoadmap } from '../components/RemediationRoadmap';
@@ -116,6 +116,9 @@ setProgress('Assessing Experience Cloud sites...');
       setProgress('Auditing flow quality...');
       const flowQualityData = await getFlowQualityData();
 
+      setProgress('Auditing Aura components...');
+      const auraData = await getAuraData();
+
       setProgress('Calculating scores...');
       const configScore = assessConfiguration(automationData, validationData);
       const codeScore = assessCodeQuality(apexData);
@@ -140,6 +143,7 @@ setProgress('Assessing Experience Cloud sites...');
       const performanceScore = assessPerformance(performanceData);
       const notesAttachmentsScore = assessNotesAttachments(notesAttachmentsData);
       const flowQualityScore = assessFlowQuality(flowQualityData);
+      const auraScore = assessAura(auraData);
 
       const result = calculateOverallScore([
         configScore, codeScore, dataScore, serviceScore, sharingScore,
@@ -147,7 +151,7 @@ setProgress('Assessing Experience Cloud sites...');
         emailScore, platformEventsScore, packagesScore, customMetadataScore,
         recordTypesScore, einsteinScore, experienceCloudScore,
         connectedAppSecurityScore, lwcScore, omniStudioScore, performanceScore,
-        notesAttachmentsScore, flowQualityScore
+        notesAttachmentsScore, flowQualityScore, auraScore
       ]);
 
       const authStatus = await getAuthStatus();

@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments' | 'flowQuality';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments' | 'flowQuality' | 'aura';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
@@ -401,6 +401,15 @@ export interface LwcData {
   htmlResources: any[];
   cssResources: any[];
   vfPages: any[];
+}
+
+export interface AuraData {
+  bundles: any[];
+  controllers: any[];
+  helpers: any[];
+  renderers: any[];
+  markups: any[];
+  events: any[];
 }
 
 export interface FlowQualityData {

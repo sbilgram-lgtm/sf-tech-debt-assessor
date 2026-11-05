@@ -2672,6 +2672,46 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Aura Components ──────────────────────────────────────────────────────────
+app.get('/api/assess/aura', requireAuth, async (req, res) => {
+  const conn = getConnection(req);
+  try {
+    const [bundlesRes, controllersRes, helpersRes, renderersRes, markupsRes, eventsRes] = await Promise.all([
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName, ApiVersion, NamespacePrefix, LastModifiedDate FROM AuraDefinitionBundle WHERE NamespacePrefix = null LIMIT 2000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, AuraDefinitionBundleId, AuraDefinitionBundle.DeveloperName, AuraDefinitionBundle.NamespacePrefix, DefType, Source FROM AuraDefinition WHERE DefType = 'CONTROLLER' LIMIT 2000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, AuraDefinitionBundleId, AuraDefinitionBundle.DeveloperName, AuraDefinitionBundle.NamespacePrefix, DefType, Source FROM AuraDefinition WHERE DefType = 'HELPER' LIMIT 2000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, AuraDefinitionBundleId, AuraDefinitionBundle.DeveloperName, AuraDefinitionBundle.NamespacePrefix, DefType, Source FROM AuraDefinition WHERE DefType = 'RENDERER' LIMIT 2000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, AuraDefinitionBundleId, AuraDefinitionBundle.DeveloperName, AuraDefinitionBundle.NamespacePrefix, DefType, Source FROM AuraDefinition WHERE DefType = 'COMPONENT' LIMIT 2000"
+      ),
+      safeToolingQuery(conn,
+        "SELECT Id, AuraDefinitionBundleId, AuraDefinitionBundle.DeveloperName, AuraDefinitionBundle.NamespacePrefix, DefType, Source FROM AuraDefinition WHERE DefType = 'EVENT' LIMIT 500"
+      )
+    ]);
+
+    const noNs = (r) => !r?.AuraDefinitionBundle?.NamespacePrefix;
+    res.json({
+      bundles: bundlesRes.records || [],
+      controllers: (controllersRes.records || []).filter(noNs),
+      helpers: (helpersRes.records || []).filter(noNs),
+      renderers: (renderersRes.records || []).filter(noNs),
+      markups: (markupsRes.records || []).filter(noNs),
+      events: (eventsRes.records || []).filter(noNs)
+    });
+  } catch (err) {
+    console.error('Aura assessment error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // In production, serve the React build
 if (isProduction) {
   app.use(express.static(path.resolve(__dirname, '../build')));

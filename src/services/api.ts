@@ -118,6 +118,10 @@ export async function getFlowQualityData() {
   return fetchApi('/api/assess/flow-quality');
 }
 
+export async function getAuraData() {
+  return fetchApi('/api/assess/aura');
+}
+
 export async function getAiChatStatus(): Promise<{ available: boolean; provider: string | null }> {
   const res = await fetch('/api/chat/status', { credentials: 'include' });
   if (!res.ok) return { available: false, provider: null };
