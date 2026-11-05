@@ -6272,6 +6272,11 @@ export function assessFlowQuality(data: FlowQualityData): CategoryScore {
 export function assessAura(data: AuraData): CategoryScore {
   const items: DebtItem[] = [];
 
+  function dedup(arr: string[]): string[] {
+    const seen: {[k: string]: boolean} = {};
+    return arr.filter(s => !seen[s] && (seen[s] = true));
+  }
+
   const bname = (def: any): string =>
     def?.AuraDefinitionBundle?.DeveloperName || def?.AuraDefinitionBundleId || 'unknown';
 
@@ -6304,9 +6309,9 @@ export function assessAura(data: AuraData): CategoryScore {
 
   // ── AU-1: console statements in controllers/helpers (91%) ─────────────────
   const consolePat = /console\.(log|error|warn|debug|info)\s*\(/;
-  const consoleBundles = [...new Set(
+  const consoleBundles = dedup(
     allJs.filter(r => r.Source && consolePat.test(r.Source)).map(bname)
-  )];
+  );
   if (consoleBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${consoleBundles.length} Aura Controller${consoleBundles.length !== 1 ? 's' : ''}/Helper${consoleBundles.length !== 1 ? 's' : ''} Contain console Statements`,
@@ -6317,9 +6322,9 @@ export function assessAura(data: AuraData): CategoryScore {
 
   // ── AU-2: document.querySelector instead of component.find() (89%) ────────
   const domQueryPat = /document\.(querySelector|querySelectorAll|getElementById|getElementsBy[A-Za-z]+)\s*\(/;
-  const domQueryBundles = [...new Set(
+  const domQueryBundles = dedup(
     allJs.filter(r => r.Source && domQueryPat.test(r.Source)).map(bname)
-  )];
+  );
   if (domQueryBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${domQueryBundles.length} Aura Component${domQueryBundles.length !== 1 ? 's' : ''} Use document.querySelector Instead of component.find()`,
@@ -6329,9 +6334,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-3: eval() in controllers/helpers (90%) ─────────────────────────────
-  const evalBundles = [...new Set(
+  const evalBundles = dedup(
     allJs.filter(r => r.Source && /\beval\s*\(/.test(stripLineComments(r.Source))).map(bname)
-  )];
+  );
   if (evalBundles.length > 0) {
     items.push(createDebtItem('aura', 'critical',
       `${evalBundles.length} Aura Component${evalBundles.length !== 1 ? 's' : ''} Use eval()`,
@@ -6341,9 +6346,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-4: ui: namespace deprecated components (93%) ───────────────────────
-  const uiNsBundles = [...new Set(
+  const uiNsBundles = dedup(
     data.markups.filter(r => r.Source && /<ui:/.test(r.Source)).map(bname)
-  )];
+  );
   if (uiNsBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${uiNsBundles.length} Aura Component${uiNsBundles.length !== 1 ? 's' : ''} Use Deprecated ui: Namespace Components`,
@@ -6372,10 +6377,10 @@ export function assessAura(data: AuraData): CategoryScore {
 
   // ── AU-6: Hardcoded org instance URLs (88%) ───────────────────────────────
   const urlPat = /https?:\/\/[a-z0-9\-]+\.(my\.salesforce\.com|force\.com|lightning\.force\.com|visualforce\.com)/i;
-  const urlBundles = [...new Set([...allJs, ...data.markups].filter(r => {
+  const urlBundles = dedup([...allJs, ...data.markups].filter(r => {
     if (!r.Source) return false;
     return urlPat.test(stripLineComments(r.Source));
-  }).map(bname))];
+  }).map(bname));
   if (urlBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${urlBundles.length} Aura Component${urlBundles.length !== 1 ? 's' : ''} Contain Hardcoded Salesforce Instance URLs`,
@@ -6385,9 +6390,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-7: aura:unescapedHtml with dynamic binding (87%) ───────────────────
-  const unescapedBundles = [...new Set(
+  const unescapedBundles = dedup(
     data.markups.filter(r => r.Source && /<aura:unescapedHtml[^>]+value="\{!/.test(r.Source)).map(bname)
-  )];
+  );
   if (unescapedBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${unescapedBundles.length} Aura Component${unescapedBundles.length !== 1 ? 's' : ''} Use aura:unescapedHtml with Dynamic Binding (XSS Risk)`,
@@ -6397,9 +6402,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-8: Application events fired instead of Lightning Message Service (87%) ─
-  const appEventBundles = [...new Set(
+  const appEventBundles = dedup(
     allJs.filter(r => r.Source && /\$A\.get\s*\(\s*['"]e\./.test(r.Source)).map(bname)
-  )];
+  );
   if (appEventBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${appEventBundles.length} Aura Component${appEventBundles.length !== 1 ? 's' : ''} Fire Application Events (Use Lightning Message Service Instead)`,
@@ -6453,7 +6458,7 @@ export function assessAura(data: AuraData): CategoryScore {
     const hasCleanup = /(clearTimeout|clearInterval)\s*\(/.test(destroyBody || src);
     if (!hasCleanup) timerLeakBundles.push(bname(r));
   }
-  const timerLeakUniq = [...new Set(timerLeakBundles)];
+  const timerLeakUniq = dedup(timerLeakBundles);
   if (timerLeakUniq.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${timerLeakUniq.length} Aura Component${timerLeakUniq.length !== 1 ? 's' : ''} Use setTimeout/setInterval Without Cleanup in destroy Handler`,
@@ -6463,12 +6468,12 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-11: Missing ERROR callback on $A.enqueueAction (82%) ──────────────
-  const noErrorCbBundles = [...new Set(
+  const noErrorCbBundles = dedup(
     allJs.filter(r => {
       if (!r.Source || !/\$A\.enqueueAction\s*\(/.test(r.Source)) return false;
       return !/'ERROR'/.test(r.Source) && !/"ERROR"/.test(r.Source);
     }).map(bname)
-  )];
+  );
   if (noErrorCbBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${noErrorCbBundles.length} Aura Component${noErrorCbBundles.length !== 1 ? 's' : ''} Make Server Calls Without an ERROR State Callback`,
@@ -6478,9 +6483,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-12: force: namespace deprecated components (85%) ──────────────────
-  const forceNsBundles = [...new Set(
+  const forceNsBundles = dedup(
     data.markups.filter(r => r.Source && /<force:/.test(r.Source)).map(bname)
-  )];
+  );
   if (forceNsBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${forceNsBundles.length} Aura Component${forceNsBundles.length !== 1 ? 's' : ''} Use force: Namespace Components (Deprecated)`,
@@ -6491,13 +6496,13 @@ export function assessAura(data: AuraData): CategoryScore {
 
   // ── AU-13: window property access — LWS migration blocker (83%) ──────────
   const windowPat = /\bwindow\.(location|navigator|history|screen|performance|localStorage|sessionStorage|document|opener|frames|self|top|parent)\b/;
-  const windowBundles = [...new Set(
+  const windowBundles = dedup(
     allJs.filter(r => {
       if (!r.Source) return false;
       const cleaned = stripLineComments(r.Source);
       return windowPat.test(cleaned) && !/typeof\s+window/.test(cleaned.slice(0, 200));
     }).map(bname)
-  )];
+  );
   if (windowBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${windowBundles.length} Aura Component${windowBundles.length !== 1 ? 's' : ''} Access window Properties Directly (LWS Migration Blocker)`,
@@ -6507,9 +6512,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-14: aura:waiting / aura:doneWaiting global events (82%) ───────────
-  const waitingBundles = [...new Set(
+  const waitingBundles = dedup(
     data.markups.filter(r => r.Source && /aura:(waiting|doneWaiting)/.test(r.Source)).map(bname)
-  )];
+  );
   if (waitingBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${waitingBundles.length} Aura Component${waitingBundles.length !== 1 ? 's' : ''} Use aura:waiting/aura:doneWaiting for Loading State`,
@@ -6519,9 +6524,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-15: Nested aura:iteration (85%) ───────────────────────────────────
-  const nestedIterBundles = [...new Set(
+  const nestedIterBundles = dedup(
     data.markups.filter(r => r.Source && /<aura:iteration[^>]*>[\s\S]{0,3000}?<aura:iteration/.test(r.Source)).map(bname)
-  )];
+  );
   if (nestedIterBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${nestedIterBundles.length} Aura Component${nestedIterBundles.length !== 1 ? 's' : ''} Have Nested aura:iteration (O(n²) Render Cost)`,
@@ -6547,7 +6552,7 @@ export function assessAura(data: AuraData): CategoryScore {
       }
     }
   }
-  const enqueueLoopUniq = [...new Set(enqueueLoopBundles)];
+  const enqueueLoopUniq = dedup(enqueueLoopBundles);
   if (enqueueLoopUniq.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${enqueueLoopUniq.length} Aura Component${enqueueLoopUniq.length !== 1 ? 's' : ''} Call $A.enqueueAction Inside Loops`,
@@ -6571,7 +6576,7 @@ export function assessAura(data: AuraData): CategoryScore {
       }
     }
   }
-  const findLoopUniq = [...new Set(findLoopBundles)];
+  const findLoopUniq = dedup(findLoopBundles);
   if (findLoopUniq.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${findLoopUniq.length} Aura Component${findLoopUniq.length !== 1 ? 's' : ''} Call component.find() Inside Loops`,
@@ -6620,7 +6625,7 @@ export function assessAura(data: AuraData): CategoryScore {
       postMsgBundles.push(bname(r));
     }
   }
-  const postMsgUniq = [...new Set(postMsgBundles)];
+  const postMsgUniq = dedup(postMsgBundles);
   if (postMsgUniq.length > 0) {
     items.push(createDebtItem('aura', 'high',
       `${postMsgUniq.length} Aura Component${postMsgUniq.length !== 1 ? 's' : ''} Listen to window postMessage Without Origin Validation`,
@@ -6642,7 +6647,7 @@ export function assessAura(data: AuraData): CategoryScore {
       handlerLeakBundles.push(bname(r));
     }
   }
-  const handlerLeakUniq = [...new Set(handlerLeakBundles)];
+  const handlerLeakUniq = dedup(handlerLeakBundles);
   if (handlerLeakUniq.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${handlerLeakUniq.length} Aura Component${handlerLeakUniq.length !== 1 ? 's' : ''} Register Application Event Handlers Without Removing Them in destroy`,
@@ -6652,9 +6657,9 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-21: $A.createComponent() dynamic creation (80%) ───────────────────
-  const createCompBundles = [...new Set(
+  const createCompBundles = dedup(
     allJs.filter(r => r.Source && /\$A\.createComponent\s*\(/.test(r.Source)).map(bname)
-  )];
+  );
   if (createCompBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${createCompBundles.length} Aura Component${createCompBundles.length !== 1 ? 's' : ''} Use $A.createComponent() for Dynamic Component Creation`,
@@ -6698,7 +6703,7 @@ export function assessAura(data: AuraData): CategoryScore {
       xhrLeakBundles.push(bname(r));
     }
   }
-  const xhrLeakUniq = [...new Set(xhrLeakBundles)];
+  const xhrLeakUniq = dedup(xhrLeakBundles);
   if (xhrLeakUniq.length > 0) {
     items.push(createDebtItem('aura', 'medium',
       `${xhrLeakUniq.length} Aura Component${xhrLeakUniq.length !== 1 ? 's' : ''} Use fetch/XHR Without Abort Cleanup`,
@@ -6728,12 +6733,12 @@ export function assessAura(data: AuraData): CategoryScore {
   }
 
   // ── AU-25: $A.storageService without error handling (75%) ─────────────────
-  const storageBundles = [...new Set(
+  const storageBundles = dedup(
     allJs.filter(r => {
       if (!r.Source || !/\$A\.storageService/.test(r.Source)) return false;
-      return !/(\.catch\s*\(|\.then\s*\([^,)]+,)/.test(r.Source);
+      return !/(\.catch\s*\(|\.then\s*\([^)]*,)/.test(r.Source);
     }).map(bname)
-  )];
+  );
   if (storageBundles.length > 0) {
     items.push(createDebtItem('aura', 'low',
       `${storageBundles.length} Aura Component${storageBundles.length !== 1 ? 's' : ''} Use $A.storageService Without Error Handling`,
