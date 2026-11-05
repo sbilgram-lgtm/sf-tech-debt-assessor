@@ -573,8 +573,12 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   const soqlInjectionRisk = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /Database\.(query|queryWithBinds)\s*\(\s*['"][^'"]*'\s*\+/gi.test(body) ||
-           /\[SELECT[\s\S]{0,200}'\s*\+/gi.test(body);
+    const hasConcatenation = /Database\.(query|queryWithBinds)\s*\(\s*['"][^'"]*'\s*\+/gi.test(body) ||
+                             /\[SELECT[\s\S]{0,200}'\s*\+/gi.test(body);
+    if (!hasConcatenation) return false;
+    // Exclude classes that use String.escapeSingleQuotes() near the concatenation — properly sanitized
+    if (/String\.escapeSingleQuotes\s*\(/i.test(body)) return false;
+    return true;
   });
   if (soqlInjectionRisk.length > 0) {
     items.push(createDebtItem(
@@ -675,7 +679,9 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
   const globalClasses = apex.classes.filter((c: any) => {
     const body = c.Body || '';
     if (/@isTest\b/i.test(body)) return false;
-    return /\bglobal\s+(class|interface|enum|abstract|virtual|override|static|void|String|Integer|Boolean|List|Map|Set|Id)\b/gi.test(body);
+    // Strip single-line comments before testing to avoid matching "// global class Foo"
+    const bodyNoComments = body.replace(/\/\/[^\n]*/g, '');
+    return /\bglobal\s+(class|interface|enum|abstract|virtual|override|static|void|String|Integer|Boolean|List|Map|Set|Id)\b/gi.test(bodyNoComments);
   });
   if (globalClasses.length > 0) {
     items.push(createDebtItem('code', 'high',
