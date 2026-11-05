@@ -6310,7 +6310,7 @@ export function assessAura(data: AuraData): CategoryScore {
   // ── AU-1: console statements in controllers/helpers (91%) ─────────────────
   const consolePat = /console\.(log|error|warn|debug|info)\s*\(/;
   const consoleBundles = dedup(
-    allJs.filter(r => r.Source && consolePat.test(r.Source)).map(bname)
+    allJs.filter(r => r.Source && consolePat.test(stripLineComments(r.Source))).map(bname)
   );
   if (consoleBundles.length > 0) {
     items.push(createDebtItem('aura', 'medium',
@@ -6323,7 +6323,7 @@ export function assessAura(data: AuraData): CategoryScore {
   // ── AU-2: document.querySelector instead of component.find() (89%) ────────
   const domQueryPat = /document\.(querySelector|querySelectorAll|getElementById|getElementsBy[A-Za-z]+)\s*\(/;
   const domQueryBundles = dedup(
-    allJs.filter(r => r.Source && domQueryPat.test(r.Source)).map(bname)
+    allJs.filter(r => r.Source && domQueryPat.test(stripLineComments(r.Source))).map(bname)
   );
   if (domQueryBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
@@ -6391,7 +6391,7 @@ export function assessAura(data: AuraData): CategoryScore {
 
   // ── AU-7: aura:unescapedHtml with dynamic binding (87%) ───────────────────
   const unescapedBundles = dedup(
-    data.markups.filter(r => r.Source && /<aura:unescapedHtml[^>]+value="\{!/.test(r.Source)).map(bname)
+    data.markups.filter(r => r.Source && /<aura:unescapedHtml[^>]+value=["']\{!/.test(r.Source)).map(bname)
   );
   if (unescapedBundles.length > 0) {
     items.push(createDebtItem('aura', 'high',
@@ -6500,7 +6500,7 @@ export function assessAura(data: AuraData): CategoryScore {
     allJs.filter(r => {
       if (!r.Source) return false;
       const cleaned = stripLineComments(r.Source);
-      return windowPat.test(cleaned) && !/typeof\s+window/.test(cleaned.slice(0, 200));
+      return windowPat.test(cleaned) && !/typeof\s+window/.test(cleaned);
     }).map(bname)
   );
   if (windowBundles.length > 0) {
@@ -6541,7 +6541,7 @@ export function assessAura(data: AuraData): CategoryScore {
     if (!r.Source) continue;
     const src = r.Source;
     if (!/\$A\.enqueueAction\s*\(/.test(src)) continue;
-    if (/(clearTimeout|debounce|throttle)/.test(src)) continue;
+    if (/(debounce|throttle)/.test(src)) continue;
     const loopPat = /(for\s*\(|while\s*\(|\.forEach\s*\(|\.map\s*\()/g;
     let m: RegExpExecArray | null;
     while ((m = loopPat.exec(src)) !== null) {
@@ -6595,7 +6595,7 @@ export function assessAura(data: AuraData): CategoryScore {
     const hasDomMutation = /(appendChild|innerHTML|createElement|insertBefore)\s*\(/.test(afterBody + rerenderBody);
     if (!hasDomMutation) continue;
     const unrenderBody = extractAuraMethod(src, 'unrender');
-    const hasCleanup = /(removeChild|innerHTML\s*=\s*['"]|remove\s*\(\)|parentNode)/.test(unrenderBody);
+    const hasCleanup = /(removeChild|innerHTML\s*=\s*['"]|remove\s*\(\)|parentNode\.removeChild)/.test(unrenderBody);
     if (!hasCleanup) rendererLeakBundles.push(bname(r));
   }
   if (rendererLeakBundles.length > 0) {
@@ -6639,7 +6639,7 @@ export function assessAura(data: AuraData): CategoryScore {
   for (const r of data.controllers) {
     if (!r.Source) continue;
     const src = r.Source;
-    if (!/\$A\.eventService\.(addHandler|on)\s*\(/.test(src)) continue;
+    if (!/\$A\.eventService\.(addHandler|on)\s*\(/.test(src) && !/component\.addEventHandler\s*\(/.test(src)) continue;
     const markup = markupByBundle[r.AuraDefinitionBundleId];
     const destroyName = markup ? getDestroyHandlerName(markup.Source || '') : null;
     const destroyBody = destroyName ? extractAuraMethod(src, destroyName) : '';
