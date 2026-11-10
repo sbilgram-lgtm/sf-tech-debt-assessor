@@ -471,7 +471,7 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, ApexClass.Name, Status, NumberOfErrors, CreatedDate FROM AsyncApexJob WHERE Status = 'Failed' AND CreatedDate = LAST_N_DAYS:7 AND JobType IN ('BatchApex','Future','Queueable','ScheduledApex') LIMIT 100").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, ApexClass.Name, Status, CreatedDate FROM AsyncApexJob WHERE Status IN ('Holding','Queued') AND CreatedDate < LAST_N_DAYS:1 AND JobType IN ('BatchApex','Queueable') LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, LogType, StartDate, ExpirationDate, TracedEntityId, TracedEntity.Name FROM TraceFlag WHERE ExpirationDate > TODAY AND LogType = 'USER_DEBUG' LIMIT 50").catch(() => ({ records: [] })),
-      safeQuery(conn, "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 ORDER BY LengthWithoutComments DESC LIMIT 50").catch(() => ({ records: [] }))
+      safeQuery(conn, "SELECT Id, Name, LengthWithoutComments FROM ApexClass WHERE NamespacePrefix = null AND LengthWithoutComments > 1000 ORDER BY LengthWithoutComments DESC LIMIT 200").catch(() => ({ records: [] }))
     ]);
 
     res.json({

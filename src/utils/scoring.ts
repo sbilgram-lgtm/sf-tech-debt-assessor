@@ -1929,7 +1929,7 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     const zeroTouchPct = Math.round(((closedTotal - closedWithActivity) / closedTotal) * 100);
     items.push(createDebtItem('serviceCloud', 'high',
       `${zeroTouchPct}% of Cases Closed in Last 90 Days Have No Documented Activity`,
-      'More than half of recently closed cases have no case comments. Cases closed without documented interaction have no resolution notes, produce no Knowledge content, and corrupt Einstein Case Classification training data.',
+      `${zeroTouchPct}% of recently closed cases have no case comments. Cases closed without documented interaction have no resolution notes, produce no Knowledge content, and corrupt Einstein Case Classification training data.`,
       'Implement a validation rule or flow requiring at least one internal note or email before case closure. Train agents to document resolution steps as case comments.',
       { count: closedTotal - closedWithActivity }));
   }
@@ -5668,15 +5668,6 @@ export function assessPerformance(data: PerformanceData): CategoryScore {
   const items: DebtItem[] = [];
 
   // ── Apex Runtime ─────────────────────────────────────────────────────────────
-
-  if (data.largeApexClasses.length > 0) {
-    items.push(createDebtItem('performance', 'medium',
-      `${data.largeApexClasses.length} Apex Classes Over 1,000 Lines`,
-      'Oversized Apex classes are harder to test, maintain, and debug. Large classes often violate the Single Responsibility Principle and slow compile times.',
-      'Refactor large Apex classes into smaller, focused classes. Break out utility methods into separate helper classes.',
-      { records: data.largeApexClasses.map((c: any) => ({ name: c.Name, detail: `${c.LengthWithoutComments} lines` })) }
-    ));
-  }
 
   if (data.multiTriggerObjects.length > 0) {
     items.push(createDebtItem('performance', 'high',
