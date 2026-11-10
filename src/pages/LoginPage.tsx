@@ -107,7 +107,6 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Case Assignment Rules — Legacy', severity: 'medium' },
     { title: 'Escalation Rules — Legacy', severity: 'low' },
     { title: 'Unverified Organization-Wide Email Addresses', severity: 'high' },
-    { title: 'No Omni-Channel Service Channels Configured', severity: 'medium' },
     { title: 'Routing Configurations Use Legacy Tab-Based Capacity', severity: 'critical' },
     { title: 'Routing Configurations Have No Push Timeout', severity: 'high' },
     { title: 'No Skills-Based Routing — Availability-Only', severity: 'medium' },

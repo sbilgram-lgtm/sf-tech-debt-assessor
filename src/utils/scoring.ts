@@ -1583,13 +1583,8 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
     (data.miawChannels || []).length > 0 ||
     (data.embeddedServiceConfigs || []).length > 0 ||
     (data.presenceConfigurations || []).length > 0 ||
-    (data.routingConfigurations || []).length > 0;
-  if ((data.serviceChannels || []).length === 0 && data.queues.length > 0 && !hasOmniSignals) {
-    items.push(createDebtItem('serviceCloud', 'medium',
-      'No Omni-Channel Service Channels Configured',
-      'Queues exist but no Omni-Channel Service Channels are configured. Work is routed manually with no capacity management, queue metrics, or supervisor visibility.',
-      'Create Service Channels in Setup → Omni-Channel → Service Channels for each work type (Cases, Chats, Messaging Sessions). Route all queues through Omni-Channel.'));
-  }
+    (data.routingConfigurations || []).length > 0 ||
+    (data.serviceChannels || []).length > 0;
 
   // OC-2: RoutingConfiguration uses Tab-based capacity (legacy)
   const tabCapacityConfigs = (data.routingConfigurations || []).filter((rc: any) => rc.CapacityType === 'Tab');
