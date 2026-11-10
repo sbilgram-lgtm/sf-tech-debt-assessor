@@ -567,13 +567,19 @@ app.get('/api/assess/service-cloud', requireAuth, async (req, res) => {
       safeQuery(conn, "SELECT Id, Address, IsVerified FROM OrgWideEmailAddress WHERE IsVerified = false LIMIT 20")
     ]);
 
-    const [assignmentRules, escalationRules, serviceChannels, routingConfigurations, presenceConfigurations] = await Promise.all([
+    const [assignmentRules, escalationRules, serviceChannelsRest, serviceChannelsTooling, routingConfigurations, presenceConfigurations] = await Promise.all([
       safeToolingQuery(conn, "SELECT Id, Name FROM AssignmentRule WHERE SobjectType = 'Case' AND Active = true LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, Name FROM EscalationRule WHERE Active = true LIMIT 50").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, DeveloperName, RelatedEntityType, IsEnabled FROM ServiceChannel LIMIT 50").catch(() => ({ records: [] })),
+      safeToolingQuery(conn, "SELECT Id, DeveloperName, RelatedEntityType FROM ServiceChannel LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, CapacityType, RoutingModel, PushTimeout FROM RoutingConfiguration LIMIT 50").catch(() => ({ records: [] })),
       safeToolingQuery(conn, "SELECT Id, DeveloperName, Capacity FROM PresenceConfiguration LIMIT 50").catch(() => ({ records: [] }))
     ]);
+    // Merge REST and Tooling results — deduplicate by Id so whichever query succeeds wins
+    const channelMap = new Map();
+    (serviceChannelsRest.records || []).forEach(r => channelMap.set(r.Id, r));
+    (serviceChannelsTooling.records || []).forEach(r => { if (!channelMap.has(r.Id)) channelMap.set(r.Id, r); });
+    const serviceChannels = { records: [...channelMap.values()] };
 
     // Canary query — succeeds only if Knowledge is enabled and licensed.
     // safeQuery returns empty on error, so check totalSize !== undefined to distinguish
