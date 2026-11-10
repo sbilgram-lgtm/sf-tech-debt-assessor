@@ -1581,7 +1581,9 @@ export function assessServiceCloud(data: ServiceCloudData): CategoryScore {
   const hasOmniSignals =
     (data.liveChatButtons || []).length > 0 ||
     (data.miawChannels || []).length > 0 ||
-    (data.embeddedServiceConfigs || []).length > 0;
+    (data.embeddedServiceConfigs || []).length > 0 ||
+    (data.presenceConfigurations || []).length > 0 ||
+    (data.routingConfigurations || []).length > 0;
   if ((data.serviceChannels || []).length === 0 && data.queues.length > 0 && !hasOmniSignals) {
     items.push(createDebtItem('serviceCloud', 'medium',
       'No Omni-Channel Service Channels Configured',
