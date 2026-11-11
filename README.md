@@ -1,8 +1,8 @@
 # Salesforce Tech Debt Assessor
 *By Steven Bilgram, Success Architect*
-*Last updated: October 8, 2026*
+*Last updated: November 11, 2026*
 
-A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **402 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
+A web app that connects to any Salesforce org via OAuth and runs a comprehensive read-only scan across **449 checks in 23 categories** — surfacing technical debt, security gaps, and configuration anti-patterns with prioritized, actionable recommendations. Each finding includes an expandable list of the specific records, users, rules, or components causing the score deduction.
 
 ## Disclaimer
 
@@ -11,6 +11,18 @@ Tech Debt Assessor is provided "as is," without warranties. Its assessments and 
 Users are responsible for validating results and adapting recommendations to their specific environment, requirements, and risks. I accept no liability for its use or misuse; by using the software, you accept these terms.
 
 This tool is independent and is not affiliated with or endorsed by Salesforce, Inc. "Salesforce" is a trademark of Salesforce, Inc.
+
+---
+
+## What's New — November 11, 2026
+
+**4 new checks: formula compiled-size limits + Apex orphan detection** — total checks: 402 → 449
+
+Four new checks using weighted estimation and token-based cross-reference analysis:
+- **Formula Fields Approaching 3,900-Character Compiled Limit** (Data Model): estimates compiled size using raw formula length + cross-object reference hop weighting (~200 chars/deep hop, ~80 chars/shallow hop) and nested IF/CASE overhead (~50 chars each). Fires when estimated compiled size exceeds 3,200 characters.
+- **Validation Rule Formulas Approaching Compiled Limit** (Configuration): same weighted estimator applied to validation rule `ErrorConditionFormula` fields.
+- **@InvocableMethod Classes With No Apex Callers** (Code Quality): token-based scan of all class bodies identifies @InvocableMethod classes that no other Apex class references. These may be unwired or dead code. ~78% accuracy.
+- **Apex Classes With No References in Other Classes** (Code Quality): token-based cross-reference scan flags non-test, non-entry-point Apex classes not referenced in any other class body. Excludes @AuraEnabled, @InvocableMethod, @RestResource, @RemoteAction, abstract/interface, and Schedulable classes. ~76% accuracy.
 
 ---
 

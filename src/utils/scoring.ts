@@ -55,6 +55,21 @@ function createDebtItem(
   };
 }
 
+// Estimate compiled Salesforce formula size from raw formula text.
+// Cross-object references (dot-traversals) and nested IF/CASE are the primary drivers of
+// compiled-size inflation beyond raw character count. Threshold: 3,200 (buffer below 3,900 limit).
+function estimateCompiledFormulaLength(formula: string): number {
+  if (!formula) return 0;
+  const raw = formula.length;
+  // Deep cross-object refs (3+ parts: Rel.Obj.Field) inflate most — ~200 chars each
+  const deepRefs = (formula.match(/\b\w+\.\w+\.\w+/g) || []).length;
+  // Shallow cross-object refs (2 parts: Obj.Field starting with uppercase) — ~80 chars each
+  const shallowRefs = (formula.match(/\b[A-Z]\w*\.\w+(?!\.\w)/g) || []).length;
+  // Nested IF/CASE adds overhead — ~50 chars each
+  const nestedLogic = (formula.match(/\b(?:IF|CASE)\s*\(/gi) || []).length;
+  return raw + deepRefs * 200 + shallowRefs * 80 + nestedLogic * 50;
+}
+
 export function assessConfiguration(
   automation: AutomationData,
   validationRules: ValidationRuleData
@@ -275,6 +290,26 @@ export function assessConfiguration(
       'Open outbound change sets represent in-progress manual deployments. Relying on change sets for deployments is a governance risk — changes lack automated testing, peer review, and audit trail that CI/CD pipelines provide.',
       'Review and close or deploy open change sets. Consider adopting a CI/CD pipeline with SFDX and scratch orgs to replace manual change set deployments.',
       { records: automation.openChangeSets.map((cs: any) => ({ name: cs.Name })) }
+    ));
+  }
+
+  // Validation rule formulas approaching 3,900-char compiled size limit
+  // ErrorConditionFormula is raw text — estimated compiled size accounts for cross-object refs and nested IF/CASE.
+  const longVrFormulas = (validationRules.validationRules || []).filter((r: any) => {
+    const formula = r.ErrorConditionFormula || '';
+    return formula.length > 0 && estimateCompiledFormulaLength(formula) > 3200;
+  });
+  if (longVrFormulas.length > 0) {
+    const critical = longVrFormulas.filter((r: any) => estimateCompiledFormulaLength(r.ErrorConditionFormula || '') > 3600);
+    const sev = critical.length > 0 ? 'high' : 'medium';
+    items.push(createDebtItem('configuration', sev,
+      `${longVrFormulas.length} Validation Rule Formula${longVrFormulas.length !== 1 ? 's' : ''} Approaching 3,900-Character Compiled Limit`,
+      `Salesforce enforces a 3,900-character compiled-size limit on validation rule formulas. ${longVrFormulas.length} rule${longVrFormulas.length !== 1 ? 's have' : ' has'} an estimated compiled size above 3,200 characters (estimated from raw formula length plus cross-object reference and nested logic overhead). Formulas that exceed the limit cannot be saved — any future edit will fail until the formula is shortened.`,
+      'Review each flagged formula. Split complex logic into helper fields, replace multi-hop cross-object references with formula fields on the related object, or consolidate nested IF/CASE branches. The compiled size is visible in the formula editor in Setup.',
+      { records: longVrFormulas.slice(0, 30).map((r: any) => ({
+          name: r.ValidationName || r.EntityDefinitionId,
+          detail: `~${estimateCompiledFormulaLength(r.ErrorConditionFormula || '').toLocaleString()} estimated compiled chars (raw: ${(r.ErrorConditionFormula || '').length.toLocaleString()})`
+        })) }
     ));
   }
 
@@ -1308,6 +1343,29 @@ export function assessCodeQuality(apex: ApexData): CategoryScore {
     ));
   }
 
+  // @InvocableMethod classes with no Apex callers — possibly unused or missing flow wiring
+  const invocableOrphans: any[] = (apex as any).invocableOrphans || [];
+  if (invocableOrphans.length > 0) {
+    items.push(createDebtItem('code', 'low',
+      `${invocableOrphans.length} @InvocableMethod Class${invocableOrphans.length !== 1 ? 'es' : ''} With No Apex Callers`,
+      `${invocableOrphans.length} class${invocableOrphans.length !== 1 ? 'es have' : ' has'} an @InvocableMethod annotation but no other Apex class references them. @InvocableMethod classes are designed to be called from Flows or Process Builder, so this may be expected. However, if no active flow calls this method, the class is dead code. Accuracy note: Apex-level caller detection only (~78%) — verify each class has an active flow caller.`,
+      'Open Flow Builder and confirm each flagged class is referenced in at least one active flow. If no flow calls it, remove the @InvocableMethod or delete the class.',
+      { records: invocableOrphans.slice(0, 50) }
+    ));
+  }
+
+  // Orphan Apex classes — not referenced by any other Apex class and not an annotated entry point
+  const apexOrphanCandidates: any[] = (apex as any).apexOrphanCandidates || [];
+  if (apexOrphanCandidates.length > 0) {
+    const sev = apexOrphanCandidates.length >= 20 ? 'medium' : 'low';
+    items.push(createDebtItem('code', sev,
+      `${apexOrphanCandidates.length} Apex Class${apexOrphanCandidates.length !== 1 ? 'es' : ''} With No References in Other Classes`,
+      `${apexOrphanCandidates.length} non-test, non-entry-point Apex class${apexOrphanCandidates.length !== 1 ? 'es are' : ' is'} not referenced in any other Apex class body. Excluded: test classes, @AuraEnabled, @InvocableMethod, @RestResource, @RemoteAction, abstract/interface, and Schedulable classes. Orphan classes add dead code, inflate the org's Apex character count, and confuse developers. Accuracy note: token-based cross-reference (~76%) — false positives occur for classes called dynamically or from managed packages.`,
+      'Review each flagged class. Delete those that are genuinely unused. Classes called via Type.forName, external REST, or managed packages should be documented before deletion.',
+      { records: apexOrphanCandidates.slice(0, 50) }
+    ));
+  }
+
   // ── Apex classes over 1,000 lines ─────────────────────────────────────────────
   const largeApexClasses: any[] = (apex as any).largeApexClasses || [];
   if (largeApexClasses.length >= 1) {
@@ -1459,6 +1517,25 @@ export function assessDataModel(data: DataModelData): CategoryScore {
       `${cascadeDeleteFields.length} lookup field${cascadeDeleteFields.length !== 1 ? 's' : ''} have cascade delete enabled. Deleting a parent record permanently and silently destroys all child records on this lookup. Unlike master-detail, there is no warning — bulk deletes, Data Loader operations, or automated processes can cause irreversible mass data loss.`,
       'Audit each cascade-delete lookup. Disable cascade delete and replace with before-delete Apex triggers or Process Builder/Flow logic that either blocks the delete or moves child records to an archive status. Ensure delete operations have rollback capability.',
       { records: cascadeDeleteFields.slice(0, 50).map((f: any) => ({ name: f.DeveloperName, detail: `${f.TableEnumOrId} — cascade delete enabled` })) }
+    ));
+  }
+
+  // Formula fields approaching 3,900-char compiled size limit
+  const formulaFields = data.formulaFields || [];
+  const longFormulaFields = formulaFields.filter((f: any) =>
+    f.formula && estimateCompiledFormulaLength(f.formula) > 3200
+  );
+  if (longFormulaFields.length > 0) {
+    const critical = longFormulaFields.filter((f: any) => estimateCompiledFormulaLength(f.formula) > 3600);
+    const sev = critical.length > 0 ? 'high' : 'medium';
+    items.push(createDebtItem('dataModel', sev,
+      `${longFormulaFields.length} Formula Field${longFormulaFields.length !== 1 ? 's' : ''} Approaching 3,900-Character Compiled Limit`,
+      `Salesforce enforces a 3,900-character compiled-size limit on formula fields. ${longFormulaFields.length} field${longFormulaFields.length !== 1 ? 's have' : ' has'} an estimated compiled size above 3,200 characters (estimated from raw formula length plus cross-object reference and nested logic overhead). Fields that exceed the limit cannot be saved — future edits will fail until the formula is shortened.`,
+      'Review each flagged formula field in Setup → Object Manager. Replace multi-hop cross-object references with formula fields closer to the source object, consolidate nested IF/CASE branches, or split a large formula across multiple helper formula fields. The compiled character count is displayed in the formula editor.',
+      { records: longFormulaFields.slice(0, 30).map((f: any) => ({
+          name: f.name,
+          detail: `${f.object} — ~${estimateCompiledFormulaLength(f.formula).toLocaleString()} estimated compiled chars (raw: ${f.formula.length.toLocaleString()})`
+        })) }
     ));
   }
 

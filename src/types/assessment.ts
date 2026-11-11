@@ -61,6 +61,8 @@ export interface ApexData {
   noTestSetupClasses: any[];
   jsonDeserializeUntypedClasses: any[];
   typeForNameClasses: any[];
+  invocableOrphans?: { name: string; detail: string }[];
+  apexOrphanCandidates?: { name: string; detail: string }[];
 }
 
 export interface DataModelData {
@@ -70,6 +72,7 @@ export interface DataModelData {
   fieldUsage: any[];
   cascadeDeleteFields: any[];
   ldvObjects: { name: string; count: number }[];
+  formulaFields?: { name: string; object: string; formula: string }[];
 }
 
 export interface ServiceCloudData {

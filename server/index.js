@@ -394,7 +394,7 @@ app.get('/api/assess/validation-rules', requireAuth, async (req, res) => {
   try {
     const rules = await safeToolingQuery(conn,
       "SELECT Id, ValidationName, EntityDefinitionId, Active, " +
-      "Description, ErrorMessage, LastModifiedDate " +
+      "Description, ErrorMessage, ErrorConditionFormula, LastModifiedDate " +
       "FROM ValidationRule WHERE Active = true LIMIT 5000"
     );
     res.json({ validationRules: rules.records || [] });
@@ -465,6 +465,35 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
     const jsonDeserializeUntypedClasses = (classes.records || []).filter(c => /JSON\.deserializeUntyped\s*\(/i.test(c.Body || ''));
     const typeForNameClasses = (classes.records || []).filter(c => /Type\.forName\s*\(\s*['"]/.test(c.Body || ''));
 
+    // Build token-based cross-reference map: which class names appear in OTHER class bodies.
+    // Tokenising each body (O(total_chars)) is much faster than per-pair string scanning.
+    const allClassNamesSet = new Set((classes.records || []).map(c => c.Name.toLowerCase()));
+    const referencedByOthers = new Set();
+    for (const cls of (classes.records || [])) {
+      const tokens = (cls.Body || '').toLowerCase().match(/[a-z_][a-z0-9_]*/g) || [];
+      for (const token of tokens) {
+        if (token !== cls.Name.toLowerCase() && allClassNamesSet.has(token)) {
+          referencedByOthers.add(token);
+        }
+      }
+    }
+
+    // @InvocableMethod classes with no Apex callers — likely called only from flows (or unused)
+    const invocableOrphans = (classes.records || []).filter(c => {
+      if (!/@InvocableMethod/i.test(c.Body || '')) return false;
+      return !referencedByOthers.has(c.Name.toLowerCase());
+    }).slice(0, 100).map(c => ({ name: c.Name, detail: '@InvocableMethod — no Apex callers found, verify active flow callers' }));
+
+    // Orphan Apex classes: not referenced by any other class and not an annotated entry point
+    const apexOrphanCandidates = (classes.records || []).filter(c => {
+      const body = c.Body || '';
+      if (/@isTest|testmethod/i.test(body)) return false;
+      if (/@AuraEnabled|@InvocableMethod|@RestResource|@RemoteAction/i.test(body)) return false;
+      if (/\b(?:abstract|interface)\b/i.test(body)) return false;
+      if (/implements\s+(?:\w+,\s*)*Schedulable/i.test(body)) return false;
+      return !referencedByOthers.has(c.Name.toLowerCase());
+    }).slice(0, 100).map(c => ({ name: c.Name, detail: 'No references found in other Apex classes' }));
+
     const [inactiveTriggersRes, inactiveClassesRes, failedAsyncJobsRes, stuckAsyncJobsRes, traceFlagsRes, largeApexClassesRes] = await Promise.all([
       safeQuery(conn, "SELECT Id, Name, TableEnumOrId FROM ApexTrigger WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
       safeQuery(conn, "SELECT Id, Name, ApiVersion FROM ApexClass WHERE Status = 'Inactive' AND NamespacePrefix = null LIMIT 200").catch(() => ({ records: [] })),
@@ -491,7 +520,9 @@ app.get('/api/assess/apex', requireAuth, async (req, res) => {
       failedAsyncJobs: failedAsyncJobsRes.records || [],
       stuckAsyncJobs: stuckAsyncJobsRes.records || [],
       activeTraceFlags: traceFlagsRes.records || [],
-      largeApexClasses: largeApexClassesRes.records || []
+      largeApexClasses: largeApexClassesRes.records || [],
+      invocableOrphans,
+      apexOrphanCandidates
     });
   } catch (err) {
     console.error('Apex assessment error:', err);
@@ -528,6 +559,17 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
       "SELECT Id, DeveloperName, TableEnumOrId FROM CustomField WHERE NamespacePrefix = null AND CascadeDelete = true LIMIT 200"
     ).catch(() => ({ records: [] }));
 
+    // Formula fields — fetch Metadata to get raw formula text for compiled-size estimation
+    const formulaFieldsRes = await safeToolingQuery(conn,
+      "SELECT Id, DeveloperName, TableEnumOrId, DataType, Metadata " +
+      "FROM CustomField WHERE NamespacePrefix = null AND DataType LIKE '%Formula%' LIMIT 500"
+    ).catch(() => ({ records: [] }));
+    const formulaFields = (formulaFieldsRes.records || []).map(f => ({
+      name: f.DeveloperName,
+      object: f.TableEnumOrId,
+      formula: (f.Metadata || {}).formula || ''
+    })).filter(f => f.formula.length > 0);
+
     const [acctCount, contactCount, caseCount, leadCount, oppCount] = await Promise.all([
       safeQuery(conn, "SELECT COUNT(Id) FROM Account").catch(() => ({ records: [{ expr0: 0 }] })),
       safeQuery(conn, "SELECT COUNT(Id) FROM Contact").catch(() => ({ records: [{ expr0: 0 }] })),
@@ -549,7 +591,8 @@ app.get('/api/assess/data-model', requireAuth, async (req, res) => {
       fieldsByObject,
       fieldUsage: [],
       cascadeDeleteFields: cascadeDeleteFields.records || [],
-      ldvObjects
+      ldvObjects,
+      formulaFields
     });
   } catch (err) {
     console.error('Data model assessment error:', err);

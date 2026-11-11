@@ -33,6 +33,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Inactive Workflow Rules', severity: 'low' },
     { title: 'Inactive Assignment Rules', severity: 'low' },
     { title: 'Inactive Approval Processes', severity: 'low' },
+    { title: 'Validation Rule Formulas Approaching 3,900-Character Compiled Limit', severity: 'medium' },
   ],
   'Code Quality': [
     { title: 'Triggers with Business Logic', severity: 'high' },
@@ -90,6 +91,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Apex Classes Concatenate Strings Inside Loops', severity: 'medium' },
     { title: 'Apex Classes Have Static Collections That Accumulate Across Invocations', severity: 'high' },
     { title: 'Apex Classes Over 1,000 Lines', severity: 'low' },
+    { title: '@InvocableMethod Classes With No Apex Callers', severity: 'low' },
+    { title: 'Apex Classes With No References in Other Classes', severity: 'low' },
   ],
   'Data Model': [
     { title: 'Custom Objects Without Descriptions', severity: 'low' },
@@ -99,6 +102,7 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Custom Object Count (>200)', severity: 'medium' },
     { title: 'Lookup Field With Cascade Delete Enabled', severity: 'high' },
     { title: 'Object With Large Data Volumes (500k+ Records)', severity: 'high' },
+    { title: 'Formula Fields Approaching 3,900-Character Compiled Limit', severity: 'medium' },
   ],
   'Service Cloud': [
     { title: 'Excessive Case Record Types (>10)', severity: 'medium' },
