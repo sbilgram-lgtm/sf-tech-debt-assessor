@@ -4325,6 +4325,134 @@ export function assessExperienceCloud(data: ExperienceCloudData): CategoryScore 
     ));
   }
 
+  // ── Guest profile data-leak checks ───────────────────────────────────────────
+
+  // SEC-EC-1: View All Data / Modify All Data on guest profile
+  const guestProfilesAllData = (data as any).guestProfilesAllData || [];
+  if (guestProfilesAllData.length > 0) {
+    const viewAll = guestProfilesAllData.filter((p: any) => p.PermissionsViewAllData);
+    const modAll  = guestProfilesAllData.filter((p: any) => p.PermissionsModifyAllData);
+    const label = [
+      viewAll.length > 0 ? '"View All Data"' : '',
+      modAll.length  > 0 ? '"Modify All Data"' : '',
+    ].filter(Boolean).join(' and ');
+    items.push(createDebtItem('experienceCloud', 'critical',
+      `Guest User Profile Has ${label} Permission`,
+      'A guest profile with View All Data or Modify All Data bypasses all object-level and record-level security. Any unauthenticated visitor to your Experience Cloud site can read or write every record in the org.',
+      'Remove View All Data and Modify All Data from all guest profiles immediately. These permissions should never be granted to guest users. Use explicit object permissions and OWD to control what guests can access.',
+      { records: guestProfilesAllData.map((p: any) => ({ name: p.Name, detail: [p.PermissionsViewAllData && 'ViewAllData', p.PermissionsModifyAllData && 'ModifyAllData'].filter(Boolean).join(', ') })) }
+    ));
+  }
+
+  // SEC-EC-2: Guest profile has API Enabled
+  const guestProfilesApiEnabled = (data as any).guestProfilesApiEnabled || [];
+  if (guestProfilesApiEnabled.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${guestProfilesApiEnabled.length} Guest User Profile${guestProfilesApiEnabled.length !== 1 ? 's' : ''} With "API Enabled" Permission`,
+      'Guest profiles with API Enabled allow unauthenticated access to Salesforce REST and SOAP APIs. This can be used to programmatically scrape data or probe the org without any user credentials.',
+      'Remove API Enabled from all guest user profiles. Unauthenticated access to Salesforce APIs should never be permitted. Use authenticated APIs and Named Credentials for integrations that require API access.',
+      { records: guestProfilesApiEnabled.map((p: any) => ({ name: p.Name })) }
+    ));
+  }
+
+  // SEC-EC-3: Guest profile has write permissions on PII objects
+  const guestWritePiiObjects = (data as any).guestWritePiiObjects || [];
+  if (guestWritePiiObjects.length > 0) {
+    const byObject: Record<string, string[]> = {};
+    guestWritePiiObjects.forEach((r: any) => {
+      if (!byObject[r.SobjectType]) byObject[r.SobjectType] = [];
+      const perms = [r.PermissionsCreate && 'Create', r.PermissionsEdit && 'Edit', r.PermissionsDelete && 'Delete'].filter(Boolean).join('/');
+      byObject[r.SobjectType].push(`${r.Parent?.Name || 'Guest Profile'} (${perms})`);
+    });
+    const objectList = Object.keys(byObject).join(', ');
+    items.push(createDebtItem('experienceCloud', 'high',
+      `Guest User Profile Has Write Access on PII Objects (${objectList})`,
+      'Guest profiles with Create, Edit, or Delete on Account, Contact, or Lead allow unauthenticated visitors to modify or delete core CRM data. This is a significant data integrity and privacy risk.',
+      'Remove Create, Edit, and Delete permissions on Account, Contact, and Lead from all guest profiles. If guests need to submit inquiries, use a dedicated Web-to-Lead or Web-to-Case form with proper duplicate handling instead.',
+      { records: guestWritePiiObjects.map((r: any) => ({ name: r.SobjectType, detail: `${r.Parent?.Name || 'Guest Profile'} — ${[r.PermissionsCreate && 'Create', r.PermissionsEdit && 'Edit', r.PermissionsDelete && 'Delete'].filter(Boolean).join('/')}` })) }
+    ));
+  }
+
+  // SEC-EC-4: Guest profile has read access on sensitive business objects
+  const guestReadSensitiveObjects = (data as any).guestReadSensitiveObjects || [];
+  if (guestReadSensitiveObjects.length > 0) {
+    const objectList = [...new Set(guestReadSensitiveObjects.map((r: any) => r.SobjectType))].join(', ');
+    items.push(createDebtItem('experienceCloud', 'high',
+      `Guest User Profile Has Read Access on Sensitive Objects (${objectList})`,
+      'Guest profiles with Read access on Case, Opportunity, Contract, or Order expose sensitive business and customer data to unauthenticated visitors. Without proper sharing rules, this may allow access to all records on those objects.',
+      'Review and remove Read permissions on Case, Opportunity, Contract, and Order from guest profiles. If the site legitimately needs to surface some of this data (e.g. a support portal showing cases), enforce record-level sharing with Sharing Sets and ensure OWD for these objects is Private for external users.',
+      { records: guestReadSensitiveObjects.map((r: any) => ({ name: r.SobjectType, detail: r.Parent?.Name || 'Guest Profile' })) }
+    ));
+  }
+
+  // SEC-EC-5: Guest profile has Run Reports or Export Report
+  const guestProfilesReportAccess = (data as any).guestProfilesReportAccess || [];
+  if (guestProfilesReportAccess.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${guestProfilesReportAccess.length} Guest User Profile${guestProfilesReportAccess.length !== 1 ? 's' : ''} With Report Access`,
+      'Guest profiles with Run Reports or Export Report allow unauthenticated users to execute reports and export data. Reports can aggregate data across all accessible objects, making this a data exfiltration risk even when individual object permissions appear restricted.',
+      'Remove PermissionsRunReports and PermissionsExportReport from all guest user profiles in Setup → Guest User Profile → System Permissions.',
+      { records: guestProfilesReportAccess.map((p: any) => ({ name: p.Name, detail: [p.PermissionsRunReports && 'Run Reports', p.PermissionsExportReport && 'Export Report'].filter(Boolean).join(', ') })) }
+    ));
+  }
+
+  // SEC-EC-6: Guest profile has Manage External Users
+  const guestProfilesManageExtUsers = (data as any).guestProfilesManageExtUsers || [];
+  if (guestProfilesManageExtUsers.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${guestProfilesManageExtUsers.length} Guest User Profile${guestProfilesManageExtUsers.length !== 1 ? 's' : ''} With "Manage External Users" Permission`,
+      'Guest profiles with Manage External Users allow unauthenticated visitors to create, deactivate, or modify Experience Cloud user accounts. This can be exploited to create rogue portal accounts or take over existing ones.',
+      'Remove Manage External Users from all guest profiles. This permission should only be granted to authenticated admin-level internal users.',
+      { records: guestProfilesManageExtUsers.map((p: any) => ({ name: p.Name })) }
+    ));
+  }
+
+  // SEC-EC-7: Active sites with OptionsAllowGuestSupportApi = true
+  const guestApiSites = activeSites.filter((s: any) => s.OptionsAllowGuestSupportApi === true);
+  if (guestApiSites.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${guestApiSites.length} Active Site${guestApiSites.length !== 1 ? 's' : ''} With Guest User API Access Enabled`,
+      'Sites with Guest User API Access enabled allow unauthenticated REST API calls against those sites. This extends the attack surface beyond the browser UI and enables automated data scraping without credentials.',
+      'Disable Guest User API Access in Setup → Sites → [Site Name] → Edit. Only enable this for specific integration use cases where the data exposure risk has been reviewed.',
+      { records: guestApiSites.map((s: any) => ({ name: s.Name, detail: 'OptionsAllowGuestSupportApi = true' })) }
+    ));
+  }
+
+  // SEC-EC-8: Active content deliveries with no expiry
+  const contentDeliveriesNoExpiry = (data as any).contentDeliveriesNoExpiry || [];
+  if (contentDeliveriesNoExpiry.length > 0) {
+    items.push(createDebtItem('experienceCloud', 'high',
+      `${contentDeliveriesNoExpiry.length} Public File Link${contentDeliveriesNoExpiry.length !== 1 ? 's' : ''} With No Expiry Date`,
+      'Content Deliveries create public URLs for files. Links with no expiry date remain accessible permanently — anyone who discovers or is forwarded the URL can download the file indefinitely, even after the sharing intent is gone.',
+      'Review all Content Deliveries in Setup → Content Deliveries. Set an expiry date on any links that should have a limited lifespan. Delete deliveries for files that should no longer be publicly accessible.',
+      { records: contentDeliveriesNoExpiry.slice(0, 30).map((d: any) => ({ name: d.Name || d.ContentDocumentId, detail: 'No expiry date — permanent public access' })) }
+    ));
+  }
+
+  // SEC-EC-9: CSP Trusted Sites exceeding 10 domains
+  const cspTrustedSites = (data as any).cspTrustedSites || [];
+  if (cspTrustedSites.length > 10) {
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${cspTrustedSites.length} CSP Trusted Sites Configured — Review for Data Exfiltration Risk`,
+      `A large number of CSP Trusted Sites (${cspTrustedSites.length} configured) increases the attack surface for data exfiltration. CSP trusted sites whitelist external domains that JavaScript on your page can contact. Each additional domain is a potential vector for exfiltrating data if a component is compromised.`,
+      'Audit all CSP Trusted Sites in Setup → CSP Trusted Sites. Remove any domains that are no longer needed. Ensure each entry has a documented business justification and owner. Prefer specific subdomain allowlisting over wildcard domains.',
+      { records: cspTrustedSites.map((s: any) => ({ name: s.DeveloperName })) }
+    ));
+  }
+
+  // SEC-EC-10: Portal/community user profiles with API Enabled
+  const portalProfilesApiEnabled = (data as any).portalProfilesApiEnabled || [];
+  if (portalProfilesApiEnabled.length > 0) {
+    const byType: Record<string, number> = {};
+    portalProfilesApiEnabled.forEach((p: any) => { byType[p.UserType] = (byType[p.UserType] || 0) + 1; });
+    items.push(createDebtItem('experienceCloud', 'medium',
+      `${portalProfilesApiEnabled.length} Portal/Community User Profile${portalProfilesApiEnabled.length !== 1 ? 's' : ''} With "API Enabled" Permission`,
+      'Community and portal user profiles with API Enabled allow authenticated external users to access Salesforce APIs directly — not just through the Experience Cloud UI. This can be used to bypass UI-level controls and extract or modify data programmatically.',
+      'Review whether portal and community users require direct API access. If not, remove API Enabled from all community/partner profiles. If API access is needed for a specific integration, use a dedicated integration user instead.',
+      { records: portalProfilesApiEnabled.map((p: any) => ({ name: p.Name, detail: `UserType: ${p.UserType}` })) }
+    ));
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   return { category: 'Experience Cloud', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };

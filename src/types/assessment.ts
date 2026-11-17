@@ -324,6 +324,15 @@ export interface ExperienceCloudData {
   networkPageCounts: { networkId: string; count: number }[];
   networkMemberCounts: { networkId: string; count: number }[];
   communityUsersWithSysAdmin: any[];
+  guestProfilesAllData: any[];
+  guestProfilesApiEnabled: any[];
+  guestProfilesReportAccess: any[];
+  guestProfilesManageExtUsers: any[];
+  guestWritePiiObjects: any[];
+  guestReadSensitiveObjects: any[];
+  contentDeliveriesNoExpiry: any[];
+  cspTrustedSites: any[];
+  portalProfilesApiEnabled: any[];
 }
 
 export interface ConnectedAppSecurityData {

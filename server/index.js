@@ -1932,6 +1932,58 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       "SELECT Id, Name, Username, UserType, Profile.Name FROM User WHERE IsActive = true AND Profile.Name = 'System Administrator' AND UserType != 'Standard' LIMIT 50"
     ).catch(() => ({ records: [] }));
 
+    // ── Guest user profile permission checks (data leak / over-privilege) ────────
+    const [
+      guestProfilesAllDataRes,
+      guestProfilesApiEnabledRes,
+      guestProfilesReportAccessRes,
+      guestProfilesManageExtUsersRes,
+      guestWritePiiObjectsRes,
+      guestReadSensitiveObjectsRes,
+      contentDeliveriesNoExpiryRes,
+      cspTrustedSitesRes,
+      portalProfilesApiEnabledRes,
+    ] = await Promise.all([
+      safeQuery(conn,
+        "SELECT Id, Name, PermissionsViewAllData, PermissionsModifyAllData FROM Profile " +
+        "WHERE UserType = 'Guest' AND (PermissionsViewAllData = true OR PermissionsModifyAllData = true) LIMIT 50"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT Id, Name, PermissionsApiEnabled FROM Profile " +
+        "WHERE UserType = 'Guest' AND PermissionsApiEnabled = true LIMIT 50"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT Id, Name, PermissionsRunReports, PermissionsExportReport FROM Profile " +
+        "WHERE UserType = 'Guest' AND (PermissionsRunReports = true OR PermissionsExportReport = true) LIMIT 50"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT Id, Name, PermissionsManageExternalUsers FROM Profile " +
+        "WHERE UserType = 'Guest' AND PermissionsManageExternalUsers = true LIMIT 50"
+      ).catch(() => ({ records: [] })),
+      safeToolingQuery(conn,
+        "SELECT SobjectType, PermissionsCreate, PermissionsEdit, PermissionsDelete, Parent.Name " +
+        "FROM ObjectPermissions WHERE Parent.IsOwnedByProfile = true AND Parent.Profile.UserType = 'Guest' " +
+        "AND SobjectType IN ('Account', 'Contact', 'Lead') " +
+        "AND (PermissionsCreate = true OR PermissionsEdit = true OR PermissionsDelete = true) LIMIT 100"
+      ).catch(() => ({ records: [] })),
+      safeToolingQuery(conn,
+        "SELECT SobjectType, PermissionsRead, Parent.Name FROM ObjectPermissions " +
+        "WHERE Parent.IsOwnedByProfile = true AND Parent.Profile.UserType = 'Guest' " +
+        "AND SobjectType IN ('Case', 'Opportunity', 'Contract', 'Order') AND PermissionsRead = true LIMIT 100"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT Id, Name, ContentDocumentId FROM ContentDistribution WHERE ExpiryDate = null AND IsDeleted = false LIMIT 100"
+      ).catch(() => ({ records: [] })),
+      safeToolingQuery(conn,
+        "SELECT Id, DeveloperName FROM CspTrustedSite LIMIT 200"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT Id, Name, PermissionsApiEnabled, UserType FROM Profile " +
+        "WHERE UserType IN ('PowerCustomerSuccess', 'PowerPartner', 'CustomerSuccess', 'CsnOnly') " +
+        "AND PermissionsApiEnabled = true LIMIT 50"
+      ).catch(() => ({ records: [] })),
+    ]);
+
     res.json({
       sites: sites.records || [],
       networks: networks.records || [],
@@ -1949,7 +2001,16 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
       }),
       networkPageCounts: (networkPageCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 })),
       networkMemberCounts: (networkMemberCounts.records || []).map((r) => ({ networkId: r.NetworkId, count: r.expr0 })),
-      communityUsersWithSysAdmin: communityUsersWithSysAdminRes.records || []
+      communityUsersWithSysAdmin: communityUsersWithSysAdminRes.records || [],
+      guestProfilesAllData: guestProfilesAllDataRes.records || [],
+      guestProfilesApiEnabled: guestProfilesApiEnabledRes.records || [],
+      guestProfilesReportAccess: guestProfilesReportAccessRes.records || [],
+      guestProfilesManageExtUsers: guestProfilesManageExtUsersRes.records || [],
+      guestWritePiiObjects: guestWritePiiObjectsRes.records || [],
+      guestReadSensitiveObjects: guestReadSensitiveObjectsRes.records || [],
+      contentDeliveriesNoExpiry: contentDeliveriesNoExpiryRes.records || [],
+      cspTrustedSites: cspTrustedSitesRes.records || [],
+      portalProfilesApiEnabled: portalProfilesApiEnabledRes.records || [],
     });
   } catch (err) {
     console.error('Experience Cloud assessment error:', err);
