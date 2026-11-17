@@ -433,6 +433,9 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'Aura Components Use fetch/XHR Without Abort Cleanup', severity: 'medium' },
     { title: 'Aura Components Fire force:refreshView from High-Frequency Event Handlers', severity: 'medium' },
     { title: 'Aura Components Use $A.storageService Without Error Handling', severity: 'low' },
+    { title: 'Apex Classes With @AuraEnabled Methods Declared "without sharing"', severity: 'high' },
+    { title: 'Apex Classes With @AuraEnabled Methods and No Sharing Keyword Declared', severity: 'medium' },
+    { title: 'Aura Components Marked access="global" on Org With Guest-Accessible Experience Cloud Sites', severity: 'medium' },
   ],
   'OmniStudio': [
     { title: 'Inactive OmniScripts', severity: 'medium' },

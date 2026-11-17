@@ -2807,6 +2807,16 @@ app.get('/api/assess/aura', requireAuth, async (req, res) => {
       )
     ]);
 
+    // Apex classes with @AuraEnabled methods — check sharing keywords for guest data-leak risk
+    const [apexAuraEnabledRes, guestSitesCountRes] = await Promise.all([
+      safeToolingQuery(conn,
+        "SELECT Id, Name, ApiVersion, Body FROM ApexClass WHERE NamespacePrefix = null AND Body LIKE '%@AuraEnabled%' LIMIT 500"
+      ).catch(() => ({ records: [] })),
+      safeQuery(conn,
+        "SELECT COUNT(Id) FROM Site WHERE GuestUserId != null AND Status = 'Active'"
+      ).catch(() => ({ records: [{ expr0: 0 }] })),
+    ]);
+
     const noNs = (r) => !r?.AuraDefinitionBundle?.NamespacePrefix;
     res.json({
       bundles: bundlesRes.records || [],
@@ -2814,7 +2824,9 @@ app.get('/api/assess/aura', requireAuth, async (req, res) => {
       helpers: (helpersRes.records || []).filter(noNs),
       renderers: (renderersRes.records || []).filter(noNs),
       markups: (markupsRes.records || []).filter(noNs),
-      events: (eventsRes.records || []).filter(noNs)
+      events: (eventsRes.records || []).filter(noNs),
+      apexAuraEnabledClasses: apexAuraEnabledRes.records || [],
+      guestAccessibleSiteCount: (guestSitesCountRes.records?.[0]?.expr0) ?? 0,
     });
   } catch (err) {
     console.error('Aura assessment error:', err);

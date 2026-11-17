@@ -6940,6 +6940,60 @@ export function assessAura(data: AuraData): CategoryScore {
       { bundles: storageBundles.slice(0, 50) }));
   }
 
+  // ── Guest access / @AuraEnabled sharing checks ───────────────────────────────
+
+  const apexAuraEnabledClasses: any[] = (data as any).apexAuraEnabledClasses || [];
+  const guestAccessibleSiteCount: number = (data as any).guestAccessibleSiteCount ?? 0;
+
+  // Helper: extract the outer class sharing keyword from an Apex class body
+  function getOuterClassSharing(body: string): 'with sharing' | 'without sharing' | 'inherited sharing' | 'none' {
+    const match = body.match(/\b(?:public|global|private)\s+(?:(with\s+sharing|without\s+sharing|inherited\s+sharing)\s+)?(?:virtual\s+|abstract\s+)?class\b/i);
+    if (!match) return 'none';
+    if (!match[1]) return 'none';
+    return match[1].toLowerCase().replace(/\s+/g, ' ') as any;
+  }
+
+  // AURA-SEC-1: @AuraEnabled methods on `without sharing` classes
+  const withoutSharingAuraClasses = apexAuraEnabledClasses.filter(
+    (cls: any) => cls.Body && getOuterClassSharing(cls.Body) === 'without sharing'
+  );
+  if (withoutSharingAuraClasses.length > 0) {
+    items.push(createDebtItem('aura', 'high',
+      `${withoutSharingAuraClasses.length} Apex Class${withoutSharingAuraClasses.length !== 1 ? 'es' : ''} With @AuraEnabled Methods Declared "without sharing"`,
+      'Apex classes explicitly declared "without sharing" ignore record-level security entirely. @AuraEnabled methods on these classes can return records that the calling user — including a guest user on an Experience Cloud site — should not have access to.',
+      'Add "with sharing" to these Apex classes or switch to "inherited sharing" and ensure the calling context enforces sharing. Audit each @AuraEnabled method to confirm it only returns data the user is authorised to see.',
+      { records: withoutSharingAuraClasses.map((c: any) => ({ name: c.Name, detail: 'without sharing — @AuraEnabled methods bypass record-level security' })) }
+    ));
+  }
+
+  // AURA-SEC-2: @AuraEnabled methods on classes with no sharing keyword (implicit without sharing)
+  const noSharingAuraClasses = apexAuraEnabledClasses.filter(
+    (cls: any) => cls.Body && getOuterClassSharing(cls.Body) === 'none'
+  );
+  if (noSharingAuraClasses.length > 0) {
+    items.push(createDebtItem('aura', 'medium',
+      `${noSharingAuraClasses.length} Apex Class${noSharingAuraClasses.length !== 1 ? 'es' : ''} With @AuraEnabled Methods and No Sharing Keyword Declared`,
+      'Apex classes with no sharing keyword behave as "without sharing" by default — record-level security is not enforced. This is a common source of unintended data exposure in Lightning components and Experience Cloud pages.',
+      'Add an explicit "with sharing" or "inherited sharing" declaration to each class. "inherited sharing" is the safest choice for utility classes as it enforces the sharing context of the caller.',
+      { records: noSharingAuraClasses.map((c: any) => ({ name: c.Name, detail: 'No sharing keyword — defaults to without sharing behaviour' })) }
+    ));
+  }
+
+  // AURA-SEC-3: Aura components marked access="global" with active guest-accessible sites
+  if (guestAccessibleSiteCount > 0) {
+    const globalAuraMarkups = (data.markups || []).filter(
+      (m: any) => m.Source && /\baccess\s*=\s*["']global["']/i.test(m.Source)
+    );
+    if (globalAuraMarkups.length > 0) {
+      items.push(createDebtItem('aura', 'medium',
+        `${globalAuraMarkups.length} Aura Component${globalAuraMarkups.length !== 1 ? 's' : ''} Marked access="global" on Org With Guest-Accessible Experience Cloud Sites`,
+        `Components with access="global" are eligible for use in Experience Builder and can be placed on pages accessible to guest (unauthenticated) users. This org has ${guestAccessibleSiteCount} active site${guestAccessibleSiteCount !== 1 ? 's' : ''} with guest access enabled. Any of these components placed on those pages will execute — including their Apex controller calls — in the guest user context.`,
+        'Review each access="global" Aura component. Confirm whether it is used on a guest-accessible page. For components that are, verify that all backing @AuraEnabled Apex methods enforce sharing and do not expose sensitive data to unauthenticated users. If a component should not be guest-accessible, change access to "public" or "private".',
+        { records: globalAuraMarkups.map((m: any) => ({ name: bname(m), detail: 'access="global" — eligible for guest-accessible Experience Cloud pages' })) }
+      ));
+    }
+  }
+
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
   const score = Math.max(0, maxScore - deductions);

@@ -422,6 +422,8 @@ export interface AuraData {
   renderers: any[];
   markups: any[];
   events: any[];
+  apexAuraEnabledClasses: any[];
+  guestAccessibleSiteCount: number;
 }
 
 export interface FlowQualityData {
