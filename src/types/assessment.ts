@@ -1,6 +1,6 @@
 export interface DebtItem {
   id: string;
-  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments' | 'flowQuality' | 'aura';
+  category: 'configuration' | 'code' | 'dataModel' | 'serviceCloud' | 'sharingSecurity' | 'integrations' | 'testCoverage' | 'orgLimits' | 'duplicateRules' | 'reportsDashboards' | 'emailTemplates' | 'platformEvents' | 'managedPackages' | 'customMetadata' | 'recordTypesLayouts' | 'einsteinAI' | 'experienceCloud' | 'connectedAppSecurity' | 'oauthCompliance' | 'lwc' | 'omniStudio' | 'performance' | 'notesAttachments' | 'flowQuality' | 'aura';
   severity: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;

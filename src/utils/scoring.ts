@@ -4650,7 +4650,14 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
     ));
   }
 
-  // ── March 2027 OAuth Enforcement Checks ──────────────────────────────────────
+  const maxScore = 100;
+  const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
+  return { category: 'Connected App Security', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+}
+
+// ── OAuth Compliance (March 2027 Enforcement) ─────────────────────────────────
+export function assessOAuthCompliance(data: ConnectedAppSecurityData): CategoryScore {
+  const items: DebtItem[] = [];
 
   const managedApps: { name: string; namespace: string }[] = (data as any).managedApps || [];
   const noPkceApps: { name: string }[] = (data as any).noPkceApps || [];
@@ -4668,7 +4675,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 1: Managed apps present (< 10)
   if (managedApps.length > 0 && managedApps.length < 10) {
-    items.push(createDebtItem('connectedAppSecurity', 'medium',
+    items.push(createDebtItem('oauthCompliance', 'medium',
       `${managedApps.length} Managed Package Connected App${managedApps.length !== 1 ? 's' : ''} — Contact ISV${managedApps.length !== 1 ? 's' : ''} for March 2027 Compliance Confirmation`,
       'Starting March 30, 2027, Salesforce blocks installation of non-compliant Connected Apps. Subscriber orgs cannot change the OAuth settings of managed package apps — compliance depends entirely on the ISV updating their app to enforce PKCE, Refresh Token Rotation, and DPoP before the deadline. (~80% accuracy via NamespacePrefix)',
       'Identify the owner of each managed package and open a support ticket or account request asking for a written compliance statement. If an ISV cannot confirm compliance by March 2027, plan for the app to be blocked from future installs.',
@@ -4678,7 +4685,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 2: Managed apps high volume (10+)
   if (managedApps.length >= 10) {
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${managedApps.length} Managed Package Connected Apps — High Remediation Coordination Burden Before March 2027`,
       '10 or more managed package Connected Apps means coordinating compliance across multiple ISVs simultaneously. Each requires a separate outreach, confirmation process, and contingency plan if they miss the deadline. (~82% accuracy)',
       'Prioritise ISV outreach by business criticality. Build a tracker listing each app, its ISV, and their confirmed compliance status. Have contingency plans ready for apps whose ISVs do not confirm compliance in time.',
@@ -4688,7 +4695,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 3: No PKCE on org-owned apps
   if (noPkceApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${noPkceApps.length} Org-Owned Connected App${noPkceApps.length !== 1 ? 's' : ''} Not Requiring PKCE`,
       'PKCE (Proof Key for Code Exchange) prevents authorization code interception attacks. Without it, an attacker who intercepts the OAuth authorization code during the redirect flow can exchange it for an access token. All Connected Apps using the authorization code flow must enforce PKCE by March 30, 2027. (~90% accuracy via Metadata API oauthConfig.requireProofKeyForCodeExchange)',
       'Enable PKCE on each app in Setup → App Manager → select app → Edit → OAuth Settings → enable "Require Proof Key for Code Exchange." Any client consuming this app must be updated to send a code_verifier and code_challenge.',
@@ -4698,7 +4705,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 4: Auth code flow without PKCE (critical)
   if (authCodeNoPkceApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'critical',
+    items.push(createDebtItem('oauthCompliance', 'critical',
       `${authCodeNoPkceApps.length} Connected App${authCodeNoPkceApps.length !== 1 ? 's' : ''} Using Authorization Code Flow Without PKCE — Highest Risk Configuration`,
       'These apps explicitly use the Authorization Code flow but do not enforce PKCE. This is the exact attack vector PKCE was designed to prevent — interception of the authorization code mid-redirect gives an attacker a fully valid OAuth token. This is the configuration Salesforce\'s March 2027 enforcement will block first. (~88% accuracy — requires confirmed auth code flow in selectedFlows)',
       'Enable PKCE immediately on these apps. Do not wait for the enforcement deadline — this is an active code-interception risk. Update all consuming clients to include code_verifier/code_challenge in their OAuth flows.',
@@ -4708,7 +4715,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 5: No RTR
   if (noRtrApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${noRtrApps.length} Org-Owned Connected App${noRtrApps.length !== 1 ? 's' : ''} Without Refresh Token Rotation`,
       'Refresh Token Rotation (RTR) issues a new refresh token every time an access token is refreshed, invalidating the previous one. Without RTR, a stolen refresh token remains valid indefinitely. Any exfiltrated token gives an attacker a permanent access foothold that survives password resets. Required by March 30, 2027. (~82% accuracy via Metadata API refreshTokenRotation field)',
       'Enable Refresh Token Rotation in each app\'s OAuth policy settings. Update consuming client applications to store the new refresh token returned with each access token response — clients that ignore the rotated token will break.',
@@ -4718,7 +4725,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 6: No DPoP
   if (noDpopApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${noDpopApps.length} Org-Owned Connected App${noDpopApps.length !== 1 ? 's' : ''} Without DPoP Token Binding`,
       'DPoP (Demonstration of Proof-of-Possession) cryptographically binds tokens to the specific client holding the private key. Without DPoP, any stolen token can be replayed from a different machine. DPoP makes stolen tokens useless to an attacker who doesn\'t also have the private key. Required by March 30, 2027. (~72% accuracy — DPoP is the newest of the three controls; field name dpopEnabled in oauthConfig)',
       'Enable DPoP on each Connected App. Consuming clients must implement DPoP token binding — they generate a key pair, sign a DPoP proof JWT, and include it in every token request and API call. Libraries are available for most languages.',
@@ -4728,7 +4735,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 7: Failing all three controls (critical)
   if (failingAllApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'critical',
+    items.push(createDebtItem('oauthCompliance', 'critical',
       `${failingAllApps.length} Connected App${failingAllApps.length !== 1 ? 's' : ''} Fail All Three March 2027 Controls — PKCE, RTR, and DPoP Not Configured`,
       'These apps have none of the three required OAuth security controls in place: no PKCE, no Refresh Token Rotation, and no DPoP. After March 30, 2027, these apps will be blocked from installation and may face runtime enforcement. (~78% accuracy — bounded by DPoP field confidence)',
       'Treat these as the highest remediation priority. All three controls must be enabled and consuming clients must be updated before the deadline. These apps represent the broadest token security risk in the org.',
@@ -4738,7 +4745,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 8: Open to all users without RTR
   if (openNoRtrApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${openNoRtrApps.length} Connected App${openNoRtrApps.length !== 1 ? 's' : ''} Open to All Users Without Refresh Token Rotation`,
       'These apps are not restricted to admin-approved users, meaning any user in the org can generate a refresh token. Without RTR, every one of those tokens is a permanent, non-expiring credential. A single phishing attack or token exfiltration event affects all holders. (~83% accuracy — cross-references OptionsAllowAdminApprovedUsersOnly from Tooling API with RTR from Metadata API)',
       'Either restrict each app to admin-approved users only, or enable Refresh Token Rotation immediately. Broad token issuance without rotation is the highest-volume token theft surface in the org.',
@@ -4748,7 +4755,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 9: Long-lived refresh tokens
   if (longRefreshTokenApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'medium',
+    items.push(createDebtItem('oauthCompliance', 'medium',
       `${longRefreshTokenApps.length} Connected App${longRefreshTokenApps.length !== 1 ? 's' : ''} With Infinite or Long-Lived Refresh Token Lifetime`,
       'Refresh tokens with no expiry (or lifetimes exceeding 24 hours) remain valid indefinitely once issued. Without RTR, a token stolen now is still valid years later. Even with RTR, a long initial lifetime extends the window between theft and detection. (~80% accuracy via Metadata API refreshTokenTimeout field — 0 or null = infinite)',
       'Set a refresh token timeout appropriate to the app\'s use case. For integrations: use short-lived access tokens with server-to-server flows instead of refresh tokens. For user-facing apps: 24 hours is a reasonable maximum. Enable RTR alongside any timeout setting.',
@@ -4758,7 +4765,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 10: ECAs present — compliance unverified
   if (ecaList.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'medium',
+    items.push(createDebtItem('oauthCompliance', 'medium',
       `${ecaList.length} External Client App${ecaList.length !== 1 ? 's' : ''} Detected — March 2027 OAuth Compliance Status Unverified`,
       'External Client Apps (ECAs) are the Spring 2026 successor to traditional Connected Apps and are also subject to the March 2027 enforcement. This assessment verified PKCE/RTR/DPoP on traditional Connected Apps but did not perform a full metadata read on ECAs. Each ECA must be individually confirmed as compliant. (~85% accuracy — count is reliable; compliance status requires separate ECA metadata review)',
       'Review each External Client App in Setup → External Client Apps. Confirm PKCE, RTR, and DPoP are enforced on every ECA. The same controls required for Connected Apps apply.',
@@ -4768,7 +4775,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 11: ECAs present + org has apps without PKCE (proxy)
   if (ecaList.length > 0 && noPkceApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'medium',
+    items.push(createDebtItem('oauthCompliance', 'medium',
       'External Client Apps Present in Org That Does Not Fully Enforce PKCE — Likely Non-Compliant',
       'This org has External Client Apps and also has traditional Connected Apps that do not enforce PKCE. If the same OAuth posture applies to ECAs, they are likely non-compliant with the March 2027 requirements. This is a proxy finding — ECA metadata was not directly read. (~78% accuracy)',
       'Audit each ECA directly in Setup → External Client Apps. Confirm PKCE is explicitly enabled on each one. Do not assume ECAs inherit a stricter posture than the traditional Connected Apps in this org.',
@@ -4778,7 +4785,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 12: Relaxed IP + no RTR (compounded risk)
   if (relaxedNoRtrApps.length > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${relaxedNoRtrApps.length} Connected App${relaxedNoRtrApps.length !== 1 ? 's' : ''} With Relaxed IP Restrictions and No Refresh Token Rotation — Compounded Token Risk`,
       'These apps bypass the org\'s IP login restrictions AND have no refresh token rotation. An attacker with a stolen refresh token can call from any IP address and generate new access tokens indefinitely without the IP allowlist providing any defence. (~88% accuracy — IpRelaxation is a direct Tooling API field; RTR from Metadata API)',
       'Either enforce IP restrictions, or enable RTR, or both. These apps represent the most accessible token misuse path: stolen token + no IP constraint + no rotation = unlimited access from anywhere.',
@@ -4789,7 +4796,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
   // Check 13: Summary count of non-compliant apps
   if (nonCompliantCount > 0) {
     const s = nonCompliantCount !== 1 ? 's' : '';
-    items.push(createDebtItem('connectedAppSecurity', 'high',
+    items.push(createDebtItem('oauthCompliance', 'high',
       `${nonCompliantCount} Connected App${s} and External App${s} Require Remediation Before March 30, 2027`,
       'Salesforce will block installation of non-compliant Connected Apps and ECAs starting March 30, 2027. This count includes org-owned apps missing at least one control (PKCE, RTR, or DPoP) plus all managed package apps (compliance depends on ISVs) plus all External Client Apps. (~75% accuracy — bounded by DPoP field confidence and ECA metadata not being read)',
       'Treat this as a hard deadline. Prioritise org-owned apps with all three controls missing, then auth-code-flow apps without PKCE, then all others. Build an ISV outreach tracker for managed package apps. Begin testing OAuth control changes in a sandbox immediately.',
@@ -4799,7 +4806,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   // Check 14: Metadata API unavailable — compliance unknown
   if (metadataRetrieved === 0 && orgOwnedAppCount > 0) {
-    items.push(createDebtItem('connectedAppSecurity', 'medium',
+    items.push(createDebtItem('oauthCompliance', 'medium',
       'PKCE, RTR, and DPoP Compliance Could Not Be Assessed — Metadata API Unavailable',
       'The assessment could not retrieve ConnectedApp metadata for this org. PKCE, Refresh Token Rotation, and DPoP compliance status are unknown. This typically occurs when the authenticated user lacks Modify Metadata or Customize Application permission, or when the org\'s Connected Apps are exclusively managed-package-owned. (~95% accuracy as a fallback indicator)',
       'Run the assessment as a System Administrator user with full metadata access. Alternatively, manually export ConnectedApp metadata using the Salesforce CLI (sf project retrieve start --metadata ConnectedApp) and review oauthConfig fields for each app.',
@@ -4809,7 +4816,7 @@ export function assessConnectedAppSecurity(data: ConnectedAppSecurityData): Cate
 
   const maxScore = 100;
   const deductions = items.reduce((sum, item) => sum + SEVERITY_WEIGHTS[item.severity], 0);
-  return { category: 'Connected App Security', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
+  return { category: 'OAuth Compliance', score: Math.max(0, maxScore - deductions), maxScore, percentage: Math.round((Math.max(0, maxScore - deductions) / maxScore) * 100), items };
 }
 
 export function assessLwc(data: LwcData): CategoryScore {

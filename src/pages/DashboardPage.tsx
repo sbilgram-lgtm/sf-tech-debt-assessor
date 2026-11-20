@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CategoryPanel } from '../components/CategoryPanel';
 import { getAuthStatus, getAutomationData, getValidationRules, getApexData, getDataModelData, getServiceCloudData, getSharingSecurityData, getIntegrationData, getTestCoverageData, getOrgLimitsData, getDuplicateRulesData, getReportsDashboardsData, getEmailTemplatesData, getPlatformEventsData, getManagedPackagesData, getCustomMetadataData, getRecordTypesLayoutsData, getEinsteinAIData, getExperienceCloudData, getConnectedAppSecurityData, getLwcData, getOmniStudioData, getPerformanceData, getNotesAttachmentsData, getFlowQualityData, getAuraData } from '../services/api';
-import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessExperienceCloud, assessConnectedAppSecurity, assessLwc, assessOmniStudio, assessPerformance, assessNotesAttachments, assessFlowQuality, assessAura, calculateOverallScore } from '../utils/scoring';
+import { assessConfiguration, assessCodeQuality, assessDataModel, assessServiceCloud, assessSharingSecurity, assessIntegrations, assessTestCoverage, assessOrgLimits, assessDuplicateRules, assessReportsDashboards, assessEmailTemplates, assessPlatformEvents, assessManagedPackages, assessCustomMetadata, assessRecordTypesLayouts, assessEinsteinAI, assessExperienceCloud, assessConnectedAppSecurity, assessOAuthCompliance, assessLwc, assessOmniStudio, assessPerformance, assessNotesAttachments, assessFlowQuality, assessAura, calculateOverallScore } from '../utils/scoring';
 import { generatePDFReport, generateCSVReport, generateExcelReport } from '../utils/reportGenerator';
 import { AssessmentResult } from '../types/assessment';
 import { RemediationRoadmap } from '../components/RemediationRoadmap';
@@ -138,6 +138,7 @@ setProgress('Assessing Experience Cloud sites...');
       const einsteinScore = assessEinsteinAI(einsteinAIData);
       const experienceCloudScore = assessExperienceCloud(experienceCloudData);
       const connectedAppSecurityScore = assessConnectedAppSecurity(connectedAppSecurityData);
+      const oauthComplianceScore = assessOAuthCompliance(connectedAppSecurityData);
       const lwcScore = assessLwc(lwcData);
       const omniStudioScore = assessOmniStudio(omniStudioData);
       const performanceScore = assessPerformance(performanceData);
@@ -150,7 +151,7 @@ setProgress('Assessing Experience Cloud sites...');
         integrationScore, testScore, limitsScore, duplicateScore, reportsScore,
         emailScore, platformEventsScore, packagesScore, customMetadataScore,
         recordTypesScore, einsteinScore, experienceCloudScore,
-        connectedAppSecurityScore, lwcScore, omniStudioScore, performanceScore,
+        connectedAppSecurityScore, oauthComplianceScore, lwcScore, omniStudioScore, performanceScore,
         notesAttachmentsScore, flowQualityScore, auraScore
       ]);
 

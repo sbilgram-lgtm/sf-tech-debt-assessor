@@ -358,6 +358,8 @@ const CATEGORY_CHECKS: Record<string, CheckItem[]> = {
     { title: 'OAuth Tokens Belonging to Deactivated Users', severity: 'high' },
     { title: 'Connected Apps Bypassing IP Login Restrictions', severity: 'medium' },
     { title: 'Salesforce Certificate Expiring Within 90 Days', severity: 'high' },
+  ],
+  'OAuth Compliance': [
     { title: 'Managed Package Connected Apps — Contact ISVs for March 2027 Compliance Confirmation', severity: 'medium' },
     { title: 'High Count of Managed Package Connected Apps Requiring ISV Action (10+)', severity: 'high' },
     { title: 'Org-Owned Connected Apps Not Requiring PKCE', severity: 'high' },
@@ -550,6 +552,7 @@ const CATEGORIES = [
   // ── Security & Access ──────────────────────────────────────────
   { icon: '🔒',  name: 'Sharing & Security',      group: 'Security & Access' },
   { icon: '🛡️',  name: 'Connected App Security',  group: 'Security & Access' },
+  { icon: '🔐',  name: 'OAuth Compliance',         group: 'Security & Access' },
   { icon: '🌐',  name: 'Experience Cloud',        group: 'Security & Access' },
   // ── Code & Development ─────────────────────────────────────────
   { icon: '💻',  name: 'Code Quality',            group: 'Code & Development' },
