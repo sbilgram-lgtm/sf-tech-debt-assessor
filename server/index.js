@@ -2022,10 +2022,11 @@ app.get('/api/assess/experience-cloud', requireAuth, async (req, res) => {
 app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
   const conn = getConnection(req);
   try {
-    // All connected apps with metadata
+    // Extended Tooling API query — adds NamespacePrefix and OptionsAllowAdminApprovedUsersOnly for OAuth compliance checks
     const connectedApps = await safeToolingQuery(conn,
-      "SELECT Id, Name, Description, MobileSessionTimeout, StartUrl, IpRelaxation " +
-      "FROM ConnectedApplication LIMIT 200"
+      "SELECT Id, Name, Description, MobileSessionTimeout, StartUrl, IpRelaxation, " +
+      "NamespacePrefix, OptionsAllowAdminApprovedUsersOnly " +
+      "FROM ConnectedApplication LIMIT 500"
     );
 
     // Active OAuth tokens — who holds live sessions and when last used
@@ -2042,13 +2043,90 @@ app.get('/api/assess/connected-app-security', requireAuth, async (req, res) => {
       safeToolingQuery(conn, "SELECT Id, Name, MobileSessionTimeout FROM ConnectedApplication WHERE Name LIKE '%CTI%' OR Name LIKE '%Telephony%' OR Name LIKE '%OpenCTI%' OR Name LIKE '%Voice%' LIMIT 20").catch(() => ({ records: [] }))
     ]);
 
+    // ── Metadata API — PKCE / RTR / DPoP (March 2027 enforcement) ──────────────
+    const apps = connectedApps.records || [];
+    const managedApps = apps.filter(a => a.NamespacePrefix);
+    const orgOwnedApps = apps.filter(a => !a.NamespacePrefix);
+
+    let connectedAppMetadata = [];
+    try {
+      const metaList = await conn.metadata.list([{ type: 'ConnectedApp' }], '62.0');
+      const listArr = Array.isArray(metaList) ? metaList : (metaList ? [metaList] : []);
+      const orgOwnedNames = listArr
+        .filter(a => !a.namespacePrefix)
+        .map(a => a.fullName)
+        .slice(0, 50);
+      for (let i = 0; i < orgOwnedNames.length; i += 10) {
+        const batch = orgOwnedNames.slice(i, i + 10);
+        try {
+          const result = await conn.metadata.read('ConnectedApp', batch);
+          const arr = Array.isArray(result) ? result : (result ? [result] : []);
+          connectedAppMetadata.push(...arr.filter(Boolean));
+        } catch (batchErr) {
+          console.warn('ConnectedApp metadata batch read failed:', batchErr.message);
+        }
+      }
+    } catch (metaErr) {
+      console.warn('ConnectedApp metadata list failed:', metaErr.message);
+    }
+
+    function getPkce(a) { const v = a.oauthConfig?.requireProofKeyForCodeExchange; return v === true || v === 'true'; }
+    function getRtr(a) { const rtr = a.oauthConfig?.refreshTokenRotation; return !(!rtr || rtr === 'none' || rtr === 'None' || rtr === 'Disabled'); }
+    function getDpop(a) { const v = a.oauthConfig?.dpopEnabled; return v === true || v === 'true'; }
+    function hasAuthCodeFlow(a) {
+      const flows = a.oauthConfig?.selectedFlows;
+      if (!flows) return false;
+      const arr = Array.isArray(flows) ? flows : [flows];
+      return arr.some(f => typeof f === 'string' && (f.includes('AuthorizationCode') || f.includes('Code')));
+    }
+
+    const noPkceApps = connectedAppMetadata.filter(a => !getPkce(a));
+    const authCodeNoPkceApps = connectedAppMetadata.filter(a => hasAuthCodeFlow(a) && !getPkce(a));
+    const noRtrApps = connectedAppMetadata.filter(a => !getRtr(a));
+    const noDpopApps = connectedAppMetadata.filter(a => !getDpop(a));
+    const failingAllApps = connectedAppMetadata.filter(a => !getPkce(a) && !getRtr(a) && !getDpop(a));
+
+    const openToAllNames = new Set(orgOwnedApps.filter(a => a.OptionsAllowAdminApprovedUsersOnly === false).map(a => a.Name));
+    const openNoRtrApps = connectedAppMetadata.filter(a => {
+      if (getRtr(a)) return false;
+      const shortName = (a.fullName || '').split('.').pop();
+      return openToAllNames.has(shortName) || openToAllNames.has(a.fullName);
+    });
+
+    const relaxedIpNames = new Set(apps.filter(a => a.IpRelaxation === 'RelaxedForThisApp').map(a => a.Name));
+    const relaxedNoRtrApps = connectedAppMetadata.filter(a => {
+      if (getRtr(a)) return false;
+      const shortName = (a.fullName || '').split('.').pop();
+      return relaxedIpNames.has(shortName) || relaxedIpNames.has(a.fullName);
+    });
+
+    const longRefreshTokenApps = connectedAppMetadata.filter(a => {
+      const t = a.oauthConfig?.refreshTokenTimeout;
+      return t === undefined || t === null || t === '0' || t === 0 || (Number(t) > 86400);
+    });
+
+    const nonCompliantNames = new Set([...noPkceApps, ...noRtrApps, ...noDpopApps].map(a => a.fullName));
+    const nonCompliantCount = nonCompliantNames.size + managedApps.length + (externalClientApps.records || []).length;
+
     res.json({
-      connectedApps: connectedApps.records || [],
+      connectedApps: apps,
       oauthTokens: oauthTokens.records || [],
       activeOutboundMessages: activeOutboundMsgs.records || [],
       certificates: expiredCerts.records || [],
       externalClientApps: externalClientApps.records || [],
-      ctiConnectedApps: ctiConnectedAppsRes.records || []
+      ctiConnectedApps: ctiConnectedAppsRes.records || [],
+      managedApps: managedApps.map(a => ({ name: a.Name, namespace: a.NamespacePrefix })),
+      orgOwnedAppCount: orgOwnedApps.length,
+      noPkceApps: noPkceApps.map(a => ({ name: a.fullName })),
+      authCodeNoPkceApps: authCodeNoPkceApps.map(a => ({ name: a.fullName })),
+      noRtrApps: noRtrApps.map(a => ({ name: a.fullName })),
+      noDpopApps: noDpopApps.map(a => ({ name: a.fullName })),
+      failingAllApps: failingAllApps.map(a => ({ name: a.fullName })),
+      openNoRtrApps: openNoRtrApps.map(a => ({ name: a.fullName })),
+      relaxedNoRtrApps: relaxedNoRtrApps.map(a => ({ name: a.fullName })),
+      longRefreshTokenApps: longRefreshTokenApps.map(a => ({ name: a.fullName })),
+      metadataRetrieved: connectedAppMetadata.length,
+      nonCompliantCount
     });
   } catch (err) {
     console.error('Connected App Security assessment error:', err);

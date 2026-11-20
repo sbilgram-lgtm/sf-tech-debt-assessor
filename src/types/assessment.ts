@@ -342,6 +342,18 @@ export interface ConnectedAppSecurityData {
   certificates: any[];
   externalClientApps: any[];
   ctiConnectedApps: any[];
+  managedApps?: { name: string; namespace: string }[];
+  orgOwnedAppCount?: number;
+  noPkceApps?: { name: string }[];
+  authCodeNoPkceApps?: { name: string }[];
+  noRtrApps?: { name: string }[];
+  noDpopApps?: { name: string }[];
+  failingAllApps?: { name: string }[];
+  openNoRtrApps?: { name: string }[];
+  relaxedNoRtrApps?: { name: string }[];
+  longRefreshTokenApps?: { name: string }[];
+  metadataRetrieved?: number;
+  nonCompliantCount?: number;
 }
 
 export interface OmniStudioData {
